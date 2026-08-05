@@ -1,0 +1,12 @@
+{
+  "name": "@aetherspec/shared-types",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "echo 'no-op'",
+    "build": "echo 'no-op — consumed as source via TS path alias'"
+  }
+}

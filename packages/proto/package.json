@@ -1,0 +1,10 @@
+{
+  "name": "@aetherspec/proto",
+  "version": "0.0.0",
+  "private": true,
+  "description": "gRPC/protobuf contracts between Go gateway and Mastra agent sidecar",
+  "scripts": {
+    "lint": "echo 'no-op'",
+    "build": "echo 'no-op — generated Go/TS code is produced by protoc'"
+  }
+}

@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package aetherspec.agent.v1;
+
+option go_package = "github.com/adnaneca/aetherspec/apps/gateway/internal/agentpb";
+
+// AgentService — contract for the Go gateway to call the Mastra agent sidecar.
+// NOTE: This is a foundation placeholder. gRPC wiring is deferred to a later
+// phase; both sides currently speak HTTP for health checks.
+service AgentService {
+  rpc Run(RunRequest) returns (stream RunResponse);
+  rpc Prompt(PromptRequest) returns (PromptResponse);
+}
+
+message RunRequest {
+  string agent_id = 1;
+  string prompt = 2;
+  string workspace_id = 3;
+  string thread_id = 4;
+}
+
+message RunResponse {
+  oneof event {
+    TokenEvent token = 1;
+    ToolCallEvent tool_call = 2;
+    ToolResultEvent tool_result = 3;
+    DoneEvent done = 4;
+  }
+}
+
+message TokenEvent {
+  string delta = 1;
+  string thread_id = 2;
+}
+
+message ToolCallEvent {
+  string tool_name = 1;
+  bytes args = 2;
+  string call_id = 3;
+}
+
+message ToolResultEvent {
+  string call_id = 1;
+  bytes result = 2;
+  bool approved = 3;
+}
+
+message DoneEvent {
+  string thread_id = 1;
+  int64 tokens_used = 2;
+}
+
+message PromptRequest {
+  string agent_id = 1;
+  string prompt = 2;
+  string workspace_id = 3;
+}
+
+message PromptResponse {
+  string text = 1;
+  int64 tokens_used = 2;
+}
