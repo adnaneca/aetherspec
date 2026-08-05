@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/components/ErrorBoundary.tsx","./src/components/WorkbenchShell.tsx","./src/lib/cn.ts","./src/lib/theme.tsx","./src/stores/layoutStore.ts"],"version":"5.9.3"}
