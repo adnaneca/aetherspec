@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+pnpm-store/
+
+# Build outputs
+dist/
+build/
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+apps/gateway/bin/
+apps/gateway/tmp/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+
+# Turbo
+.turbo/
+
+# Docker
+infra/docker-compose/data/
+
+# Langfuse
+infra/docker-compose/langfuse-data/
+
+# Secrets
+*.pem
+*.key
+secrets/
