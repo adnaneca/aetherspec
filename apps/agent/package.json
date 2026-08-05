@@ -1,0 +1,27 @@
+{
+  "name": "@aetherspec/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AetherSpec Agent Sidecar — Mastra-based AI orchestration",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint . --ext .ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mastra/core": "^1.0.0",
+    "@mastra/memory": "^1.0.0",
+    "zod": "^3.23.8",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

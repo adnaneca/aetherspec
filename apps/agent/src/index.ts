@@ -1,0 +1,38 @@
+import http from 'node:http';
+import { config } from './config.js';
+import { logger } from './logger.js';
+import { buildMastra } from './mastra.js';
+
+buildMastra(); // Initialize Mastra (foundation stub)
+
+const server = http.createServer(async (req, res) => {
+  const url = req.url ?? '/';
+  logger.debug(`req ${req.method} ${url}`);
+
+  if (url === '/healthz') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ status: 'alive', service: 'aetherspec-agent' }));
+    return;
+  }
+
+  if (url === '/readyz') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ready', checks: { agent: 'ok', mastra: 'loaded' } }));
+    return;
+  }
+
+  if (url === '/') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ name: 'aetherspec-agent', version: '0.0.0', status: 'foundation' }));
+    return;
+  }
+
+  // FUTURE: /agents/:id/stream — SSE endpoint that the Go gateway proxies.
+  // FUTURE: /agents/:id/prompt — non-streaming prompt.
+  res.writeHead(404, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ error: 'not found' }));
+});
+
+server.listen(config.agent.port, () => {
+  logger.info(`agent sidecar listening on :${config.agent.port}`, { env: config.agent.env });
+});
