@@ -1,0 +1,23 @@
+[Unit]
+Description=AetherSpec Gateway Service
+After=network.target postgres.service minio.service
+Wants=postgres.service minio.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/aetherspec-v2/apps/gateway
+ExecStart=/opt/aetherspec-v2/apps/gateway/bin/gateway
+Restart=on-failure
+RestartSec=5
+Environment="PATH=/usr/local/go/bin:/usr/bin:/bin"
+EnvironmentFile=/opt/aetherspec-v2/infra/deploy/env/.env.prod
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

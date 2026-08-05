@@ -1,0 +1,23 @@
+[Unit]
+Description=AetherSpec Agent Sidecar Service
+After=network.target gateway.service
+Wants=gateway.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/aetherspec-v2/apps/agent
+ExecStart=/usr/bin/node /opt/aetherspec-v2/apps/agent/dist/index.js
+Restart=on-failure
+RestartSec=5
+Environment="PATH=/usr/bin:/bin"
+EnvironmentFile=/opt/aetherspec-v2/infra/deploy/env/.env.prod
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
