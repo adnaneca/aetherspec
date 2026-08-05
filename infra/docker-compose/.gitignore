@@ -1,0 +1,9 @@
+# Docker compose data (persistent volumes)
+data/
+
+# Environment files (create from .example)
+.env
+.env.local
+
+# Logs
+*.log

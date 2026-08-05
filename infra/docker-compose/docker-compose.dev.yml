@@ -1,0 +1,78 @@
+# AetherSpec — Local Development Stack
+# Usage: docker compose -f infra/docker-compose/docker-compose.dev.yml up -d
+#
+# This stack mirrors the Hetzner test server's bare services but as containers
+# for isolated local development on the Oracle VM. Data is persisted under
+# ./data/ which is gitignored.
+
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aether-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aetherspec
+      POSTGRES_USER: aetherspec
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aetherspec"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: aether-minio-dev
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: aetheradmin
+      MINIO_ROOT_PASSWORD: aetherdevpassword
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./data/minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.5
+    container_name: aether-keycloak-dev
+    restart: unless-stopped
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/keycloak:/opt/keycloak/data
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: aether-langfuse-dev
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://aetherspec:devpassword@postgres:5432/langfuse?directConnection=true
+      - SALT=devsalt
+      - NEXTAUTH_SECRET=devsecret
+      - NEXTAUTH_URL=http://localhost:3000
+    ports:
+      - "3001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  default:
+    name: aetherspec-dev
