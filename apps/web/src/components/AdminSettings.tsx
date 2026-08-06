@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { AdminSettingsConfig } from '../types';
+import { useNavigate } from '@tanstack/react-router';
+import type { AdminSettingsConfig, AdminProvider } from '../types';
 import { getAdminConfig, saveAdminConfig } from '../lib/api';
 import {
   ShieldAlert,
@@ -11,11 +12,147 @@ import {
   CheckCircle2,
   Lock,
   Wrench,
+  ArrowLeft,
 } from 'lucide-react';
 
+const PROVIDER_CATALOG: Record<AdminProvider['id'], { name: string; models: string[] }> = {
+  ollama: {
+    name: 'Ollama Cloud',
+    models: ['llama3.1:70b', 'llama3.1:8b', 'qwen2.5:72b', 'deepseek-r1:70b'],
+  },
+  openai: {
+    name: 'OpenAI',
+    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-mini'],
+  },
+  anthropic: {
+    name: 'Anthropic',
+    models: ['claude-3-5-sonnet', 'claude-3-opus', 'claude-3-5-haiku'],
+  },
+  gemini: {
+    name: 'Google Gemini',
+    models: ['gemini-1.5-pro', 'gemini-1.5-flash'],
+  },
+  deepseek: {
+    name: 'DeepSeek',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+  },
+};
+
+const AGENTS = [
+  {
+    id: 'brs-agent',
+    name: 'brs-agent',
+    description: 'Generates Business Requirement Specs',
+    icon: Bot,
+  },
+  {
+    id: 'srd-agent',
+    name: 'srd-agent',
+    description: 'Generates SRS/SDD & Implementation Backlog',
+    icon: Bot,
+  },
+  {
+    id: 'testcase-agent',
+    name: 'testcase-agent',
+    description: 'Generates Test Cases & Traceability',
+    icon: Bot,
+  },
+];
+
+const DEFAULT_PROVIDERS: AdminProvider[] = [
+  { id: 'ollama', name: 'Ollama Cloud', enabled: true, apiKey: '', baseUrl: 'https://api.ollama.cloud/v1' },
+  { id: 'openai', name: 'OpenAI', enabled: false, apiKey: '' },
+  { id: 'anthropic', name: 'Anthropic', enabled: false, apiKey: '' },
+  { id: 'gemini', name: 'Google Gemini', enabled: false, apiKey: '' },
+  { id: 'deepseek', name: 'DeepSeek', enabled: false, apiKey: '' },
+];
+
+const DEFAULT_CONFIG: AdminSettingsConfig = {
+  providers: DEFAULT_PROVIDERS,
+  agentModels: {
+    'brs-agent': 'ollama/llama3.1:70b',
+    'srd-agent': 'ollama/llama3.1:70b',
+    'testcase-agent': 'ollama/llama3.1:70b',
+  },
+  executionPolicy: 'request-review',
+  fileAccessPolicy: 'workspace-only',
+  internetAccessPolicy: 'allow',
+  activeSkills: [
+    'generate-brs-section',
+    'validate-brs-section',
+    'generate-srs-section',
+    'validate-srs-section',
+    'generate-testcase-section',
+  ],
+};
+
+/**
+ * Normalize legacy config shapes (old object-based providers) to the new provider array shape.
+ */
+function normalizeConfig(raw: unknown): AdminSettingsConfig {
+  const cfg = raw as Partial<AdminSettingsConfig> | Record<string, unknown>;
+  const next: AdminSettingsConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+
+  if (cfg && typeof cfg === 'object') {
+    // Providers
+    const rawProviders = cfg.providers;
+    if (Array.isArray(rawProviders)) {
+      // new shape
+      const byId = new Map(rawProviders.map((p) => [p.id, p]));
+      next.providers = DEFAULT_PROVIDERS.map((def) => ({
+        ...def,
+        ...(byId.get(def.id) || {}),
+        id: def.id,
+        name: def.name,
+      }));
+    } else if (rawProviders && typeof rawProviders === 'object') {
+      // legacy shape: { ollamaEndpoint, ollamaApiKey, openaiKey, ... }
+      const legacy = rawProviders as Record<string, string>;
+      next.providers = DEFAULT_PROVIDERS.map((def) => {
+        const keyMap: Record<string, string | undefined> = {
+          ollama: legacy.ollamaApiKey,
+          openai: legacy.openaiKey,
+          anthropic: legacy.anthropicKey,
+          gemini: legacy.geminiKey,
+          deepseek: legacy.deepseekKey,
+        };
+        return {
+          ...def,
+          enabled: !!keyMap[def.id] || def.id === 'ollama',
+          apiKey: keyMap[def.id] || '',
+          baseUrl: def.id === 'ollama' ? legacy.ollamaEndpoint || def.baseUrl : def.baseUrl,
+        };
+      });
+    }
+
+    // Agent models
+    const rawAgentModels = cfg.agentModels;
+    if (rawAgentModels && typeof rawAgentModels === 'object') {
+      Object.entries(rawAgentModels as Record<string, string>).forEach(([k, v]) => {
+        if (next.agentModels[k] !== undefined) {
+          next.agentModels[k] = v;
+        }
+      });
+    }
+
+    // Policies
+    if (cfg.executionPolicy) next.executionPolicy = cfg.executionPolicy as AdminSettingsConfig['executionPolicy'];
+    if (cfg.fileAccessPolicy) next.fileAccessPolicy = cfg.fileAccessPolicy as AdminSettingsConfig['fileAccessPolicy'];
+    if (cfg.internetAccessPolicy) next.internetAccessPolicy = cfg.internetAccessPolicy as AdminSettingsConfig['internetAccessPolicy'];
+
+    // Skills
+    if (Array.isArray(cfg.activeSkills)) next.activeSkills = cfg.activeSkills as string[];
+  }
+
+  return next;
+}
+
 export function AdminSettings() {
+  const navigate = useNavigate();
   const [adminConfig, setAdminConfig] = useState<AdminSettingsConfig | null>(null);
-  const [activeTab, setActiveTab] = useState<'models' | 'policies' | 'mcp' | 'keycloak' | 'minio'>('models');
+  const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'policies' | 'mcp' | 'keycloak' | 'minio'>(
+    'providers'
+  );
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +160,7 @@ export function AdminSettings() {
   useEffect(() => {
     getAdminConfig()
       .then((cfg) => {
-        setAdminConfig(cfg);
+        setAdminConfig(normalizeConfig(cfg));
         setLoading(false);
       })
       .catch((err) => {
@@ -42,6 +179,16 @@ export function AdminSettings() {
       setError((err as Error).message);
     }
   };
+
+  const updateProvider = (id: AdminProvider['id'], patch: Partial<AdminProvider>) => {
+    if (!adminConfig) return;
+    setAdminConfig({
+      ...adminConfig,
+      providers: adminConfig.providers.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    });
+  };
+
+  const enabledProviders = adminConfig?.providers.filter((p) => p.enabled) ?? [];
 
   if (loading) {
     return (
@@ -63,16 +210,28 @@ export function AdminSettings() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between p-6 rounded-xl border border-border bg-card">
-        <div>
-          <div className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider text-primary">
-            <ShieldAlert className="size-4" />
-            <span>AetherSpec Platform Governance · Admin Scope</span>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate({ to: '/' })}
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-xs font-mono"
+            title="Return to ProjectHub"
+          >
+            <ArrowLeft className="size-4" />
+            Back
+          </button>
+          <div className="h-6 w-px bg-border" />
+          <div>
+            <div className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider text-primary">
+              <ShieldAlert className="size-4" />
+              <span>AetherSpec Platform Governance · Admin Scope</span>
+            </div>
+            <h1 className="text-xl font-bold text-foreground mt-1">Admin Settings & Model Router Console</h1>
+            <p className="text-muted-foreground text-xs mt-1">
+              Enable LLM providers, set their API keys, then route each agent to a model from the selected providers.
+            </p>
           </div>
-          <h1 className="text-xl font-bold text-foreground mt-1">Admin Settings & Model Router Console</h1>
-          <p className="text-muted-foreground text-xs mt-1">
-            Configure LLM Provider API keys, per-agent routing matrix, tool execution policies, and infrastructure settings.
-          </p>
         </div>
 
         <button
@@ -84,145 +243,125 @@ export function AdminSettings() {
         </button>
       </div>
 
+      {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border pb-2 text-xs font-mono">
-        <TabButton active={activeTab === 'models'} onClick={() => setActiveTab('models')} icon={<Cpu className="size-4" />} label="AI Models & Providers" />
+        <TabButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')} icon={<Key className="size-4" />} label="Provider Setup" />
+        <TabButton active={activeTab === 'models'} onClick={() => setActiveTab('models')} icon={<Cpu className="size-4" />} label="Model Routing" />
         <TabButton active={activeTab === 'policies'} onClick={() => setActiveTab('policies')} icon={<Lock className="size-4" />} label="Execution Policies" />
         <TabButton active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} icon={<Wrench className="size-4" />} label="Skills & MCP" />
         <TabButton active={activeTab === 'keycloak'} onClick={() => setActiveTab('keycloak')} icon={<ShieldCheck className="size-4" />} label="Keycloak OIDC" />
         <TabButton active={activeTab === 'minio'} onClick={() => setActiveTab('minio')} icon={<HardDrive className="size-4" />} label="MinIO & KVKK" />
       </div>
 
+      {/* Providers Tab */}
+      {activeTab === 'providers' && (
+        <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
+          <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
+            <Key className="size-4" />
+            <span>LLM Provider Setup</span>
+          </div>
+          <p className="text-muted-foreground">
+            Tick the providers you want to use, enter their API keys, then switch to the Model Routing tab to assign models per agent.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {adminConfig.providers.map((provider) => (
+              <div
+                key={provider.id}
+                className={`p-4 rounded-lg border space-y-3 transition-colors ${
+                  provider.enabled ? 'border-primary/40 bg-primary/5' : 'border-border bg-background'
+                }`}
+              >
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={provider.enabled}
+                    onChange={(e) => updateProvider(provider.id, { enabled: e.target.checked })}
+                    className="size-4 accent-primary rounded"
+                  />
+                  <span className="font-semibold text-foreground">{provider.name}</span>
+                </label>
+
+                {provider.id === 'ollama' && (
+                  <ConfigInput
+                    label="Endpoint URL"
+                    type="text"
+                    value={provider.baseUrl || ''}
+                    onChange={(v) => updateProvider(provider.id, { baseUrl: v })}
+                  />
+                )}
+
+                <ConfigInput
+                  label="API Key"
+                  type="password"
+                  value={provider.apiKey}
+                  onChange={(v) => updateProvider(provider.id, { apiKey: v })}
+                />
+
+                {provider.id === 'ollama' && (
+                  <p className="text-[10px] text-muted-foreground">Ollama Cloud uses an OpenAI-compatible endpoint.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Models Tab */}
       {activeTab === 'models' && (
         <div className="space-y-6 text-xs">
           <div className="p-5 rounded-xl border border-border bg-card space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-2">
               <div className="flex items-center gap-2 text-primary font-bold text-sm">
-                <Bot className="size-4" />
+                <Cpu className="size-4" />
                 <span>Per-Agent Model Routing Matrix</span>
               </div>
-              <span className="font-mono text-[10px] text-muted-foreground">Dynamically maps agents to LLM backends</span>
+              <span className="font-mono text-[10px] text-muted-foreground">Only models from enabled providers are shown</span>
             </div>
+
+            {enabledProviders.length === 0 && (
+              <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive">
+                No providers enabled. Go to the Provider Setup tab and tick at least one provider.
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <AgentModelCard
-                title="brs-agent"
-                description="Generates Business Requirement Specs"
-                value={adminConfig.agentModels.brsAgentModel}
-                options={[
-                  { value: 'ollama/llama3.1:70b', label: 'Ollama · Llama 3.1 70B' },
-                  { value: 'ollama/llama3.1:8b', label: 'Ollama · Llama 3.1 8B' },
-                  { value: 'ollama/qwen2.5:72b', label: 'Ollama · Qwen 2.5 72B' },
-                  { value: 'ollama/deepseek-r1:70b', label: 'Ollama · DeepSeek R1 70B' },
-                  { value: 'anthropic/claude-3-5-sonnet', label: 'Anthropic · Claude 3.5 Sonnet' },
-                  { value: 'openai/gpt-4o', label: 'OpenAI · GPT-4o' },
-                ]}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  agentModels: { ...adminConfig.agentModels, brsAgentModel: v },
-                })}
-              />
-              <AgentModelCard
-                title="srd-agent"
-                description="Generates SRS/SDD & Implementation Backlog"
-                value={adminConfig.agentModels.srsAgentModel}
-                options={[
-                  { value: 'ollama/llama3.1:70b', label: 'Ollama · Llama 3.1 70B' },
-                  { value: 'ollama/llama3.1:8b', label: 'Ollama · Llama 3.1 8B' },
-                  { value: 'ollama/qwen2.5:72b', label: 'Ollama · Qwen 2.5 72B' },
-                  { value: 'ollama/deepseek-r1:70b', label: 'Ollama · DeepSeek R1 70B' },
-                  { value: 'anthropic/claude-3-5-sonnet', label: 'Anthropic · Claude 3.5 Sonnet' },
-                  { value: 'google/gemini-1.5-pro', label: 'Google · Gemini 1.5 Pro' },
-                ]}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  agentModels: { ...adminConfig.agentModels, srsAgentModel: v },
-                })}
-              />
-              <AgentModelCard
-                title="testcase-agent"
-                description="Generates Test Cases & Traceability"
-                value={adminConfig.agentModels.testCaseAgentModel}
-                options={[
-                  { value: 'ollama/llama3.1:70b', label: 'Ollama · Llama 3.1 70B' },
-                  { value: 'ollama/llama3.1:8b', label: 'Ollama · Llama 3.1 8B' },
-                  { value: 'ollama/qwen2.5:72b', label: 'Ollama · Qwen 2.5 72B' },
-                  { value: 'openai/gpt-4o', label: 'OpenAI · GPT-4o' },
-                  { value: 'anthropic/claude-3-5-sonnet', label: 'Anthropic · Claude 3.5 Sonnet' },
-                ]}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  agentModels: { ...adminConfig.agentModels, testCaseAgentModel: v },
-                })}
-              />
-            </div>
-          </div>
-
-          <div className="p-5 rounded-xl border border-border bg-card space-y-3">
-            <div className="flex items-center gap-2 text-foreground font-bold text-sm border-b border-border pb-2">
-              <Key className="size-4 text-primary" />
-              <span>LLM Provider API Key Management</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ConfigInput
-                label="Ollama Cloud Endpoint"
-                type="text"
-                value={adminConfig.providers.ollamaEndpoint}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  providers: { ...adminConfig.providers, ollamaEndpoint: v },
-                })}
-              />
-              <ConfigInput
-                label="Ollama Cloud API Key"
-                type="password"
-                value={adminConfig.providers.ollamaApiKey}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  providers: { ...adminConfig.providers, ollamaApiKey: v },
-                })}
-              />
-              <ConfigInput
-                label="OpenAI API Key"
-                type="password"
-                value={adminConfig.providers.openaiKey}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  providers: { ...adminConfig.providers, openaiKey: v },
-                })}
-              />
-              <ConfigInput
-                label="Anthropic API Key"
-                type="password"
-                value={adminConfig.providers.anthropicKey}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  providers: { ...adminConfig.providers, anthropicKey: v },
-                })}
-              />
-              <ConfigInput
-                label="Google Gemini API Key"
-                type="password"
-                value={adminConfig.providers.geminiKey}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  providers: { ...adminConfig.providers, geminiKey: v },
-                })}
-              />
-              <ConfigInput
-                label="DeepSeek API Key"
-                type="password"
-                value={adminConfig.providers.deepseekKey}
-                onChange={(v) => setAdminConfig({
-                  ...adminConfig,
-                  providers: { ...adminConfig.providers, deepseekKey: v },
-                })}
-              />
+              {AGENTS.map((agent) => (
+                <div key={agent.id} className="p-3 bg-background rounded-lg border border-border space-y-2">
+                  <div className="font-bold text-primary flex items-center gap-1.5">
+                    <agent.icon className="size-3.5" /> {agent.name}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{agent.description}</div>
+                  <select
+                    value={adminConfig.agentModels[agent.id] || ''}
+                    onChange={(e) =>
+                      setAdminConfig({
+                        ...adminConfig,
+                        agentModels: { ...adminConfig.agentModels, [agent.id]: e.target.value },
+                      })
+                    }
+                    disabled={enabledProviders.length === 0}
+                    className="w-full bg-card border border-border rounded p-1.5 text-foreground font-mono disabled:opacity-50"
+                  >
+                    {enabledProviders.length === 0 && <option value="">— no provider enabled —</option>}
+                    {enabledProviders.map((provider) => (
+                      <optgroup key={provider.id} label={provider.name}>
+                        {PROVIDER_CATALOG[provider.id].models.map((model) => (
+                          <option key={`${provider.id}/${model}`} value={`${provider.id}/${model}`}>
+                            {model}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
+      {/* Policies Tab */}
       {activeTab === 'policies' && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
@@ -265,6 +404,7 @@ export function AdminSettings() {
         </div>
       )}
 
+      {/* Skills Tab */}
       {activeTab === 'mcp' && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center justify-between border-b border-border pb-2">
@@ -292,6 +432,7 @@ export function AdminSettings() {
         </div>
       )}
 
+      {/* Keycloak Tab */}
       {activeTab === 'keycloak' && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
@@ -306,6 +447,7 @@ export function AdminSettings() {
         </div>
       )}
 
+      {/* MinIO Tab */}
       {activeTab === 'minio' && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
@@ -371,38 +513,6 @@ function ConfigInput({
         onChange={(e) => onChange(e.target.value)}
         className="w-full bg-background border border-border rounded p-2 text-foreground font-mono focus:outline-none focus:border-ring"
       />
-    </div>
-  );
-}
-
-function AgentModelCard({
-  title,
-  description,
-  value,
-  options,
-  onChange,
-}: {
-  title: string;
-  description: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="p-3 bg-background rounded-lg border border-border space-y-2">
-      <div className="font-bold text-primary flex items-center gap-1.5">
-        <Bot className="size-3.5" /> {title}
-      </div>
-      <div className="text-[10px] text-muted-foreground">{description}</div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-card border border-border rounded p-1.5 text-foreground font-mono"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
     </div>
   );
 }

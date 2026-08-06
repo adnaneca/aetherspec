@@ -12,18 +12,43 @@ CREATE TABLE IF NOT EXISTS app_config (
 INSERT INTO app_config (key, value) VALUES (
     'admin_settings',
     '{
-        "providers": {
-            "ollamaEndpoint": "https://api.ollama.cloud/v1",
-            "ollamaApiKey": "",
-            "openaiKey": "",
-            "anthropicKey": "",
-            "geminiKey": "",
-            "deepseekKey": ""
-        },
+        "providers": [
+            {
+                "id": "ollama",
+                "name": "Ollama Cloud",
+                "enabled": true,
+                "apiKey": "",
+                "baseUrl": "https://api.ollama.cloud/v1"
+            },
+            {
+                "id": "openai",
+                "name": "OpenAI",
+                "enabled": false,
+                "apiKey": ""
+            },
+            {
+                "id": "anthropic",
+                "name": "Anthropic",
+                "enabled": false,
+                "apiKey": ""
+            },
+            {
+                "id": "gemini",
+                "name": "Google Gemini",
+                "enabled": false,
+                "apiKey": ""
+            },
+            {
+                "id": "deepseek",
+                "name": "DeepSeek",
+                "enabled": false,
+                "apiKey": ""
+            }
+        ],
         "agentModels": {
-            "brsAgentModel": "ollama/llama3.1:70b",
-            "srsAgentModel": "ollama/llama3.1:70b",
-            "testCaseAgentModel": "ollama/llama3.1:70b"
+            "brs-agent": "ollama/llama3.1:70b",
+            "srd-agent": "ollama/llama3.1:70b",
+            "testcase-agent": "ollama/llama3.1:70b"
         },
         "executionPolicy": "request-review",
         "fileAccessPolicy": "workspace-only",
@@ -36,4 +61,4 @@ INSERT INTO app_config (key, value) VALUES (
             "generate-testcase-section"
         ]
     }'::jsonb
-) ON CONFLICT (key) DO NOTHING;
+) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();

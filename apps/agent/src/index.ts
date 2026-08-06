@@ -44,16 +44,13 @@ const server = http.createServer(async (req, res) => {
   if (url === '/config') {
     const cfg = getCachedAdminConfig();
     if (cfg) {
+      const safeProviders = cfg.providers.map((p) => ({
+        ...p,
+        apiKey: p.apiKey ? '***' : '',
+      }));
       const safe = {
         ...cfg,
-        providers: {
-          ...cfg.providers,
-          ollamaApiKey: cfg.providers.ollamaApiKey ? '***' : '',
-          openaiKey: cfg.providers.openaiKey ? '***' : '',
-          anthropicKey: cfg.providers.anthropicKey ? '***' : '',
-          geminiKey: cfg.providers.geminiKey ? '***' : '',
-          deepseekKey: cfg.providers.deepseekKey ? '***' : '',
-        },
+        providers: safeProviders,
       };
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(safe));

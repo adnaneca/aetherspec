@@ -22,20 +22,23 @@ export interface Persona {
 export type DocType = 'brs' | 'srs' | 'testcase';
 export type DocStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'AWAITING_SIGNATURE' | 'SIGNED_OFF';
 
+export interface AdminProvider {
+  id: 'ollama' | 'openai' | 'anthropic' | 'gemini' | 'deepseek';
+  name: string;
+  enabled: boolean;
+  apiKey: string;
+  baseUrl?: string;
+}
+
+export interface AdminAgent {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface AdminSettingsConfig {
-  providers: {
-    ollamaEndpoint: string;
-    ollamaApiKey: string;
-    openaiKey: string;
-    anthropicKey: string;
-    geminiKey: string;
-    deepseekKey: string;
-  };
-  agentModels: {
-    brsAgentModel: string;
-    srsAgentModel: string;
-    testCaseAgentModel: string;
-  };
+  providers: AdminProvider[];
+  agentModels: Record<string, string>; // agentId -> "providerId/modelId"
   executionPolicy: 'always-proceed' | 'request-review' | 'strict-approvals';
   fileAccessPolicy: 'workspace-only' | 'external-minio' | 'unrestricted';
   internetAccessPolicy: 'allow' | 'ask' | 'deny';
