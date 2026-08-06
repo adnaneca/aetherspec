@@ -157,7 +157,9 @@ export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
   };
 
   const logout = async () => {
-    await kc.logout({ redirectUri: window.location.origin + '/login' });
+    // Keycloak client only accepts the origin as post-logout redirect URI for public clients;
+    // app routing then lands the user back on the login page.
+    await kc.logout({ redirectUri: window.location.origin + '/' });
   };
 
   return (
