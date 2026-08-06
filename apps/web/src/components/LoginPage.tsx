@@ -8,10 +8,12 @@ export function LoginPage() {
 
   const handleKeycloakSSO = async () => {
     setIsAuthenticating(true);
+    console.log('[LoginPage] SSO button clicked');
     try {
       await login();
+      console.log('[LoginPage] login() returned');
     } catch (err) {
-      console.error('Keycloak login failed:', err);
+      console.error('[LoginPage] Keycloak login failed:', err);
       setIsAuthenticating(false);
     }
   };
