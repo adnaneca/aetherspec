@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { Ollama } from 'ollama';
 import { getCachedAdminConfig, type AdminSettings } from './admin-config.js';
 import { logger } from './logger.js';
 
@@ -19,6 +19,8 @@ export interface StreamCallbacks {
   onError: (error: string) => void;
 }
 
+const DEFAULT_MODEL = 'gpt-oss:20b';
+
 /**
  * Resolves which model to use for a given agentId from the admin config.
  */
@@ -30,7 +32,8 @@ function resolveModel(agentId: string, config: AdminSettings): string {
     general: config.agentModels['brs-agent'] ?? config.agentModels.brsAgentModel,
   };
 
-  return modelMap[agentId] || 'ollama/llama3.1:70b';
+  const value = modelMap[agentId] || DEFAULT_MODEL;
+  return stripProviderPrefix(value);
 }
 
 /**
@@ -41,15 +44,15 @@ function resolveOllamaProvider(config: AdminSettings): { apiKey: string; baseUrl
   if (!ollama || !ollama.apiKey) {
     return {
       apiKey: process.env.OLLAMA_API_KEY || '',
-      baseUrl: process.env.OLLAMA_BASE_URL || 'https://ollama.cloud/v1',
+      baseUrl: process.env.OLLAMA_BASE_URL || 'https://ollama.com',
     };
   }
-  return { apiKey: ollama.apiKey, baseUrl: ollama.baseUrl || 'https://ollama.cloud/v1' };
+  return { apiKey: ollama.apiKey, baseUrl: ollama.baseUrl || 'https://ollama.com' };
 }
 
 /**
  * Extracts the model name without the provider prefix.
- * "ollama/llama3.1:70b" → "llama3.1:70b"
+ * "ollama/gpt-oss:20b" → "gpt-oss:20b"
  */
 function stripProviderPrefix(model: string): string {
   const slashIndex = model.indexOf('/');
@@ -74,8 +77,7 @@ export async function runAgentStream(request: StreamRequest, callbacks: StreamCa
     return;
   }
 
-  const fullModel = resolveModel(request.agentId, config);
-  const model = stripProviderPrefix(fullModel);
+  const model = resolveModel(request.agentId, config);
 
   logger.info('starting agent stream', {
     agentId: request.agentId,
@@ -83,9 +85,11 @@ export async function runAgentStream(request: StreamRequest, callbacks: StreamCa
     baseUrl: ollama.baseUrl,
   });
 
-  const client = new OpenAI({
-    apiKey: ollama.apiKey,
-    baseURL: ollama.baseUrl,
+  const client = new Ollama({
+    host: ollama.baseUrl,
+    headers: {
+      Authorization: `Bearer ${ollama.apiKey}`,
+    },
   });
 
   const messages: ChatMessage[] = [
@@ -99,7 +103,7 @@ export async function runAgentStream(request: StreamRequest, callbacks: StreamCa
   ];
 
   try {
-    const stream = await client.chat.completions.create({
+    const stream = await client.chat({
       model,
       messages,
       stream: true,
@@ -107,8 +111,8 @@ export async function runAgentStream(request: StreamRequest, callbacks: StreamCa
 
     let totalTokens = 0;
 
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta?.content;
+    for await (const part of stream) {
+      const delta = part.message?.content;
       if (delta) {
         totalTokens += 1;
         callbacks.onToken(delta);

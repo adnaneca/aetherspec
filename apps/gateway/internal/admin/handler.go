@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
@@ -154,9 +155,9 @@ func testProvider(log *zap.Logger) fiber.Handler {
 		case "ollama":
 			baseURL := req.BaseURL
 			if baseURL == "" {
-				baseURL = "https://ollama.cloud/v1"
+				baseURL = "https://ollama.com"
 			}
-			url := baseURL + "/models"
+			url := strings.TrimSuffix(baseURL, "/") + "/api/tags"
 			httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodGet, url, nil)
 			if err != nil {
 				return c.Status(500).JSON(fiber.Map{"status": "failed", "reason": err.Error()})

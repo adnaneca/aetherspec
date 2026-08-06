@@ -70,7 +70,7 @@ const AGENTS = [
 ];
 
 const DEFAULT_PROVIDERS: AdminProvider[] = [
-  { id: 'ollama', name: 'Ollama Cloud', enabled: true, apiKey: '', baseUrl: 'https://ollama.cloud/v1' },
+  { id: 'ollama', name: 'Ollama Cloud', enabled: true, apiKey: '', baseUrl: 'https://ollama.com' },
   { id: 'openai', name: 'OpenAI', enabled: false, apiKey: '' },
   { id: 'anthropic', name: 'Anthropic', enabled: false, apiKey: '' },
   { id: 'gemini', name: 'Google Gemini', enabled: false, apiKey: '' },
