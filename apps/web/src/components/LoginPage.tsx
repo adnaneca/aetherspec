@@ -3,7 +3,7 @@ import { Hexagon, ShieldCheck, Lock, KeyRound, ArrowRight } from 'lucide-react';
 import { useKeycloak } from '../lib/keycloak';
 
 export function LoginPage() {
-  const { login, isLoading } = useKeycloak();
+  const { login } = useKeycloak();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   const handleKeycloakSSO = async () => {
