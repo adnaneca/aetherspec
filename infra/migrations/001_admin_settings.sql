@@ -18,7 +18,7 @@ INSERT INTO app_config (key, value) VALUES (
                 "name": "Ollama Cloud",
                 "enabled": true,
                 "apiKey": "",
-                "baseUrl": "https://api.ollama.cloud/v1"
+                "baseUrl": "https://ollama.cloud/v1"
             },
             {
                 "id": "openai",

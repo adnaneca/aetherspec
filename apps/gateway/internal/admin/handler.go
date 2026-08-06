@@ -120,7 +120,7 @@ func testProvider(log *zap.Logger) fiber.Handler {
 		case "ollama":
 			baseURL := req.BaseURL
 			if baseURL == "" {
-				baseURL = "https://api.ollama.cloud/v1"
+				baseURL = "https://ollama.cloud/v1"
 			}
 			url := baseURL + "/models"
 			httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodGet, url, nil)
