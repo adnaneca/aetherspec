@@ -26,6 +26,8 @@ const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'https://auth.aethersp
 const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'aetherspec';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'aetherspec-web';
 
+const INIT_TIMEOUT_MS = 8000;
+
 export function KeycloakProvider({ children }: { children: ReactNode }) {
   const [kc] = useState(() =>
     new Keycloak({
@@ -42,12 +44,26 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let finished = false;
+
+    const timeout = setTimeout(() => {
+      if (!finished) {
+        console.warn('[Keycloak] init timed out; treating as unauthenticated');
+        finished = true;
+        setAuthState({ isLoading: false, isAuthenticated: false, user: null });
+      }
+    }, INIT_TIMEOUT_MS);
+
     kc.init({
       onLoad: 'check-sso',
       pkceMethod: 'S256',
       silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
     })
       .then((authenticated) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+
         setAuthState({ isAuthenticated: authenticated });
 
         if (authenticated) {
@@ -64,6 +80,8 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
               },
               isLoading: false,
             });
+          }).catch(() => {
+            setAuthState({ isLoading: false });
           });
         } else {
           setAuthState({ isLoading: false });
@@ -104,9 +122,16 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
         };
       })
       .catch((err) => {
-        console.error('Keycloak init failed:', err);
-        setAuthState({ isLoading: false });
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+        console.error('[Keycloak] init failed:', err);
+        setAuthState({ isLoading: false, isAuthenticated: false, user: null });
       });
+
+    return () => {
+      clearTimeout(timeout);
+    };
   }, [kc]);
 
   const login = async () => {
