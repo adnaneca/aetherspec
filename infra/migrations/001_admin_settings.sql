@@ -46,9 +46,9 @@ INSERT INTO app_config (key, value) VALUES (
             }
         ],
         "agentModels": {
-            "brs-agent": "ollama/llama3.1:70b",
-            "srd-agent": "ollama/llama3.1:70b",
-            "testcase-agent": "ollama/llama3.1:70b"
+            "brs-agent": "ollama/glm-5.2",
+            "srd-agent": "ollama/glm-5.2",
+            "testcase-agent": "ollama/glm-5.2"
         },
         "executionPolicy": "request-review",
         "fileAccessPolicy": "workspace-only",

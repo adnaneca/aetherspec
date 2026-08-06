@@ -19,7 +19,7 @@ export interface StreamCallbacks {
   onError: (error: string) => void;
 }
 
-const DEFAULT_MODEL = 'gpt-oss:20b';
+const DEFAULT_MODEL = 'glm-5.2';
 
 /**
  * Resolves which model to use for a given agentId from the admin config.
@@ -52,7 +52,7 @@ function resolveOllamaProvider(config: AdminSettings): { apiKey: string; baseUrl
 
 /**
  * Extracts the model name without the provider prefix.
- * "ollama/gpt-oss:20b" → "gpt-oss:20b"
+ * "ollama/glm-5.2" → "glm-5.2"
  */
 function stripProviderPrefix(model: string): string {
   const slashIndex = model.indexOf('/');

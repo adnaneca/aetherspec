@@ -23,10 +23,10 @@ import {
 } from 'lucide-react';
 
 const FALLBACK_OLLAMA_MODELS = [
-  'llama3.1:70b',
-  'llama3.1:8b',
-  'qwen2.5:72b',
-  'deepseek-r1:70b',
+  'glm-5.2',
+  'gemma4:31b',
+  'deepseek-v4-flash:0731',
+  'gpt-oss:20b',
 ];
 
 const CLOUD_PROVIDER_CATALOG: Record<Exclude<AdminProvider['id'], 'ollama'>, { name: string; models: string[] }> = {
