@@ -73,10 +73,10 @@ func chatProxy(cfg *config.Config, log *zap.Logger) fiber.Handler {
 			log.Error("agent request failed", zap.Error(err), zap.String("url", agentURL))
 			return c.Status(502).JSON(fiber.Map{"error": "agent unavailable"})
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != 200 {
 			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
 			log.Error("agent returned error", zap.Int("status", resp.StatusCode), zap.String("body", string(respBody)))
 			return c.Status(resp.StatusCode).JSON(fiber.Map{"error": "agent error", "detail": string(respBody)})
 		}
@@ -87,6 +87,7 @@ func chatProxy(cfg *config.Config, log *zap.Logger) fiber.Handler {
 		c.Set("X-Accel-Buffering", "no")
 
 		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			defer resp.Body.Close()
 			buf := make([]byte, 4096)
 			for {
 				n, err := resp.Body.Read(buf)
