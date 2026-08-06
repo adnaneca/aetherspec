@@ -1,16 +1,14 @@
-import { createRoute, redirect } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
+import { AuthGuard } from '../components/AuthGuard';
 import { UserPreferences } from '../components/UserPreferences';
-import { getAuthState } from '../lib/auth-store';
 import { Route as RootRoute } from './__root';
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/user-preferences',
-  beforeLoad: () => {
-    const auth = getAuthState();
-    if (!auth.isLoading && !auth.isAuthenticated) {
-      throw redirect({ to: '/login' });
-    }
-  },
-  component: UserPreferences,
+  component: () => (
+    <AuthGuard>
+      <UserPreferences />
+    </AuthGuard>
+  ),
 });

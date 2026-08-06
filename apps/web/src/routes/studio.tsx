@@ -1,6 +1,6 @@
-import { createRoute, redirect } from '@tanstack/react-router';
+import { createRoute } from '@tanstack/react-router';
+import { AuthGuard } from '../components/AuthGuard';
 import { AetherStudio } from '../components/AetherStudio';
-import { getAuthState } from '../lib/auth-store';
 import { Route as RootRoute } from './__root';
 
 export const Route = createRoute({
@@ -9,11 +9,9 @@ export const Route = createRoute({
   validateSearch: (search: Record<string, unknown>): { docType?: string } => ({
     docType: (search.docType as string | undefined) ?? undefined,
   }),
-  beforeLoad: () => {
-    const auth = getAuthState();
-    if (!auth.isLoading && !auth.isAuthenticated) {
-      throw redirect({ to: '/login' });
-    }
-  },
-  component: AetherStudio,
+  component: () => (
+    <AuthGuard>
+      <AetherStudio />
+    </AuthGuard>
+  ),
 });
