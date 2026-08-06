@@ -26,8 +26,7 @@ const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'https://auth.aethersp
 const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'aetherspec';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'aetherspec-web';
 
-const INIT_TIMEOUT_MS = 6000;
-const FALLBACK_UI_MS = 2500;
+const INIT_TIMEOUT_MS = 10000;
 
 export function KeycloakProvider({ children }: { children: ReactNode }) {
   const [kc] = useState(() =>
@@ -38,7 +37,6 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
     })
   );
   const [state, setState] = useState(getAuthState);
-  const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeAuthState(() => setState(getAuthState()));
@@ -48,10 +46,6 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let finished = false;
 
-    const fallbackTimer = setTimeout(() => {
-      if (!finished) setShowFallback(true);
-    }, FALLBACK_UI_MS);
-
     const timeout = setTimeout(() => {
       if (!finished) {
         finished = true;
@@ -60,19 +54,27 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
       }
     }, INIT_TIMEOUT_MS);
 
+    // If the URL contains a Keycloak auth code, we must process it.
+    // Use login-required so keycloak-js exchanges the code for tokens.
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasAuthCode = urlParams.has('code') && urlParams.has('session_state');
+    const onLoad = hasAuthCode ? 'login-required' : 'check-sso';
+
+    console.log('[Keycloak] init with onLoad:', onLoad, 'hasCode:', hasAuthCode);
+
     kc.init({
-      onLoad: 'check-sso',
+      onLoad,
       pkceMethod: 'S256',
       flow: 'standard',
       checkLoginIframe: false,
+      redirectUri: window.location.origin + window.location.pathname,
     })
       .then((authenticated) => {
         if (finished) return;
         finished = true;
         clearTimeout(timeout);
-        clearTimeout(fallbackTimer);
-        setShowFallback(false);
 
+        console.log('[Keycloak] init resolved authenticated=', authenticated);
         setAuthState({ isAuthenticated: authenticated });
 
         if (authenticated) {
@@ -89,7 +91,8 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
               },
               isLoading: false,
             });
-          }).catch(() => {
+          }).catch((err) => {
+            console.error('[Keycloak] loadUserInfo failed:', err);
             setAuthState({ isLoading: false });
           });
         } else {
@@ -134,20 +137,24 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
         if (finished) return;
         finished = true;
         clearTimeout(timeout);
-        clearTimeout(fallbackTimer);
-        setShowFallback(false);
         console.error('[Keycloak] init failed:', err);
         setAuthState({ isLoading: false, isAuthenticated: false, user: null });
       });
 
     return () => {
       clearTimeout(timeout);
-      clearTimeout(fallbackTimer);
     };
   }, [kc]);
 
   const login = async () => {
-    await kc.login({ redirectUri: window.location.origin + '/' });
+    console.log('[Keycloak] login() called');
+    try {
+      await kc.login({ redirectUri: window.location.origin + '/' });
+      console.log('[Keycloak] login() returned (should redirect)');
+    } catch (err) {
+      console.error('[Keycloak] login() error:', err);
+      throw err;
+    }
   };
 
   const logout = async () => {
@@ -166,17 +173,6 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      {state.isLoading && showFallback && (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background text-foreground p-6">
-          <p className="text-sm text-muted-foreground mb-4">Authentication is taking longer than expected.</p>
-          <button
-            onClick={() => login()}
-            className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 transition-colors"
-          >
-            Sign in with Keycloak
-          </button>
-        </div>
-      )}
     </KeycloakContext.Provider>
   );
 }
