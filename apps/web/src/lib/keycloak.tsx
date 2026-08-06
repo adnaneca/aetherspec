@@ -56,18 +56,20 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
 
     // If the URL contains a Keycloak auth code, we must process it.
     // Use login-required so keycloak-js exchanges the code for tokens.
-    const urlParams = new URLSearchParams(window.location.search);
-    const hasAuthCode = urlParams.has('code') && urlParams.has('session_state');
+    // Read from the preserved callback URL because TanStack Router may strip query params.
+    const callbackUrl = (window as any).__KEYCLOAK_CALLBACK_URL__ || window.location.href;
+    const callbackParams = new URLSearchParams(new URL(callbackUrl).search);
+    const hasAuthCode = callbackParams.has('code') && callbackParams.has('session_state');
     const onLoad = hasAuthCode ? 'login-required' : 'check-sso';
 
-    console.log('[Keycloak] init with onLoad:', onLoad, 'hasCode:', hasAuthCode);
+    console.log('[Keycloak] init with onLoad:', onLoad, 'hasCode:', hasAuthCode, 'callbackUrl:', callbackUrl);
 
     kc.init({
       onLoad,
       pkceMethod: 'S256',
       flow: 'standard',
       checkLoginIframe: false,
-      redirectUri: window.location.origin + window.location.pathname,
+      redirectUri: hasAuthCode ? callbackUrl.split('?')[0] : window.location.origin + '/',
     })
       .then((authenticated) => {
         if (finished) return;
