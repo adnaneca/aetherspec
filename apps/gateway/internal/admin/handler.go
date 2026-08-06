@@ -2,6 +2,9 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
@@ -16,6 +19,8 @@ func Register(app *fiber.App, pool *pgxpool.Pool, log *zap.Logger) {
 
 	api.Get("/config", getConfig(pool, log))
 	api.Put("/config", putConfig(pool, log))
+	api.Get("/providers/ollama/models", getOllamaModels(log))
+	api.Post("/providers/:id/test", testProvider(log))
 }
 
 // getConfig returns the admin_settings JSON from app_config table.
@@ -66,5 +71,150 @@ func putConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 
 		log.Info("admin config updated", zap.String("by", updatedBy))
 		return c.JSON(fiber.Map{"status": "saved"})
+	}
+}
+
+// getOllamaModels proxies the public Ollama model catalog.
+func getOllamaModels(log *zap.Logger) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		resp, err := http.Get("https://ollama.com/api/tags")
+		if err != nil {
+			log.Warn("ollama model list fetch failed", zap.Error(err))
+			return c.Status(502).JSON(fiber.Map{"error": "failed to reach Ollama API"})
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Warn("ollama model list read failed", zap.Error(err))
+			return c.Status(502).JSON(fiber.Map{"error": "failed to read Ollama response"})
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			log.Warn("ollama model list returned non-200", zap.Int("status", resp.StatusCode))
+			return c.Status(resp.StatusCode).Send(body)
+		}
+
+		c.Set("Content-Type", "application/json")
+		return c.Send(body)
+	}
+}
+
+// testProvider validates a provider API key with a lightweight request.
+func testProvider(log *zap.Logger) fiber.Handler {
+	type request struct {
+		ProviderID string `json:"providerId"`
+		BaseURL    string `json:"baseUrl"`
+		APIKey     string `json:"apiKey"`
+	}
+
+	return func(c *fiber.Ctx) error {
+		var req request
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid JSON"})
+		}
+
+		log.Info("testing provider", zap.String("provider", req.ProviderID))
+
+		switch req.ProviderID {
+		case "ollama":
+			baseURL := req.BaseURL
+			if baseURL == "" {
+				baseURL = "https://api.ollama.cloud/v1"
+			}
+			url := baseURL + "/models"
+			httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodGet, url, nil)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			httpReq.Header.Set("Authorization", "Bearer "+req.APIKey)
+			httpReq.Header.Set("Accept", "application/json")
+			client := &http.Client{Timeout: httpTimeout}
+			resp, err := client.Do(httpReq)
+			if err != nil {
+				return c.Status(200).JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return c.JSON(fiber.Map{"status": "connected"})
+			}
+			return c.JSON(fiber.Map{"status": "failed", "reason": fmt.Sprintf("HTTP %d", resp.StatusCode)})
+
+		case "openai":
+			httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodGet, "https://api.openai.com/v1/models", nil)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			httpReq.Header.Set("Authorization", "Bearer "+req.APIKey)
+			client := &http.Client{Timeout: httpTimeout}
+			resp, err := client.Do(httpReq)
+			if err != nil {
+				return c.JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return c.JSON(fiber.Map{"status": "connected"})
+			}
+			return c.JSON(fiber.Map{"status": "failed", "reason": fmt.Sprintf("HTTP %d", resp.StatusCode)})
+
+		case "anthropic":
+			httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodPost, "https://api.anthropic.com/v1/messages/count_tokens", nil)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			httpReq.Header.Set("x-api-key", req.APIKey)
+			httpReq.Header.Set("anthropic-version", "2023-06-01")
+			client := &http.Client{Timeout: httpTimeout}
+			resp, err := client.Do(httpReq)
+			if err != nil {
+				return c.JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusBadRequest {
+				// BadRequest means the endpoint accepted the auth and rejected empty body — key is valid.
+				return c.JSON(fiber.Map{"status": "connected"})
+			}
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return c.JSON(fiber.Map{"status": "connected"})
+			}
+			return c.JSON(fiber.Map{"status": "failed", "reason": fmt.Sprintf("HTTP %d", resp.StatusCode)})
+
+		case "gemini":
+			url := "https://generativelanguage.googleapis.com/v1beta/models?key=" + req.APIKey
+			httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodGet, url, nil)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			client := &http.Client{Timeout: httpTimeout}
+			resp, err := client.Do(httpReq)
+			if err != nil {
+				return c.JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return c.JSON(fiber.Map{"status": "connected"})
+			}
+			return c.JSON(fiber.Map{"status": "failed", "reason": fmt.Sprintf("HTTP %d", resp.StatusCode)})
+
+		case "deepseek":
+			httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodGet, "https://api.deepseek.com/v1/user/balance", nil)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			httpReq.Header.Set("Authorization", "Bearer "+req.APIKey)
+			client := &http.Client{Timeout: httpTimeout}
+			resp, err := client.Do(httpReq)
+			if err != nil {
+				return c.JSON(fiber.Map{"status": "failed", "reason": err.Error()})
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return c.JSON(fiber.Map{"status": "connected"})
+			}
+			return c.JSON(fiber.Map{"status": "failed", "reason": fmt.Sprintf("HTTP %d", resp.StatusCode)})
+
+		default:
+			return c.Status(400).JSON(fiber.Map{"status": "failed", "reason": "unknown provider"})
+		}
 	}
 }

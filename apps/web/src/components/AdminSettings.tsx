@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import type { AdminSettingsConfig, AdminProvider } from '../types';
-import { getAdminConfig, saveAdminConfig } from '../lib/api';
+import {
+  getAdminConfig,
+  saveAdminConfig,
+  getOllamaModels,
+  testProvider,
+  type TestProviderResult,
+} from '../lib/api';
 import {
   ShieldAlert,
   Bot,
@@ -13,6 +19,7 @@ import {
   Lock,
   Wrench,
   ArrowLeft,
+  RefreshCw,
 } from 'lucide-react';
 
 const FALLBACK_OLLAMA_MODELS = [
@@ -174,18 +181,19 @@ export function AdminSettings() {
       });
   }, []);
 
+  const [providerTestStatus, setProviderTestStatus] = useState<Record<string, TestProviderResult | null>>({});
+  const [testingProvider, setTestingProvider] = useState<string | null>(null);
+
   const fetchOllamaModels = async () => {
     setOllamaModelsLoading(true);
     try {
-      const resp = await fetch('https://ollama.com/api/tags');
-      if (!resp.ok) throw new Error(`Ollama API returned ${resp.status}`);
-      const data = (await resp.json()) as { models?: Array<{ name: string }> };
+      const data = await getOllamaModels();
       const names = data.models?.map((m) => m.name).filter(Boolean) ?? [];
       if (names.length > 0) {
         setOllamaModels(names);
       }
     } catch (err) {
-      console.warn('[AdminSettings] failed to fetch Ollama models:', err);
+      console.warn('[AdminSettings] failed to fetch Ollama models via gateway:', err);
     } finally {
       setOllamaModelsLoading(false);
     }
@@ -196,6 +204,22 @@ export function AdminSettings() {
       void fetchOllamaModels();
     }
   }, [activeTab]);
+
+  const handleTestProvider = async (provider: AdminProvider) => {
+    setTestingProvider(provider.id);
+    setProviderTestStatus((prev) => ({ ...prev, [provider.id]: null }));
+    try {
+      const result = await testProvider(provider);
+      setProviderTestStatus((prev) => ({ ...prev, [provider.id]: result }));
+    } catch (err) {
+      setProviderTestStatus((prev) => ({
+        ...prev,
+        [provider.id]: { status: 'failed', reason: (err as Error).message },
+      }));
+    } finally {
+      setTestingProvider(null);
+    }
+  };
 
   const handleSave = async () => {
     if (!adminConfig) return;
@@ -328,6 +352,19 @@ export function AdminSettings() {
                   value={provider.apiKey}
                   onChange={(v) => updateProvider(provider.id, { apiKey: v })}
                 />
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleTestProvider(provider)}
+                    disabled={testingProvider === provider.id || !provider.apiKey}
+                    className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1.5 rounded border border-border bg-background hover:bg-accent disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`size-3 ${testingProvider === provider.id ? 'animate-spin' : ''}`} />
+                    {testingProvider === provider.id ? 'Testing…' : 'Test'}
+                  </button>
+                  <ProviderStatus status={providerTestStatus[provider.id]} />
+                </div>
 
                 {provider.id === 'ollama' && (
                   <p className="text-[10px] text-muted-foreground">
@@ -505,6 +542,22 @@ export function AdminSettings() {
 }
 
 // ── Helper components ──
+
+function ProviderStatus({ status }: { status: TestProviderResult | null | undefined }) {
+  if (!status) return null;
+  if (status.status === 'connected') {
+    return (
+      <span className="text-[10px] font-mono text-status-approved flex items-center gap-1">
+        <CheckCircle2 className="size-3" /> Connected
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10px] font-mono text-destructive" title={status.reason || ''}>
+      Failed{status.reason ? `: ${status.reason}` : ''}
+    </span>
+  );
+}
 
 function TabButton({
   active,

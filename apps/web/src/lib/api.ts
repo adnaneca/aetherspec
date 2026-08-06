@@ -1,4 +1,4 @@
-import type { AdminSettingsConfig } from '../types';
+import type { AdminSettingsConfig, AdminProvider } from '../types';
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'http://localhost:3000';
 
@@ -15,5 +15,34 @@ export async function saveAdminConfig(config: AdminSettingsConfig): Promise<{ st
     body: JSON.stringify(config),
   });
   if (!resp.ok) throw new Error(`Failed to save admin config: ${resp.status}`);
+  return resp.json();
+}
+
+export interface OllamaModelCatalog {
+  models?: Array<{ name: string }>;
+}
+
+export async function getOllamaModels(): Promise<OllamaModelCatalog> {
+  const resp = await fetch(`${GATEWAY_URL}/api/admin/providers/ollama/models`);
+  if (!resp.ok) throw new Error(`Failed to fetch Ollama models: ${resp.status}`);
+  return resp.json();
+}
+
+export interface TestProviderResult {
+  status: 'connected' | 'failed';
+  reason?: string;
+}
+
+export async function testProvider(provider: AdminProvider): Promise<TestProviderResult> {
+  const resp = await fetch(`${GATEWAY_URL}/api/admin/providers/${provider.id}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      providerId: provider.id,
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKey,
+    }),
+  });
+  if (!resp.ok) throw new Error(`Provider test failed: ${resp.status}`);
   return resp.json();
 }
