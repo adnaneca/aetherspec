@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/admin"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
@@ -11,11 +12,12 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
 
 // New constructs and returns a configured Fiber app.
-func New(cfg *config.Config, log *zap.Logger) *fiber.App {
+func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "aetherspec-gateway",
 		ServerHeader: "AetherSpec-Gateway",
@@ -37,6 +39,9 @@ func New(cfg *config.Config, log *zap.Logger) *fiber.App {
 
 	// Health (no auth)
 	health.Register(app)
+
+	// Admin routes (require ROLE_REALM_ADMIN)
+	admin.Register(app, pool, log)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())

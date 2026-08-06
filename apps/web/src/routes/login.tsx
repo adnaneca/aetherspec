@@ -9,7 +9,8 @@ export const Route = createRoute({
   beforeLoad: () => {
     const auth = getAuthState();
     if (!auth.isLoading && auth.isAuthenticated) {
-      throw redirect({ to: '/' });
+      const isAdmin = auth.user?.roles.includes('ROLE_REALM_ADMIN') ?? false;
+      throw redirect({ to: isAdmin ? '/admin-settings' : '/' });
     }
   },
   component: LoginPage,

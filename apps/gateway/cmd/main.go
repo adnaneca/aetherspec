@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/db"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/otel"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/server"
 	"go.uber.org/zap"
@@ -26,7 +27,14 @@ func main() {
 	}
 	defer log.Sync()
 
-	app := server.New(cfg, log)
+	pool, err := db.New(cfg)
+	if err != nil {
+		log.Fatal("database connection failed", zap.Error(err))
+	}
+	defer pool.Close()
+	log.Info("postgres connected")
+
+	app := server.New(cfg, log, pool)
 
 	// Graceful shutdown on SIGINT/SIGTERM
 	go func() {

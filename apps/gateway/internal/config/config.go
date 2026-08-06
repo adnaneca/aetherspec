@@ -81,8 +81,8 @@ func Load() (*Config, error) {
 		Postgres: PostgresConfig{
 			Host:     getEnv("POSTGRES_HOST", "localhost"),
 			Port:     getEnv("POSTGRES_PORT", "5432"),
-			DB:       getEnv("POSTGRES_DB", "aetherspec"),
-			User:     getEnv("POSTGRES_USER", "aetherspec"),
+			DB:       getEnv("POSTGRES_DB", "app"),
+			User:     getEnv("POSTGRES_USER", "appuser"),
 			Password: getEnv("POSTGRES_PASSWORD", ""),
 			SSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
 		},

@@ -22,6 +22,26 @@ export interface Persona {
 export type DocType = 'brs' | 'srs' | 'testcase';
 export type DocStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'AWAITING_SIGNATURE' | 'SIGNED_OFF';
 
+export interface AdminSettingsConfig {
+  providers: {
+    ollamaEndpoint: string;
+    ollamaApiKey: string;
+    openaiKey: string;
+    anthropicKey: string;
+    geminiKey: string;
+    deepseekKey: string;
+  };
+  agentModels: {
+    brsAgentModel: string;
+    srsAgentModel: string;
+    testCaseAgentModel: string;
+  };
+  executionPolicy: 'always-proceed' | 'request-review' | 'strict-approvals';
+  fileAccessPolicy: 'workspace-only' | 'external-minio' | 'unrestricted';
+  internetAccessPolicy: 'allow' | 'ask' | 'deny';
+  activeSkills: string[];
+}
+
 export interface SDLCProject {
   id: string;
   name: string;
