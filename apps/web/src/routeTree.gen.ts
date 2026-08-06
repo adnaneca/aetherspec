@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminSettingsRouteImport } from './routes/admin-settings'
+import { Route as ChatRouteImport } from './routes/chat'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignoffRouteImport } from './routes/signoff'
 import { Route as StudioRouteImport } from './routes/studio'
@@ -25,6 +26,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminSettingsRoute = AdminSettingsRouteImport.update({
   id: '/admin-settings',
   path: '/admin-settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -56,6 +62,7 @@ const UserPreferencesRoute = UserPreferencesRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin-settings': typeof AdminSettingsRoute
+  '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
   '/signoff': typeof SignoffRoute
   '/studio': typeof StudioRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin-settings': typeof AdminSettingsRoute
+  '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
   '/signoff': typeof SignoffRoute
   '/studio': typeof StudioRoute
@@ -75,6 +83,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin-settings': typeof AdminSettingsRoute
+  '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
   '/signoff': typeof SignoffRoute
   '/studio': typeof StudioRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin-settings'
+    | '/chat'
     | '/login'
     | '/signoff'
     | '/studio'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin-settings'
+    | '/chat'
     | '/login'
     | '/signoff'
     | '/studio'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin-settings'
+    | '/chat'
     | '/login'
     | '/signoff'
     | '/studio'
@@ -114,6 +126,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
+  ChatRoute: typeof ChatRoute
   LoginRoute: typeof LoginRoute
   SignoffRoute: typeof SignoffRoute
   StudioRoute: typeof StudioRoute
@@ -135,6 +148,13 @@ declare module '@tanstack/react-router' {
       path: '/admin-settings'
       fullPath: '/admin-settings'
       preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -178,6 +198,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminSettingsRoute: AdminSettingsRoute,
+  ChatRoute: ChatRoute,
   LoginRoute: LoginRoute,
   SignoffRoute: SignoffRoute,
   StudioRoute: StudioRoute,

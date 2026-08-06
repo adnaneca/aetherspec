@@ -10,6 +10,7 @@ import {
   ChevronDown,
   LogOut,
   User,
+  Bot,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useKeycloak } from '../lib/keycloak';
@@ -128,6 +129,17 @@ export function Header({
         >
           <FileCheck2 className="size-3.5" />
           Sign-Off Matrix
+        </Link>
+        <Link
+          to="/chat"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${
+            isActive('chat')
+              ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+          }`}
+        >
+          <Bot className="size-3.5" />
+          Chat
         </Link>
       </nav>
 
