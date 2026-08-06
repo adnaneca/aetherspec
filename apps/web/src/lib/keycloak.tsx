@@ -57,7 +57,6 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
     kc.init({
       onLoad: 'check-sso',
       pkceMethod: 'S256',
-      silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
     })
       .then((authenticated) => {
         if (finished) return;
