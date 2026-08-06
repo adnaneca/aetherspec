@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/admin"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/agent"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
@@ -42,6 +43,9 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool) *fiber.App {
 
 	// Admin routes (require ROLE_REALM_ADMIN)
 	admin.Register(app, pool, log)
+
+	// Agent proxy routes (require auth — stub allows all for now)
+	agent.Register(app, cfg, log)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())

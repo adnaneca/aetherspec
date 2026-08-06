@@ -11,7 +11,11 @@ export interface AdminProvider {
 
 export interface AdminSettings {
   providers: AdminProvider[];
-  agentModels: Record<string, string>;
+  agentModels: Record<string, string> & {
+    brsAgentModel?: string;
+    srsAgentModel?: string;
+    testCaseAgentModel?: string;
+  };
   executionPolicy: string;
   fileAccessPolicy: string;
   internetAccessPolicy: string;

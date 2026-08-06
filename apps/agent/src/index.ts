@@ -3,11 +3,13 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { buildMastra } from './mastra.js';
 import { fetchAdminConfig, getCachedAdminConfig } from './admin-config.js';
+import { runAgentStream, type ChatMessage } from './agent-runner.js';
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3000';
 
+// Fetch admin config on startup
 let adminConfigReady = false;
 fetchAdminConfig(GATEWAY_URL)
   .then(() => {
@@ -20,7 +22,10 @@ fetchAdminConfig(GATEWAY_URL)
 
 const server = http.createServer(async (req, res) => {
   const url = req.url ?? '/';
-  logger.debug(`req ${req.method} ${url}`);
+  const method = req.method ?? 'GET';
+  logger.debug(`req ${method} ${url}`);
+
+  // ── Health endpoints ──
 
   if (url === '/healthz') {
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -72,8 +77,66 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // FUTURE: /agents/:id/stream — SSE endpoint that the Go gateway proxies.
-  // FUTURE: /agents/:id/prompt — non-streaming prompt.
+  // ── Agent stream endpoint ──
+  // POST /agents/:agentId/stream
+  // Body: { "message": "...", "history": [{ "role": "user", "content": "..." }] }
+  // Response: SSE stream (text/event-stream)
+
+  const streamMatch = url.match(/^\/agents\/([^\/]+)\/stream$/);
+  if (streamMatch && method === 'POST') {
+    const agentId = streamMatch[1];
+
+    // Read request body
+    let body = '';
+    for await (const chunk of req) {
+      body += chunk;
+    }
+
+    let parsed: { message?: string; history?: ChatMessage[] };
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      return;
+    }
+
+    if (!parsed.message) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'message is required' }));
+      return;
+    }
+
+    // Set SSE headers
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      'connection': 'keep-alive',
+      'access-control-allow-origin': '*',
+    });
+
+    // Run the agent stream
+    await runAgentStream(
+      { message: parsed.message, agentId, history: parsed.history },
+      {
+        onToken: (delta) => {
+          res.write(`data: ${JSON.stringify({ type: 'token', delta })}\n\n`);
+        },
+        onDone: (tokensUsed) => {
+          res.write(`data: ${JSON.stringify({ type: 'done', tokensUsed })}\n\n`);
+          res.end();
+        },
+        onError: (error) => {
+          res.write(`data: ${JSON.stringify({ type: 'error', error })}\n\n`);
+          res.end();
+        },
+      },
+    );
+    return;
+  }
+
+  // ── 404 ──
+
   res.writeHead(404, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ error: 'not found' }));
 });

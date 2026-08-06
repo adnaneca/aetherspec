@@ -24,6 +24,7 @@ func Register(app *fiber.App, pool *pgxpool.Pool, log *zap.Logger) {
 }
 
 // getConfig returns the admin_settings JSON from app_config table.
+// API keys are masked before returning to the browser.
 func getConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		var value []byte
@@ -36,8 +37,41 @@ func getConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 			return c.Status(500).JSON(fiber.Map{"error": "config not found"})
 		}
 
+		var cfg map[string]interface{}
+		if err := json.Unmarshal(value, &cfg); err != nil {
+			log.Error("admin config parse failed", zap.Error(err))
+			return c.Status(500).JSON(fiber.Map{"error": "config parse error"})
+		}
+
+		// Mask API keys in the providers array (new shape)
+		if providers, ok := cfg["providers"].([]interface{}); ok {
+			for _, p := range providers {
+				if provider, ok := p.(map[string]interface{}); ok {
+					if key, exists := provider["apiKey"].(string); exists && key != "" {
+						provider["apiKey"] = "***"
+					}
+				}
+			}
+		}
+
+		// Mask API keys in the old object-shaped providers (legacy shape)
+		if providers, ok := cfg["providers"].(map[string]interface{}); ok {
+			for _, val := range providers {
+				if provider, ok := val.(map[string]interface{}); ok {
+					if apiKey, exists := provider["apiKey"].(string); exists && apiKey != "" {
+						provider["apiKey"] = "***"
+					}
+				}
+			}
+		}
+
+		masked, err := json.Marshal(cfg)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "config serialize error"})
+		}
+
 		c.Set("Content-Type", "application/json")
-		return c.Send(value)
+		return c.Send(masked)
 	}
 }
 
