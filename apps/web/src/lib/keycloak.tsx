@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import Keycloak from 'keycloak-js';
-import { getAuthState, setAuthState } from './auth-store';
+import { getAuthState, setAuthState, subscribeAuthState } from './auth-store';
 
 export interface KeycloakUser {
   username: string;
@@ -28,7 +28,12 @@ const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'aetherspe
 
 const INIT_TIMEOUT_MS = 10000;
 
-export function KeycloakProvider({ children }: { children: ReactNode }) {
+interface KeycloakProviderProps {
+  children: ReactNode;
+  mode: 'check-sso' | 'login-required';
+}
+
+export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
   const [kc] = useState(() =>
     new Keycloak({
       url: KEYCLOAK_URL,
@@ -54,22 +59,14 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
       }
     }, INIT_TIMEOUT_MS);
 
-    // If the URL contains a Keycloak auth code, we must process it.
-    // Use login-required so keycloak-js exchanges the code for tokens.
-    // Read from the preserved callback URL because TanStack Router may strip query params.
-    const callbackUrl = (window as any).__KEYCLOAK_CALLBACK_URL__ || window.location.href;
-    const callbackParams = new URLSearchParams(new URL(callbackUrl).search);
-    const hasAuthCode = callbackParams.has('code') && callbackParams.has('session_state');
-    const onLoad = hasAuthCode ? 'login-required' : 'check-sso';
-
-    console.log('[Keycloak] init with onLoad:', onLoad, 'hasCode:', hasAuthCode, 'callbackUrl:', callbackUrl);
+    console.log('[Keycloak] initializing, mode:', mode);
 
     kc.init({
-      onLoad,
+      onLoad: mode,
       pkceMethod: 'S256',
       flow: 'standard',
       checkLoginIframe: false,
-      redirectUri: hasAuthCode ? callbackUrl.split('?')[0] : window.location.origin + '/',
+      redirectUri: window.location.origin + '/',
     })
       .then((authenticated) => {
         if (finished) return;
@@ -146,7 +143,7 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
     return () => {
       clearTimeout(timeout);
     };
-  }, [kc]);
+  }, [kc, mode]);
 
   const login = async () => {
     console.log('[Keycloak] login() called');
@@ -185,9 +182,3 @@ export function useKeycloak(): KeycloakContextValue {
   return ctx;
 }
 
-const listeners = new Set<() => void>();
-
-function subscribeAuthState(cb: () => void) {
-  listeners.add(cb);
-  return (): boolean => listeners.delete(cb);
-}
