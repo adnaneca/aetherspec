@@ -64,6 +64,7 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
       onLoad: 'check-sso',
       pkceMethod: 'S256',
       flow: 'standard',
+      checkLoginIframe: false,
     })
       .then((authenticated) => {
         if (finished) return;
