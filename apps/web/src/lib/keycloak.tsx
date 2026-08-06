@@ -26,7 +26,8 @@ const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'https://auth.aethersp
 const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'aetherspec';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'aetherspec-web';
 
-const INIT_TIMEOUT_MS = 8000;
+const INIT_TIMEOUT_MS = 6000;
+const FALLBACK_UI_MS = 2500;
 
 export function KeycloakProvider({ children }: { children: ReactNode }) {
   const [kc] = useState(() =>
@@ -37,6 +38,7 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
     })
   );
   const [state, setState] = useState(getAuthState);
+  const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeAuthState(() => setState(getAuthState()));
@@ -46,10 +48,14 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let finished = false;
 
+    const fallbackTimer = setTimeout(() => {
+      if (!finished) setShowFallback(true);
+    }, FALLBACK_UI_MS);
+
     const timeout = setTimeout(() => {
       if (!finished) {
-        console.warn('[Keycloak] init timed out; treating as unauthenticated');
         finished = true;
+        console.warn('[Keycloak] init timed out; treating as unauthenticated');
         setAuthState({ isLoading: false, isAuthenticated: false, user: null });
       }
     }, INIT_TIMEOUT_MS);
@@ -57,11 +63,14 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
     kc.init({
       onLoad: 'check-sso',
       pkceMethod: 'S256',
+      flow: 'standard',
     })
       .then((authenticated) => {
         if (finished) return;
         finished = true;
         clearTimeout(timeout);
+        clearTimeout(fallbackTimer);
+        setShowFallback(false);
 
         setAuthState({ isAuthenticated: authenticated });
 
@@ -124,12 +133,15 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
         if (finished) return;
         finished = true;
         clearTimeout(timeout);
+        clearTimeout(fallbackTimer);
+        setShowFallback(false);
         console.error('[Keycloak] init failed:', err);
         setAuthState({ isLoading: false, isAuthenticated: false, user: null });
       });
 
     return () => {
       clearTimeout(timeout);
+      clearTimeout(fallbackTimer);
     };
   }, [kc]);
 
@@ -153,6 +165,17 @@ export function KeycloakProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      {state.isLoading && showFallback && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background text-foreground p-6">
+          <p className="text-sm text-muted-foreground mb-4">Authentication is taking longer than expected.</p>
+          <button
+            onClick={() => login()}
+            className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            Sign in with Keycloak
+          </button>
+        </div>
+      )}
     </KeycloakContext.Provider>
   );
 }
