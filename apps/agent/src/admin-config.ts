@@ -30,7 +30,7 @@ let cachedConfig: AdminSettings | null = null;
  */
 export async function fetchAdminConfig(gatewayUrl: string): Promise<AdminSettings> {
   try {
-    const resp = await fetch(`${gatewayUrl}/api/admin/config`);
+    const resp = await fetch(`${gatewayUrl}/api/internal/admin/config`);
     if (!resp.ok) {
       throw new Error(`gateway returned ${resp.status}`);
     }

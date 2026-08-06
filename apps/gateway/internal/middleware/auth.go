@@ -48,3 +48,15 @@ func TenantResolver() fiber.Handler {
 		return c.Next()
 	}
 }
+
+// RequireLocalhost rejects requests that did not originate from the same host.
+// Used to protect internal endpoints such as the unmasked admin config.
+func RequireLocalhost() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		host := c.Hostname()
+		if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+		}
+		return c.Next()
+	}
+}

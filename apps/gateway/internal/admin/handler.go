@@ -22,6 +22,11 @@ func Register(app *fiber.App, pool *pgxpool.Pool, log *zap.Logger) {
 	api.Put("/config", putConfig(pool, log))
 	api.Get("/providers/ollama/models", getOllamaModels(log))
 	api.Post("/providers/:id/test", testProvider(log))
+
+	// Internal endpoint for the agent sidecar to fetch unmasked admin config.
+	// Restricted to loopback to keep API keys out of browser-facing routes.
+	internal := app.Group("/api/internal/admin", middleware.RequireLocalhost())
+	internal.Get("/config", getInternalConfig(pool, log))
 }
 
 // getConfig returns the admin_settings JSON from app_config table.
@@ -73,6 +78,25 @@ func getConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 
 		c.Set("Content-Type", "application/json")
 		return c.Send(masked)
+	}
+}
+
+// getInternalConfig returns the raw admin_settings JSON without masking API keys.
+// Intended for trusted internal services (agent sidecar) only.
+func getInternalConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		var value []byte
+		err := pool.QueryRow(c.Context(),
+			"SELECT value FROM app_config WHERE key = 'admin_settings'",
+		).Scan(&value)
+
+		if err != nil {
+			log.Error("internal admin config query failed", zap.Error(err))
+			return c.Status(500).JSON(fiber.Map{"error": "config not found"})
+		}
+
+		c.Set("Content-Type", "application/json")
+		return c.Send(value)
 	}
 }
 
