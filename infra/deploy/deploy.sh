@@ -25,7 +25,7 @@ cd ${SERVER_DIR}
 
 echo "📦 Checking out version: ${VERSION}"
 git fetch origin
-git checkout ${VERSION}
+git checkout -B "${VERSION}" "origin/${VERSION}"
 
 echo "📦 Installing dependencies..."
 pnpm install --frozen-lockfile
