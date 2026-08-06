@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 type ThemeName = 'default' | 'bank' | 'rental';
 
@@ -13,7 +13,7 @@ const STORAGE_KEY = 'aetherspec.theme';
 
 function getInitialTheme(): ThemeName {
   // Priority: env var (build-time) > localStorage > 'default'
-  const fromEnv = (import.meta.env.VITE_APP_THEME as ThemeName | undefined);
+  const fromEnv = import.meta.env.VITE_APP_THEME as ThemeName | undefined;
   if (fromEnv === 'bank' || fromEnv === 'rental' || fromEnv === 'default') {
     return fromEnv;
   }
@@ -25,7 +25,7 @@ function getInitialTheme(): ThemeName {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const theme = getInitialTheme();
+  const [theme, setTheme] = useState<ThemeName>(getInitialTheme);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -35,7 +35,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme: () => {} }}>
+    <ThemeContext.Provider value={{ theme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   );
