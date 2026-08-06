@@ -54,8 +54,10 @@ func TenantResolver() fiber.Handler {
 func RequireLocalhost() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		host := c.Hostname()
-		if host != "127.0.0.1" && host != "localhost" && host != "::1" {
-			return c.Status(403).JSON(fiber.Map{"error": "forbidden"})
+		ip := c.IP()
+		if host != "127.0.0.1" && host != "localhost" && host != "::1" &&
+			ip != "127.0.0.1" && ip != "::1" && ip != "::ffff:127.0.0.1" {
+			return c.Status(403).JSON(fiber.Map{"error": "forbidden", "host": host, "ip": ip})
 		}
 		return c.Next()
 	}
