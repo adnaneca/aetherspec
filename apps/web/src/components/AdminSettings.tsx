@@ -15,11 +15,14 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 
-const PROVIDER_CATALOG: Record<AdminProvider['id'], { name: string; models: string[] }> = {
-  ollama: {
-    name: 'Ollama Cloud',
-    models: ['llama3.1:70b', 'llama3.1:8b', 'qwen2.5:72b', 'deepseek-r1:70b'],
-  },
+const FALLBACK_OLLAMA_MODELS = [
+  'llama3.1:70b',
+  'llama3.1:8b',
+  'qwen2.5:72b',
+  'deepseek-r1:70b',
+];
+
+const CLOUD_PROVIDER_CATALOG: Record<Exclude<AdminProvider['id'], 'ollama'>, { name: string; models: string[] }> = {
   openai: {
     name: 'OpenAI',
     models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-mini'],
@@ -156,6 +159,8 @@ export function AdminSettings() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<string[]>(FALLBACK_OLLAMA_MODELS);
+  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
 
   useEffect(() => {
     getAdminConfig()
@@ -168,6 +173,29 @@ export function AdminSettings() {
         setLoading(false);
       });
   }, []);
+
+  const fetchOllamaModels = async () => {
+    setOllamaModelsLoading(true);
+    try {
+      const resp = await fetch('https://ollama.com/api/tags');
+      if (!resp.ok) throw new Error(`Ollama API returned ${resp.status}`);
+      const data = (await resp.json()) as { models?: Array<{ name: string }> };
+      const names = data.models?.map((m) => m.name).filter(Boolean) ?? [];
+      if (names.length > 0) {
+        setOllamaModels(names);
+      }
+    } catch (err) {
+      console.warn('[AdminSettings] failed to fetch Ollama models:', err);
+    } finally {
+      setOllamaModelsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'providers' || activeTab === 'models') {
+      void fetchOllamaModels();
+    }
+  }, [activeTab]);
 
   const handleSave = async () => {
     if (!adminConfig) return;
@@ -280,6 +308,9 @@ export function AdminSettings() {
                     className="size-4 accent-primary rounded"
                   />
                   <span className="font-semibold text-foreground">{provider.name}</span>
+                  {provider.id === 'ollama' && ollamaModelsLoading && (
+                    <span className="text-[10px] text-muted-foreground ml-auto">fetching models…</span>
+                  )}
                 </label>
 
                 {provider.id === 'ollama' && (
@@ -299,7 +330,9 @@ export function AdminSettings() {
                 />
 
                 {provider.id === 'ollama' && (
-                  <p className="text-[10px] text-muted-foreground">Ollama Cloud uses an OpenAI-compatible endpoint.</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Model list pulled from ollama.com/api/tags ({ollamaModels.length} models available).
+                  </p>
                 )}
               </div>
             ))}
@@ -344,15 +377,21 @@ export function AdminSettings() {
                     className="w-full bg-card border border-border rounded p-1.5 text-foreground font-mono disabled:opacity-50"
                   >
                     {enabledProviders.length === 0 && <option value="">— no provider enabled —</option>}
-                    {enabledProviders.map((provider) => (
-                      <optgroup key={provider.id} label={provider.name}>
-                        {PROVIDER_CATALOG[provider.id].models.map((model) => (
-                          <option key={`${provider.id}/${model}`} value={`${provider.id}/${model}`}>
-                            {model}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
+                    {enabledProviders.map((provider) => {
+                      const models =
+                        provider.id === 'ollama'
+                          ? ollamaModels
+                          : CLOUD_PROVIDER_CATALOG[provider.id].models;
+                      return (
+                        <optgroup key={provider.id} label={provider.name}>
+                          {models.map((model) => (
+                            <option key={`${provider.id}/${model}`} value={`${provider.id}/${model}`}>
+                              {model}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
                 </div>
               ))}
