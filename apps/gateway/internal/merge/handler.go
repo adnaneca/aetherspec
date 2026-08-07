@@ -45,18 +45,20 @@ type stepInfo struct {
 func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 	docID := c.Params("docId")
 
-	// 1. Verify all required sections are SIGNED_OFF
+	// 1. Load steps and resolve project/bucket
 	rows, err := h.pool.Query(c.Context(),
-		`SELECT step_number, step_name, status, minio_path, approved_by, approved_at
-		 FROM document_steps WHERE document_id = $1 ORDER BY step_number`, docID)
+		`SELECT ds.step_number, ds.step_name, ds.status, ds.minio_path, ds.approved_by, ds.approved_at, d.project_id
+		 FROM document_steps ds JOIN documents d ON ds.document_id = d.id
+		 WHERE ds.document_id = $1 ORDER BY ds.step_number`, docID)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "query failed"})
 	}
 
 	var steps []stepInfo
+	var projectID string
 	for rows.Next() {
 		var s stepInfo
-		if err := rows.Scan(&s.number, &s.name, &s.status, &s.minioPath, &s.approvedBy, &s.approvedAt); err != nil {
+		if err := rows.Scan(&s.number, &s.name, &s.status, &s.minioPath, &s.approvedBy, &s.approvedAt, &projectID); err != nil {
 			rows.Close()
 			return c.Status(500).JSON(fiber.Map{"error": "scan failed"})
 		}
@@ -67,6 +69,12 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 	if len(steps) == 0 {
 		return c.Status(404).JSON(fiber.Map{"error": "document not found or has no steps"})
 	}
+	if projectID == "" {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to resolve project id"})
+	}
+
+	// The project bucket is the project ID (matches existing documents/generation handlers).
+	bucket := projectID
 
 	// Determine required sections (exclude appendix if present as step 11)
 	maxStep := 0
@@ -88,18 +96,8 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 		}
 	}
 
-	// 2. Get project ID from the document
-	var projectID string
-	err = h.pool.QueryRow(c.Context(),
-		`SELECT project_id FROM documents WHERE id = $1`, docID,
-	).Scan(&projectID)
-	if err != nil || projectID == "" {
-		return c.Status(500).JSON(fiber.Map{"error": "failed to resolve project id"})
-	}
-
-	// 3. Read all required section files from MinIO
+	// 2. Read all required section files from MinIO
 	ctx := context.Background()
-	bucket := h.cfg.MinIO.Bucket
 	var allContents []string
 	var allIDs []string
 
@@ -108,7 +106,7 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 			continue
 		}
 
-		key := minioKeyFromPath(s.minioPath)
+		key := minioObjectKey(bucket, s.minioPath)
 		if key == "" {
 			continue
 		}
@@ -133,7 +131,7 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 		allIDs = append(allIDs, matches...)
 	}
 
-	// 4. Build the main BRS document
+	// 3. Build the main BRS document
 	now := time.Now().Format("2006-01-02")
 	frontmatter := fmt.Sprintf(`---
 id: BRS-001
@@ -156,7 +154,7 @@ approved: %s
 	mainContent += "- [Appendix C: Change History](appendices/C-change-history.md)\n"
 	mainContent += "- [Appendix D: Draft Revision Log](appendices/D-draft-revision-log.md)\n"
 
-	// 5. Build Appendix A (RTM)
+	// 4. Build Appendix A (RTM)
 	uniqueIDs := make(map[string]bool)
 	for _, id := range allIDs {
 		uniqueIDs[id] = true
@@ -188,7 +186,7 @@ approved: %s
 		rtmContent += fmt.Sprintf("| %s | %s | Approved |\n", id, idType)
 	}
 
-	// 6. Build Appendix B (Approval Record)
+	// 5. Build Appendix B (Approval Record)
 	approvalContent := "# Appendix B: Approval Record\n\n"
 	approvalContent += "## Section Approvals\n\n"
 	approvalContent += "| Section | Step | Approved By | Date |\n"
@@ -210,19 +208,19 @@ approved: %s
 	approvalContent += "\n## Final Document Approval\n\n"
 	approvalContent += fmt.Sprintf("| Role | Name | Date |\n|---|---|---|\n| Approved By | %s | %s |\n", "system", now)
 
-	// 7. Build Appendix C (Change History — placeholder)
+	// 6. Build Appendix C (Change History — placeholder)
 	changeHistory := "# Appendix C: Change History (Post-Approval)\n\n"
 	changeHistory += "| CR-ID | Date | Section(s) | Summary | Approver | Version |\n"
 	changeHistory += "|---|---|---|---|---|---|\n"
 	changeHistory += "| — | — | — | No post-approval changes yet | — | — |\n"
 
-	// 8. Build Appendix D (Draft Revision Log — placeholder)
+	// 7. Build Appendix D (Draft Revision Log — placeholder)
 	draftLog := "# Appendix D: Draft Revision Log (Pre-Approval)\n\n"
 	draftLog += "| Date | Section | Summary | Version |\n"
 	draftLog += "|---|---|---|---|\n"
 	draftLog += "| — | — | No draft revisions recorded | — |\n"
 
-	// 9. Write all files to MinIO
+	// 8. Write all files to MinIO under the project bucket
 	mainPath := "output/BRS-001.md"
 	h.putMarkdown(ctx, bucket, mainPath, mainContent)
 
@@ -237,7 +235,7 @@ approved: %s
 		h.putMarkdown(ctx, bucket, key, appendixContents[i])
 	}
 
-	// 10. Update document status to APPROVED
+	// 9. Update document status to APPROVED
 	_, err = h.pool.Exec(c.Context(),
 		`UPDATE documents SET status = 'APPROVED', revision = revision + 1, updated_date = NOW(), updated_by = 'system' WHERE id = $1`,
 		docID)
@@ -270,15 +268,17 @@ approved: %s
 func (h *Handler) putMarkdown(ctx context.Context, bucket, key, content string) {
 	_, err := h.minioClient.PutObject(ctx, bucket, key, strings.NewReader(content), int64(len(content)), minio.PutObjectOptions{ContentType: "text/markdown"})
 	if err != nil {
-		h.log.Warn("failed to write merged file", zap.String("key", key), zap.Error(err))
+		h.log.Warn("failed to write merged file", zap.String("bucket", bucket), zap.String("key", key), zap.Error(err))
 	}
 }
 
-// minioKeyFromPath converts a stored path like "prj-001/brs/01-introduction.md" into a bucket key.
-func minioKeyFromPath(path string) string {
-	parts := strings.SplitN(path, "/", 2)
-	if len(parts) != 2 {
-		return ""
+// minioObjectKey strips the leading "{bucket}/" from a minio_path if present.
+// minio_path is stored as the full path including bucket (e.g., "prj-001/brs/01.md"),
+// but MinIO PutObject/GetObject expect the key within the bucket ("brs/01.md").
+func minioObjectKey(bucket, minioPath string) string {
+	prefix := bucket + "/"
+	if strings.HasPrefix(minioPath, prefix) {
+		return strings.TrimPrefix(minioPath, prefix)
 	}
-	return parts[1]
+	return minioPath
 }
