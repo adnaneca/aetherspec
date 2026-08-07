@@ -309,14 +309,8 @@ export interface ValidationFinding {
  * Real parsing-based validation will be added in Phase 2.
  */
 export function selfValidate(_sectionId: string, _sectionName: string, _qualityChecks: string[]): ValidationFinding[] {
-  // TEMPORARY TEST — return a synthetic finding to exercise the HITL card UI.
-  return [
-    {
-      type: 'WARNING',
-      message: 'Section contains "SHALL" which is SRS language, not business language.',
-      rule: 'business-language',
-    },
-  ];
+  // MVP: agent self-validates via system prompt instructions.
+  return [];
 }
 
 /**

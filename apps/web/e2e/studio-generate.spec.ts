@@ -4,7 +4,7 @@ const BASE_URL = process.env.E2E_BASE_URL || 'https://aetherspec.ai';
 const GATEWAY_URL = process.env.E2E_GATEWAY_URL || 'https://api.aetherspec.ai';
 const USER = process.env.E2E_USER;
 const PASS = process.env.E2E_PASS;
-const PROJECT = process.env.E2E_PROJECT || 'prj-001';
+const PROJECT = process.env.E2E_PROJECT || 'prj-004';
 
 if (!USER || !PASS) {
   throw new Error('E2E_USER and E2E_PASS environment variables are required');
@@ -21,6 +21,9 @@ async function login(page: Page) {
 }
 
 async function openStudioStep(page: Page, stepName: string) {
+  // Ensure Keycloak init finished and header is interactive
+  await expect(page.getByRole('button', { name: /Aether Studio/i }).first()).toBeVisible({ timeout: 15000 });
+
   // Use the header's Aether Studio button (client-side navigation)
   await page.getByRole('button', { name: /Aether Studio/i }).first().click();
   await page.waitForURL(/\/studio/, { timeout: 15000 });
@@ -38,11 +41,10 @@ async function openStudioStep(page: Page, stepName: string) {
 }
 
 test.describe('Aether Studio generation flow', () => {
-  test.use({ storageState: { cookies: [], origins: [] } });
-
   test('Generate Section button exists and is enabled for a non-approved BRS step', async ({ page }) => {
     test.setTimeout(60000);
     await login(page);
+    await page.goto(`${BASE_URL}/`);
     await openStudioStep(page, 'Business Context');
 
     const generateBtn = page.getByRole('button', { name: /Generate Section/i });
@@ -53,6 +55,7 @@ test.describe('Aether Studio generation flow', () => {
   test('Clicking Generate Section streams content and shows HITL card', async ({ page }) => {
     test.setTimeout(300000);
     await login(page);
+    await page.goto(`${BASE_URL}/`);
     await openStudioStep(page, 'Business Context');
 
     // Capture browser console logs for debugging SSE/CORS issues
@@ -78,6 +81,11 @@ test.describe('Aether Studio generation flow', () => {
     const card = page.locator('.mt-3.p-3.rounded-lg.bg-background').first();
     await expect(card).toBeVisible({ timeout: 120000 });
 
+    // HITL card has correct status badge (HITL Review if findings, Ready if none)
+    await expect(
+      card.locator('text=HITL Review').or(card.locator('text=Ready')).first()
+    ).toBeVisible();
+
     // HITL card has Approve and Request Revision buttons
     await expect(card.getByRole('button', { name: /Approve/i })).toBeVisible();
     await expect(card.getByRole('button', { name: /Request Revision/i })).toBeVisible();
@@ -98,5 +106,27 @@ test.describe('Aether Studio generation flow', () => {
     if (consoleLogs.length > 0) {
       console.log('Browser logs:\n' + consoleLogs.join('\n'));
     }
+  });
+
+  test('Generate and approve advances to next step', async ({ page }) => {
+    test.setTimeout(300000);
+    await login(page);
+    await page.goto(`${BASE_URL}/`);
+    await openStudioStep(page, 'Business Context');
+
+    const generateBtn = page.getByRole('button', { name: /Generate Section/i });
+    await generateBtn.click();
+
+    await expect(page.getByRole('button', { name: /Generating/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text=Generating Section 4: Business Context').first()).toBeVisible({ timeout: 30000 });
+
+    const card = page.locator('.mt-3.p-3.rounded-lg.bg-background').first();
+    await expect(card).toBeVisible({ timeout: 120000 });
+
+    // Approve the generated section
+    await card.getByRole('button', { name: /Approve/i }).click();
+
+    // Wait for step advance — active step should become Step 5
+    await expect(page.locator('text=Step 5:').first()).toBeVisible({ timeout: 30000 });
   });
 });
