@@ -61,7 +61,17 @@
     "targetDate": "Target Completion Date",
     "createWorkspace": "Create Workspace",
     "switch": "Switch",
-    "active": "Active"
+    "active": "Active",
+    "noProjects": "No projects yet.",
+    "creating": "Creating…",
+    "projectNotFound": "Project not found",
+    "projectDescriptionPlaceholder": "Project description..."
+  },
+  "studio": {
+    "title": "Aether Studio",
+    "subtitle": "{{project}} · {{doc}} · Step {{step}}",
+    "placeholder": "The full Aether Studio (markdown editor + preview + agent chat) is the next epic. The backend is ready — projects, document steps, and MinIO content are accessible via the API.",
+    "selectProject": "Select a project to start"
   },
   "userSettings": {
     "title": "User Settings & Studio Preferences",

@@ -1,4 +1,4 @@
-export type ThemeName = 'default' | 'bank' | 'rental';
+export type ThemeName = 'default' | 'tomorrow-night-blue' | 'bank' | 'rental';
 
 export type PersonaRole =
   | 'ba_lead'
@@ -45,20 +45,63 @@ export interface AdminSettingsConfig {
   activeSkills: string[];
 }
 
+export type ProjectStatus = 'Active' | 'Review' | 'Completed';
+
+export interface PipelinePhase {
+  status: string;
+  currentStep: number;
+  totalSteps: number;
+}
+
 export interface SDLCProject {
   id: string;
   name: string;
   key: string;
   description: string;
-  targetDate: string;
-  status: 'Active' | 'Review' | 'Completed';
-  brsStatus: DocStatus;
-  srsStatus: DocStatus;
-  testCaseStatus: DocStatus;
-  assignedPersonas: PersonaRole[];
-  currentBrsStep: number;
-  currentSrsStep: number;
-  currentTestCaseStep: number;
+  targetDate: string | null;
+  status: ProjectStatus;
+  pipeline: {
+    brs: PipelinePhase;
+    srs: PipelinePhase;
+    testcase: PipelinePhase;
+  };
+  href?: string;
+  revision?: number;
+  createdBy?: string;
+  updatedBy?: string;
+  createdDate?: string;
+  updatedDate?: string;
+  document?: Document[];
+}
+
+export interface Document {
+  id: string;
+  projectId: string;
+  docType: DocType;
+  status: string;
+  currentStep: number;
+  totalSteps: number;
+  href?: string;
+  revision?: number;
+  createdBy?: string;
+  updatedBy?: string;
+  createdDate?: string;
+  updatedDate?: string;
+}
+
+export interface DocumentStep {
+  id?: string;
+  documentId?: string;
+  stepNumber: number;
+  stepName: string;
+  status: string;
+  version: number;
+  revisionCount: number;
+  revision?: number;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  minioPath: string | null;
+  content?: string;
 }
 
 export interface UserSettingsConfig {

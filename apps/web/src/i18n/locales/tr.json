@@ -61,7 +61,17 @@
     "targetDate": "Hedef Tamamlanma Tarihi",
     "createWorkspace": "Çalışma Alanı Oluştur",
     "switch": "Değiştir",
-    "active": "Aktif"
+    "active": "Aktif",
+    "noProjects": "Henüz proje yok.",
+    "creating": "Oluşturuluyor…",
+    "projectNotFound": "Proje bulunamadı",
+    "projectDescriptionPlaceholder": "Proje açıklaması..."
+  },
+  "studio": {
+    "title": "Aether Studio",
+    "subtitle": "{{project}} · {{doc}} · Adım {{step}}",
+    "placeholder": "Tam Aether Studio (markdown editör + önizleme + ajan sohbeti) bir sonraki epik. Backend hazır — projeler, doküman adımları ve MinIO içeriği API üzerinden erişilebilir.",
+    "selectProject": "Başlamak için bir proje seçin"
   },
   "userSettings": {
     "title": "Kullanıcı Ayarları & Studio Tercihleri",

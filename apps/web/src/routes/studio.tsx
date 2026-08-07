@@ -6,8 +6,10 @@ import { Route as RootRoute } from './__root';
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/studio',
-  validateSearch: (search: Record<string, unknown>): { docType?: string } => ({
-    docType: (search.docType as string | undefined) ?? undefined,
+  validateSearch: (search: Record<string, unknown>) => ({
+    project: (search.project as string) || '',
+    doc: (search.doc as string) || 'brs',
+    step: (search.step as string) || '1',
   }),
   component: () => (
     <AuthGuard>

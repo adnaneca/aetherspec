@@ -12,14 +12,14 @@ import {
   User,
   Bot,
 } from 'lucide-react';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useKeycloak } from '../lib/keycloak';
 import { useTranslation } from 'react-i18next';
 
 interface HeaderProps {
   currentTab: string;
   activePersona: Persona;
-  activeProject: SDLCProject;
+  activeProject: SDLCProject | null;
   projects: SDLCProject[];
   availablePersonas: Persona[];
   onChangePersona: (persona: Persona) => void;
@@ -36,6 +36,7 @@ export function Header({
   onChangeProject,
 }: HeaderProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const { logout } = useKeycloak();
@@ -65,9 +66,9 @@ export function Header({
             className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
           >
             <FolderKanban className="size-3.5 text-muted-foreground" />
-            <span className="font-semibold">{activeProject.name}</span>
+            <span className="font-semibold">{activeProject?.name || 'Select project'}</span>
             <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              {activeProject.key}
+              {activeProject?.key || '-'}
             </span>
             <ChevronDown className="size-3 text-muted-foreground ml-1" />
           </button>
@@ -85,7 +86,7 @@ export function Header({
                     setShowProjectMenu(false);
                   }}
                   className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-accent transition-colors ${
-                    p.id === activeProject.id ? 'bg-accent text-foreground font-semibold' : 'text-muted-foreground'
+                    p.id === activeProject?.id ? 'bg-accent text-foreground font-semibold' : 'text-muted-foreground'
                   }`}
                 >
                   <span className="truncate">{p.name}</span>
@@ -110,8 +111,17 @@ export function Header({
           <FolderKanban className="size-3.5" />
           {t('nav.projects')}
         </Link>
-        <Link
-          to="/studio"
+        <button
+          onClick={() =>
+            navigate({
+              to: '/studio',
+              search: {
+                project: activeProject?.id || '',
+                doc: 'brs',
+                step: '1',
+              },
+            })
+          }
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${
             isActive('studio')
               ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
@@ -120,7 +130,7 @@ export function Header({
         >
           <Wrench className="size-3.5" />
           {t('nav.studio')}
-        </Link>
+        </button>
         <Link
           to="/signoff"
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${

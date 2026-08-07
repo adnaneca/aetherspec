@@ -8,8 +8,8 @@ import {
   getStoredPersonaRole,
   setStoredPersonaRole,
 } from '../lib/persona-resolver';
-import { INITIAL_PERSONAS, MOCK_PROJECTS } from '../data/mockData';
-import type { Persona, PersonaRole, DocType } from '../types';
+import { INITIAL_PERSONAS } from '../data/mockData';
+import type { Persona, PersonaRole, DocType, SDLCProject } from '../types';
 
 export function ProjectHubPage() {
   const navigate = useNavigate();
@@ -27,7 +27,8 @@ export function ProjectHubPage() {
     return availablePersonas[0]?.id ?? INITIAL_PERSONAS[0].id;
   });
 
-  const [activeProjectId, setActiveProjectId] = useState('prj-001');
+  const [activeProjectId, setActiveProjectId] = useState('');
+  const [projects] = useState<SDLCProject[]>([]);
 
   useEffect(() => {
     const stored = getStoredPersonaRole();
@@ -44,16 +45,15 @@ export function ProjectHubPage() {
     availablePersonas[0] ??
     INITIAL_PERSONAS[0];
 
-  const activeProject =
-    MOCK_PROJECTS.find((p) => p.id === activeProjectId) ?? MOCK_PROJECTS[0];
+  const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
 
   const handleChangePersona = (persona: Persona) => {
     setActivePersonaRole(persona.id);
     setStoredPersonaRole(persona.id);
   };
 
-  const handleOpenStudio = (docType: DocType) => {
-    void navigate({ to: '/studio', search: { docType } });
+  const handleOpenStudio = (projectId: string, docType: DocType) => {
+    void navigate({ to: '/studio', search: { project: projectId, doc: docType, step: '1' } });
   };
 
   const handleOpenSignOff = () => {
@@ -66,7 +66,7 @@ export function ProjectHubPage() {
         currentTab="projects"
         activePersona={activePersona}
         activeProject={activeProject}
-        projects={MOCK_PROJECTS}
+        projects={projects}
         availablePersonas={availablePersonas}
         onChangePersona={handleChangePersona}
         onChangeProject={setActiveProjectId}
@@ -74,8 +74,7 @@ export function ProjectHubPage() {
 
       <main className="flex-1">
         <ProjectHub
-          projects={MOCK_PROJECTS}
-          activeProject={activeProject}
+          activeProjectId={activeProjectId}
           setActiveProjectId={setActiveProjectId}
           activePersona={activePersona}
           onOpenStudio={handleOpenStudio}

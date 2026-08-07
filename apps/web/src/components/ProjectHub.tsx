@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Persona, SDLCProject, DocType } from '../types';
 import {
   FolderKanban,
@@ -9,18 +9,17 @@ import {
   Plus,
   ArrowRight,
   FlaskConical,
-  ListTree,
   FileCode,
   X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { getProjects, createProject } from '../lib/api';
 
 interface ProjectHubProps {
-  projects: SDLCProject[];
-  activeProject: SDLCProject;
+  activeProjectId: string;
   setActiveProjectId: (id: string) => void;
   activePersona: Persona;
-  onOpenStudio: (docType: DocType) => void;
+  onOpenStudio: (projectId: string, docType: DocType) => void;
   onOpenSignOff: () => void;
 }
 
@@ -33,15 +32,104 @@ const statusColors: Record<string, string> = {
 };
 
 export function ProjectHub({
-  projects,
-  activeProject,
+  activeProjectId,
   setActiveProjectId,
   activePersona,
   onOpenStudio,
   onOpenSignOff,
 }: ProjectHubProps) {
   const { t } = useTranslation();
+  const [projects, setProjects] = useState<SDLCProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+
+  const [newProject, setNewProject] = useState({
+    name: '',
+    key: '',
+    description: '',
+    targetDate: '2026-12-31',
+  });
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    getProjects()
+      .then((data) => {
+        setProjects(data);
+        if (data.length > 0 && !activeProjectId) {
+          setActiveProjectId(data[0].id);
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0];
+
+  const handleCreateProject = async () => {
+    if (!newProject.name || !newProject.key) return;
+    setCreating(true);
+    try {
+      const result = await createProject(newProject);
+      const updated = await getProjects();
+      setProjects(updated);
+      setActiveProjectId(result.id);
+      setShowNewModal(false);
+      setNewProject({ name: '', key: '', description: '', targetDate: '2026-12-31' });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="text-destructive text-sm">
+          {t('common.error')}: {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto text-center">
+        <div className="text-muted-foreground text-sm mb-4">{t('projectHub.noProjects')}</div>
+        <button
+          onClick={() => setShowNewModal(true)}
+          className="flex items-center gap-2 mx-auto rounded-md border border-border bg-primary text-primary-foreground font-semibold text-xs px-4 py-2.5 hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="size-4" />
+          {t('projectHub.newProject')}
+        </button>
+
+        {showNewModal && (
+          <NewProjectModal
+            t={t}
+            newProject={newProject}
+            setNewProject={setNewProject}
+            creating={creating}
+            onClose={() => setShowNewModal(false)}
+            onCreate={handleCreateProject}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 animate-fade-in">
@@ -85,14 +173,14 @@ export function ProjectHub({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
           <button
-            onClick={() => onOpenStudio('brs')}
+            onClick={() => activeProject && onOpenStudio(activeProject.id, 'brs')}
             className="text-left p-4 rounded-lg bg-background border border-status-review/30 hover:border-status-review/60 transition-colors"
           >
             <div className="flex items-center justify-between font-mono text-[10px] text-status-review mb-2">
               <span>{t('projectHub.brsHitlTitle')}</span>
               <span className="bg-status-review/10 px-1.5 py-0.5 rounded border border-status-review/30">{t('projectHub.brsHitlStatus')}</span>
             </div>
-            <div className="font-semibold text-foreground text-sm">HedefFilo Fleet Telematics</div>
+            <div className="font-semibold text-foreground text-sm">{activeProject?.name}</div>
             <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
               {t('projectHub.brsHitlDesc')}
             </p>
@@ -110,7 +198,7 @@ export function ProjectHub({
               <span>{t('projectHub.signoffTitle')}</span>
               <span className="bg-status-approved/10 px-1.5 py-0.5 rounded border border-status-approved/30">{t('projectHub.signoffStatus')}</span>
             </div>
-            <div className="font-semibold text-foreground text-sm">Payment & Invoicing Gateway</div>
+            <div className="font-semibold text-foreground text-sm">{activeProject?.name}</div>
             <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
               {t('projectHub.signoffDesc')}
             </p>
@@ -121,14 +209,14 @@ export function ProjectHub({
           </button>
 
           <button
-            onClick={() => onOpenStudio('srs')}
+            onClick={() => activeProject && onOpenStudio(activeProject.id, 'srs')}
             className="text-left p-4 rounded-lg bg-background border border-border hover:border-accent transition-colors"
           >
             <div className="flex items-center justify-between font-mono text-[10px] text-muted-foreground mb-2">
               <span>{t('projectHub.srsTitle')}</span>
               <span className="bg-muted px-1.5 py-0.5 rounded">{t('projectHub.srsStatus')}</span>
             </div>
-            <div className="font-semibold text-foreground text-sm">Payment & Invoicing Gateway</div>
+            <div className="font-semibold text-foreground text-sm">{activeProject?.name}</div>
             <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
               {t('projectHub.srsDesc')}
             </p>
@@ -152,7 +240,7 @@ export function ProjectHub({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {projects.map((project) => {
-            const isSelected = project.id === activeProject.id;
+            const isSelected = project.id === activeProjectId;
             return (
               <div
                 key={project.id}
@@ -194,40 +282,30 @@ export function ProjectHub({
                     icon={<FileText className="size-3.5 text-muted-foreground" />}
                     label="BRS"
                     sublabel="Business Requirements"
-                    step={project.currentBrsStep}
-                    total={8}
-                    status={project.brsStatus}
-                    onOpen={() => { setActiveProjectId(project.id); onOpenStudio('brs'); }}
+                    step={project.pipeline.brs.currentStep}
+                    total={project.pipeline.brs.totalSteps}
+                    status={project.pipeline.brs.status}
+                    onOpen={() => { setActiveProjectId(project.id); onOpenStudio(project.id, 'brs'); }}
                   />
 
                   <PipelineRow
                     icon={<FileCode className="size-3.5 text-muted-foreground" />}
                     label="SRD-SDD"
                     sublabel="Merged"
-                    step={project.currentSrsStep}
-                    total={11}
-                    status={project.srsStatus}
-                    onOpen={() => { setActiveProjectId(project.id); onOpenStudio('srs'); }}
-                  />
-
-                  <PipelineRow
-                    icon={<ListTree className="size-3.5 text-muted-foreground" />}
-                    label="BACKLOG"
-                    sublabel="Backlog"
-                    step={1}
-                    total={3}
-                    status="DRAFT"
-                    onOpen={() => { setActiveProjectId(project.id); onOpenStudio('srs'); }}
+                    step={project.pipeline.srs.currentStep}
+                    total={project.pipeline.srs.totalSteps}
+                    status={project.pipeline.srs.status}
+                    onOpen={() => { setActiveProjectId(project.id); onOpenStudio(project.id, 'srs'); }}
                   />
 
                   <PipelineRow
                     icon={<FlaskConical className="size-3.5 text-muted-foreground" />}
                     label="TESTCASE"
                     sublabel="Test Cases"
-                    step={project.currentTestCaseStep}
-                    total={3}
-                    status={project.testCaseStatus}
-                    onOpen={() => { setActiveProjectId(project.id); onOpenStudio('testcase'); }}
+                    step={project.pipeline.testcase.currentStep}
+                    total={project.pipeline.testcase.totalSteps}
+                    status={project.pipeline.testcase.status}
+                    onOpen={() => { setActiveProjectId(project.id); onOpenStudio(project.id, 'testcase'); }}
                   />
                 </div>
               </div>
@@ -238,65 +316,103 @@ export function ProjectHub({
 
       {/* New Project Modal */}
       {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-card border border-border p-6 rounded-xl w-full max-w-lg shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-foreground">{t('projectHub.newProjectTitle')}</h3>
-              <button
-                onClick={() => setShowNewModal(false)}
-                className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground mb-5">
-              {t('projectHub.newProjectDesc')}
-            </p>
+        <NewProjectModal
+          t={t}
+          newProject={newProject}
+          setNewProject={setNewProject}
+          creating={creating}
+          onClose={() => setShowNewModal(false)}
+          onCreate={handleCreateProject}
+        />
+      )}
+    </div>
+  );
+}
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-foreground font-medium mb-1.5">{t('projectHub.projectName')}</label>
-                <input
-                  type="text"
-                  placeholder="e.g. AI Customer Service Agent"
-                  className="w-full bg-background border border-border rounded-md p-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring"
-                />
-              </div>
-              <div>
-                <label className="block text-foreground font-medium mb-1.5">{t('projectHub.projectKey')}</label>
-                <input
-                  type="text"
-                  placeholder="e.g. AICARE"
-                  className="w-full bg-background border border-border rounded-md p-2.5 text-foreground placeholder:text-muted-foreground font-mono uppercase focus:outline-none focus:border-ring"
-                />
-              </div>
-              <div>
-                <label className="block text-foreground font-medium mb-1.5">{t('projectHub.targetDate')}</label>
-                <input
-                  type="date"
-                  defaultValue="2026-12-31"
-                  className="w-full bg-background border border-border rounded-md p-2.5 text-foreground focus:outline-none focus:border-ring"
-                />
-              </div>
-            </div>
+interface NewProjectModalProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  t: any;
+  newProject: { name: string; key: string; description: string; targetDate: string };
+  setNewProject: (p: { name: string; key: string; description: string; targetDate: string }) => void;
+  creating: boolean;
+  onClose: () => void;
+  onCreate: () => void;
+}
 
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                onClick={() => setShowNewModal(false)}
-                className="px-4 py-2 rounded-md bg-muted text-foreground hover:bg-accent text-xs font-medium transition-colors"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={() => setShowNewModal(false)}
-                className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-colors"
-              >
-                {t('projectHub.createWorkspace')}
-              </button>
-            </div>
+function NewProjectModal({ t, newProject, setNewProject, creating, onClose, onCreate }: NewProjectModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border p-6 rounded-xl w-full max-w-lg shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-foreground">{t('projectHub.newProjectTitle')}</h3>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-5">
+          {t('projectHub.newProjectDesc')}
+        </p>
+
+        <div className="space-y-3 text-xs">
+          <div>
+            <label className="block text-foreground font-medium mb-1.5">{t('projectHub.projectName')}</label>
+            <input
+              type="text"
+              placeholder="e.g. AI Customer Service Agent"
+              value={newProject.name}
+              onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+              className="w-full bg-background border border-border rounded-md p-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring"
+            />
+          </div>
+          <div>
+            <label className="block text-foreground font-medium mb-1.5">{t('projectHub.projectKey')}</label>
+            <input
+              type="text"
+              placeholder="e.g. AICARE"
+              value={newProject.key}
+              onChange={(e) => setNewProject({ ...newProject, key: e.target.value.toUpperCase() })}
+              className="w-full bg-background border border-border rounded-md p-2.5 text-foreground placeholder:text-muted-foreground font-mono uppercase focus:outline-none focus:border-ring"
+            />
+          </div>
+          <div>
+            <label className="block text-foreground font-medium mb-1.5">{t('projectHub.targetDate')}</label>
+            <input
+              type="date"
+              value={newProject.targetDate}
+              onChange={(e) => setNewProject({ ...newProject, targetDate: e.target.value })}
+              className="w-full bg-background border border-border rounded-md p-2.5 text-foreground focus:outline-none focus:border-ring"
+            />
+          </div>
+          <div>
+            <label className="block text-foreground font-medium mb-1.5">{t('projectHub.projectDescriptionPlaceholder')}</label>
+            <textarea
+              value={newProject.description}
+              onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+              className="w-full bg-background border border-border rounded-md p-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring"
+              rows={3}
+            />
           </div>
         </div>
-      )}
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-md bg-muted text-foreground hover:bg-accent text-xs font-medium transition-colors"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            onClick={onCreate}
+            disabled={creating || !newProject.name || !newProject.key}
+            className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-colors disabled:opacity-50"
+          >
+            {creating ? t('projectHub.creating') : t('projectHub.createWorkspace')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
