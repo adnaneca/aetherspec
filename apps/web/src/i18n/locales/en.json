@@ -76,6 +76,7 @@
     "noSteps": "No steps available for this document.",
     "save": "Save",
     "approve": "Approve",
+    "current": "Current",
     "contentPlaceholder": "Start writing or paste content for this step…",
     "startHint": "Step is not started. Type content above and click Save to begin, then Approve when ready."
   },

@@ -50,8 +50,12 @@ export function AetherStudio() {
         }
         return getDocumentSteps(matchedDoc.id).then((stepList) => {
           setSteps(stepList);
-          const stepNum = typeof stepId === 'number' ? stepId : Number(stepId) || 1;
-          const step = stepList.find((s) => s.stepNumber === stepNum) ?? stepList[0] ?? null;
+          // If no explicit step in URL, default to the document's current step.
+          const resolvedStepNum =
+            typeof stepId === 'number'
+              ? stepId
+              : Number(stepId) || matchedDoc.currentStep || 1;
+          const step = stepList.find((s) => s.stepNumber === resolvedStepNum) ?? stepList[0] ?? null;
           setActiveStep(step);
           if (step) {
             return getStepContent(matchedDoc.id, step.stepNumber)
@@ -176,6 +180,7 @@ export function AetherStudio() {
           <div className="flex-1 overflow-auto p-2 space-y-1">
             {steps.map((step) => {
               const active = step.stepNumber === stepId;
+              const isCurrentDocumentStep = step.stepNumber === (doc?.currentStep ?? 1);
               return (
                 <button
                   key={step.stepNumber}
@@ -188,6 +193,9 @@ export function AetherStudio() {
                 >
                   <span className="font-mono text-[10px] w-5 shrink-0">{step.stepNumber}</span>
                   <span className="flex-1 truncate">{step.stepName}</span>
+                  {isCurrentDocumentStep && !active && (
+                    <span className="text-[9px] font-mono shrink-0 text-status-review px-1 rounded border border-status-review/30">{t('studio.current')}</span>
+                  )}
                   <span className="text-[9px] font-mono shrink-0">{step.status}</span>
                 </button>
               );

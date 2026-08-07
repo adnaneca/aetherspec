@@ -76,6 +76,7 @@
     "noSteps": "Bu doküman için adım bulunmuyor.",
     "save": "Kaydet",
     "approve": "Onayla",
+    "current": "Mevcut",
     "contentPlaceholder": "Bu adım için içeriği yazmaya başlayın veya yapıştırın…",
     "startHint": "Adım başlatılmamış. Başlamak için yukarıya içerik yazıp Kaydet'e, hazır olduğunuzda Onayla'ya basın."
   },
