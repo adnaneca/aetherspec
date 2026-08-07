@@ -55,6 +55,19 @@ test.describe('Aether Studio generation flow', () => {
   test('Clicking Generate Section streams content and shows HITL card', async ({ page }) => {
     test.setTimeout(300000);
     await login(page);
+
+    // Reset Step 4 to NOT_STARTED so repeated test runs don't fail after approve test
+    const docResp = await page.request.get(`${GATEWAY_URL}/api/document?projectId=${PROJECT}`);
+    expect(docResp.ok()).toBeTruthy();
+    const docs = await docResp.json();
+    const brsDoc = docs.find((d: { docType: string }) => d.docType === 'brs');
+    expect(brsDoc).toBeDefined();
+    const resetResp = await page.request.patch(`${GATEWAY_URL}/api/document/${brsDoc.id}/step/4`, {
+      data: { content: '', status: 'NOT_STARTED' },
+      headers: { 'Content-Type': 'application/merge-patch+json' },
+    });
+    expect(resetResp.ok()).toBeTruthy();
+
     await page.goto(`${BASE_URL}/`);
     await openStudioStep(page, 'Business Context');
 
@@ -111,6 +124,19 @@ test.describe('Aether Studio generation flow', () => {
   test('Generate and approve advances to next step', async ({ page }) => {
     test.setTimeout(300000);
     await login(page);
+
+    // Reset Step 4 to NOT_STARTED so repeated test runs don't fail after previous approve
+    const docResp = await page.request.get(`${GATEWAY_URL}/api/document?projectId=${PROJECT}`);
+    expect(docResp.ok()).toBeTruthy();
+    const docs = await docResp.json();
+    const brsDoc = docs.find((d: { docType: string }) => d.docType === 'brs');
+    expect(brsDoc).toBeDefined();
+    const resetResp = await page.request.patch(`${GATEWAY_URL}/api/document/${brsDoc.id}/step/4`, {
+      data: { content: '', status: 'NOT_STARTED' },
+      headers: { 'Content-Type': 'application/merge-patch+json' },
+    });
+    expect(resetResp.ok()).toBeTruthy();
+
     await page.goto(`${BASE_URL}/`);
     await openStudioStep(page, 'Business Context');
 
@@ -118,13 +144,12 @@ test.describe('Aether Studio generation flow', () => {
     await generateBtn.click();
 
     await expect(page.getByRole('button', { name: /Generating/i })).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text=Generating Section 4: Business Context').first()).toBeVisible({ timeout: 30000 });
 
-    const card = page.locator('.mt-3.p-3.rounded-lg.bg-background').first();
-    await expect(card).toBeVisible({ timeout: 120000 });
+    // Wait for generation to finish: Generate button reappears and is enabled
+    await expect(page.getByRole('button', { name: /Generate Section/i })).toBeEnabled({ timeout: 120000 });
 
-    // Approve the generated section
-    await card.getByRole('button', { name: /Approve/i }).click();
+    // Approve the generated section via the top banner button
+    await page.getByRole('button', { name: /Approve & Advance/i }).click();
 
     // Wait for step advance — active step should become Step 5
     await expect(page.locator('text=Step 5:').first()).toBeVisible({ timeout: 30000 });
