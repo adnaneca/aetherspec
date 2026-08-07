@@ -11,6 +11,7 @@ import (
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/projects"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/templates"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/users"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -65,6 +66,10 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 
 	attachmentsHandler := attachments.NewHandler(pool, minioClient, log)
 	attachmentsHandler.Register(app)
+
+	// Template routes (read from private MinIO templates bucket)
+	templatesHandler := templates.NewHandler(minioClient, cfg, log)
+	templatesHandler.Register(app)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())
