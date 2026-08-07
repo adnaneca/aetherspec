@@ -174,10 +174,18 @@ export async function getAttachments(projectId: string): Promise<Attachment[]> {
   return resp.json();
 }
 
-export async function downloadAttachment(attachmentId: string): Promise<{ content: string; name: string; mimeType?: string }> {
+export async function downloadAttachment(
+  attachmentId: string,
+  metadata?: { name?: string; mimeType?: string }
+): Promise<{ content: string; name: string; mimeType?: string }> {
   const resp = await fetch(`${GATEWAY_URL}/api/attachment/${encodeURIComponent(attachmentId)}`);
   if (!resp.ok) throw new Error(`Failed to download attachment: ${resp.status}`);
-  const name = resp.headers.get('Content-Disposition')?.match(/filename="?([^";]+)"?/)?.[1] || 'download';
+  const headerName = resp.headers.get('Content-Disposition')?.match(/filename="?([^";]+)"?/)?.[1];
+  const name = metadata?.name || headerName || 'download';
   const content = await resp.text();
-  return { content, name, mimeType: resp.headers.get('Content-Type') || undefined };
+  return {
+    content,
+    name,
+    mimeType: metadata?.mimeType || resp.headers.get('Content-Type') || undefined,
+  };
 }

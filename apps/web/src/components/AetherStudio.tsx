@@ -248,7 +248,7 @@ export function AetherStudio() {
     setLoadingInputDoc(true);
     setActiveInputDoc(null);
     try {
-      const data = await downloadAttachment(att.id);
+      const data = await downloadAttachment(att.id, { name: att.name, mimeType: att.mimeType });
       setActiveInputDoc({ id: att.id, ...data });
     } catch (err) {
       console.error('Failed to load input document:', err);
@@ -420,7 +420,11 @@ export function AetherStudio() {
 
   const activeStepNum = activeStep?.stepNumber || (typeof stepId === 'number' ? stepId : Number(stepId) || 1);
   const fileName = fileNameForDocType(docType || 'brs');
-  const isMarkdownInputDoc = activeInputDoc && /\.(md|txt)$/i.test(activeInputDoc.name);
+  const isMarkdownInputDoc =
+    activeInputDoc &&
+    (/\.(md|txt)$/i.test(activeInputDoc.name) ||
+      activeInputDoc.mimeType?.includes('markdown') ||
+      activeInputDoc.mimeType === 'text/plain');
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden font-sans">
