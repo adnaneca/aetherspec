@@ -11,7 +11,7 @@ set -e
 SERVER_HOST="157.180.57.246"
 SERVER_USER="root"
 SERVER_DIR="/opt/aetherspec-v2"
-VERSION="${1:-main}"
+VERSION="${1:-feat/projects-frontend}"
 
 echo "🚀 Starting deployment to Hetzner..."
 echo "   Server: ${SERVER_USER}@${SERVER_HOST}"
