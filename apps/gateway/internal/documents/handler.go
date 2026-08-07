@@ -248,6 +248,17 @@ func (h *Handler) listSteps(c *fiber.Ctx) error {
 }
 
 // GET /api/document/:id/step/:stepId — retrieve step with MinIO content.
+// minioObjectKey strips the leading "{bucket}/" from a minio_path if present.
+// minio_path is stored as the full path including bucket (e.g., "prj-001/brs/01.md"),
+// but MinIO PutObject/GetObject expect the key within the bucket ("brs/01.md").
+func minioObjectKey(bucket, minioPath string) string {
+	prefix := bucket + "/"
+	if strings.HasPrefix(minioPath, prefix) {
+		return strings.TrimPrefix(minioPath, prefix)
+	}
+	return minioPath
+}
+
 func (h *Handler) getStep(c *fiber.Ctx) error {
 	docID := c.Params("id")
 	stepID := c.Params("stepId")
@@ -273,11 +284,21 @@ func (h *Handler) getStep(c *fiber.Ctx) error {
 	projectID, _ := h.projectIDForDocument(c.Context(), docID)
 	content := ""
 	if projectID != "" {
-		obj, err := h.minioClient.GetObject(ctx, projectID, minioPath, minio.GetObjectOptions{})
+		objKey := minioObjectKey(projectID, minioPath)
+		obj, err := h.minioClient.GetObject(ctx, projectID, objKey, minio.GetObjectOptions{})
 		if err == nil {
 			defer obj.Close()
 			if data, err := io.ReadAll(obj); err == nil {
 				content = string(data)
+			}
+		} else {
+			// Fallback: legacy bug stored objects with duplicated bucket prefix
+			legacyObj, err := h.minioClient.GetObject(ctx, projectID, minioPath, minio.GetObjectOptions{})
+			if err == nil {
+				defer legacyObj.Close()
+				if data, err := io.ReadAll(legacyObj); err == nil {
+					content = string(data)
+				}
 			}
 		}
 	}
@@ -332,11 +353,12 @@ func (h *Handler) patchStep(c *fiber.Ctx) error {
 
 	if body.Content != nil {
 		ctx := context.Background()
-		_, err = h.minioClient.PutObject(ctx, projectID, minioPath,
+		objKey := minioObjectKey(projectID, minioPath)
+		_, err = h.minioClient.PutObject(ctx, projectID, objKey,
 			strings.NewReader(*body.Content), int64(len(*body.Content)),
 			minio.PutObjectOptions{ContentType: "text/markdown"})
 		if err != nil {
-			h.log.Error("minio put failed", zap.Error(err), zap.String("path", minioPath))
+			h.log.Error("minio put failed", zap.Error(err), zap.String("path", objKey))
 			return tmf.SendError(c, 500, "save failed")
 		}
 		setClauses = append(setClauses, fmt.Sprintf("version = version + 1, revision_count = revision_count + 1"))
