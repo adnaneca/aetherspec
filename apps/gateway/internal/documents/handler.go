@@ -404,15 +404,29 @@ func (h *Handler) approveStep(c *fiber.Ctx) error {
 		return tmf.SendError(c, 500, "approve failed")
 	}
 
-	// Advance current_step in the document and project pipeline.
-	nextStep := stepNum + 1
-	h.pool.Exec(c.Context(),
-		`UPDATE documents SET current_step = $2, updated_date = NOW(), updated_by = 'system' WHERE id = $1`,
-		docID, nextStep)
-
+	// Advance current_step in the document and project pipeline, but do not exceed total steps.
 	var docType, projectID string
-	h.pool.QueryRow(c.Context(),
-		`SELECT doc_type, project_id FROM documents WHERE id = $1`, docID).Scan(&docType, &projectID)
+	var totalSteps int
+	err = h.pool.QueryRow(c.Context(),
+		`SELECT doc_type, project_id, total_steps FROM documents WHERE id = $1`, docID).Scan(&docType, &projectID, &totalSteps)
+	if err != nil {
+		return tmf.SendError(c, 500, "failed to read document metadata")
+	}
+
+	nextStep := stepNum + 1
+	if nextStep > totalSteps {
+		nextStep = totalSteps
+	}
+
+	docStatus := "IN_PROGRESS"
+	if stepNum >= totalSteps {
+		docStatus = "SIGNED_OFF"
+	}
+
+	h.pool.Exec(c.Context(),
+		`UPDATE documents SET current_step = $2, status = $3, updated_date = NOW(), updated_by = 'system' WHERE id = $1`,
+		docID, nextStep, docStatus)
+
 	if docType != "" && projectID != "" {
 		h.pool.Exec(c.Context(),
 			`UPDATE projects SET pipeline = jsonb_set(pipeline, $1, to_jsonb($2::int)), updated_date = NOW(), updated_by = 'system' WHERE id = $3`,
