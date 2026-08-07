@@ -44,11 +44,12 @@ type PostgresConfig struct {
 }
 
 type MinIOConfig struct {
-	Endpoint  string
-	AccessKey string
-	SecretKey string
-	UseSSL    string
-	Bucket    string
+	Endpoint       string
+	AccessKey      string
+	SecretKey      string
+	UseSSL         string
+	Bucket         string
+	TemplateBucket string
 }
 
 type OTelConfig struct {
@@ -87,11 +88,12 @@ func Load() (*Config, error) {
 			SSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
 		},
 		MinIO: MinIOConfig{
-			Endpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
-			AccessKey: getEnv("MINIO_ACCESS_KEY", ""),
-			SecretKey: getEnv("MINIO_SECRET_KEY", ""),
-			UseSSL:    getEnv("MINIO_USE_SSL", "false"),
-			Bucket:    getEnv("MINIO_BUCKET", "aetherspec-artifacts"),
+			Endpoint:       getEnv("MINIO_ENDPOINT", "localhost:9000"),
+			AccessKey:      getEnv("MINIO_ACCESS_KEY", ""),
+			SecretKey:      getEnv("MINIO_SECRET_KEY", ""),
+			UseSSL:         getEnv("MINIO_USE_SSL", "false"),
+			Bucket:         getEnv("MINIO_BUCKET", "aetherspec-artifacts"),
+			TemplateBucket: getEnv("MINIO_TEMPLATE_BUCKET", "aetherspec-templates"),
 		},
 		OTel: OTelConfig{
 			OTLPExporterEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),

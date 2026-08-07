@@ -5,9 +5,12 @@ import (
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/admin"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/agent"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/attachments"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/documents"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/projects"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/users"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -15,11 +18,12 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
 )
 
 // New constructs and returns a configured Fiber app.
-func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool) *fiber.App {
+func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *minio.Client) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "aetherspec-gateway",
 		ServerHeader: "AetherSpec-Gateway",
@@ -50,6 +54,16 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool) *fiber.App {
 
 	// User settings routes (require auth)
 	users.Register(app, pool, log)
+
+	// Project, document, step, and attachment routes
+	projectsHandler := projects.NewHandler(pool, minioClient, cfg, log)
+	projectsHandler.Register(app)
+
+	documentsHandler := documents.NewHandler(pool, minioClient, cfg, log)
+	documentsHandler.Register(app)
+
+	attachmentsHandler := attachments.NewHandler(pool, minioClient, log)
+	attachmentsHandler.Register(app)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())

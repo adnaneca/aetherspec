@@ -19,7 +19,7 @@ func Register(app *fiber.App, pool *pgxpool.Pool, log *zap.Logger) {
 	api := app.Group("/api/admin", middleware.KeycloakAuth(), middleware.RequireRole("ROLE_REALM_ADMIN"))
 
 	api.Get("/config", getConfig(pool, log))
-	api.Put("/config", putConfig(pool, log))
+	api.Patch("/config", patchConfig(pool, log))
 	api.Get("/providers/ollama/models", getOllamaModels(log))
 	api.Post("/providers/:id/test", testProvider(log))
 
@@ -100,8 +100,8 @@ func getInternalConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 	}
 }
 
-// putConfig saves the admin_settings JSON to app_config table.
-func putConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
+// patchConfig saves the admin_settings JSON to app_config table.
+func patchConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		var body json.RawMessage
 		if err := json.Unmarshal(c.Body(), &body); err != nil {

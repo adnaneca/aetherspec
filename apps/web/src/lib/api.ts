@@ -10,8 +10,8 @@ export async function getAdminConfig(): Promise<AdminSettingsConfig> {
 
 export async function saveAdminConfig(config: AdminSettingsConfig): Promise<{ status: string }> {
   const resp = await fetch(`${GATEWAY_URL}/api/admin/config`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/merge-patch+json' },
     body: JSON.stringify(config),
   });
   if (!resp.ok) throw new Error(`Failed to save admin config: ${resp.status}`);
@@ -55,8 +55,8 @@ export async function getUserSettings(): Promise<UserSettingsConfig> {
 
 export async function saveUserSettings(settings: UserSettingsConfig): Promise<{ status: string }> {
   const resp = await fetch(`${GATEWAY_URL}/api/user/settings`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/merge-patch+json' },
     body: JSON.stringify(settings),
   });
   if (!resp.ok) throw new Error(`Failed to save user settings: ${resp.status}`);

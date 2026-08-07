@@ -8,6 +8,7 @@ import (
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/db"
+	minioMod "github.com/adnaneca/aetherspec/apps/gateway/internal/minio"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/otel"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/server"
 	"go.uber.org/zap"
@@ -34,7 +35,13 @@ func main() {
 	defer pool.Close()
 	log.Info("postgres connected")
 
-	app := server.New(cfg, log, pool)
+	minioClient, err := minioMod.New(cfg, log)
+	if err != nil {
+		log.Fatal("minio connection failed", zap.Error(err))
+	}
+	log.Info("minio connected")
+
+	app := server.New(cfg, log, pool, minioClient)
 
 	// Graceful shutdown on SIGINT/SIGTERM
 	go func() {

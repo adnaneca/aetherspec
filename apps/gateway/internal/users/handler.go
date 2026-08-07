@@ -15,7 +15,7 @@ func Register(app *fiber.App, pool *pgxpool.Pool, log *zap.Logger) {
 	api := app.Group("/api/user", middleware.KeycloakAuth())
 
 	api.Get("/settings", getSettings(pool, log))
-	api.Put("/settings", putSettings(pool, log))
+	api.Patch("/settings", patchSettings(pool, log))
 }
 
 // getUsername extracts the username from the Keycloak JWT claims (set by auth middleware).
@@ -69,8 +69,8 @@ func getSettings(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 	}
 }
 
-// putSettings saves the user's settings JSON.
-func putSettings(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
+// patchSettings saves the user's settings JSON.
+func patchSettings(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		username := getUsername(c)
 		key := "user_settings:" + username
