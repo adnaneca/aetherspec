@@ -107,7 +107,17 @@
     "inputDocumentPreview": "Input Document Preview",
     "download": "Download",
     "downloadToView": "Preview not available · download to view",
-    "previewNotAvailable": "Preview is not available for {{name}}."
+    "previewNotAvailable": "Preview is not available for {{name}}.",
+    "generateSection": "Generate Section",
+    "generating": "Generating…",
+    "requestRevision": "Request Revision",
+    "requestRevisionTooltip": "Type your feedback and press Enter to send",
+    "draftSaved": "Draft saved to MinIO.",
+    "sectionDraftComplete": "Section draft complete. {{count}} validation findings.",
+    "hitlReview": "HITL Review",
+    "ready": "Ready",
+    "skillGenerating": "generate-{{docType}}-section",
+    "skillValidating": "validate-{{docType}}-section"
   },
   "userSettings": {
     "title": "User Settings & Studio Preferences",

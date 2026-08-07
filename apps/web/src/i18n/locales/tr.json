@@ -107,7 +107,17 @@
     "inputDocumentPreview": "Girdi Belgesi Önizlemesi",
     "download": "İndir",
     "downloadToView": "Önizleme yok · görüntülemek için indirin",
-    "previewNotAvailable": "{{name}} için önizleme yapılamıyor."
+    "previewNotAvailable": "{{name}} için önizleme yapılamıyor.",
+    "generateSection": "Bölüm Üret",
+    "generating": "Üretiliyor…",
+    "requestRevision": "Revizyon İste",
+    "requestRevisionTooltip": "Geri bildiriminizi yazın ve göndermek için Enter'a basın",
+    "draftSaved": "Taslak MinIO'ya kaydedildi.",
+    "sectionDraftComplete": "Bölüm taslağı tamamlandı. {{count}} doğrulama bulgusu.",
+    "hitlReview": "HITL İnceleme",
+    "ready": "Hazır",
+    "skillGenerating": "generate-{{docType}}-section",
+    "skillValidating": "validate-{{docType}}-section"
   },
   "userSettings": {
     "title": "Kullanıcı Ayarları & Studio Tercihleri",

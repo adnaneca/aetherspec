@@ -146,6 +146,33 @@ export async function approveStep(docId: string, stepId: number): Promise<{ stat
   return resp.json();
 }
 
+// ── BRS Section Generation ──
+
+export interface GenerateSectionRequest {
+  projectId: string;
+  docId: string;
+  stepId: string;
+  agentId: string;
+}
+
+export interface ValidationFinding {
+  type: 'BLOCKING' | 'WARNING' | 'INFO';
+  message: string;
+  rule: string;
+}
+
+export async function generateSection(req: GenerateSectionRequest): Promise<ReadableStream<Uint8Array>> {
+  const resp = await fetch(`${GATEWAY_URL}/api/agent/generate-section`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) throw new Error(`Generation failed: ${resp.status}`);
+  if (!resp.body) throw new Error('Generation returned no stream');
+  return resp.body;
+}
+
 export async function createDocument(data: { projectId: string; docType: string; totalSteps?: number }): Promise<Document> {
   const resp = await fetch(`${GATEWAY_URL}/api/document`, {
     method: 'POST',

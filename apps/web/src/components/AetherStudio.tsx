@@ -12,7 +12,9 @@ import {
   approveStep,
   getAttachments,
   downloadAttachment,
+  generateSection,
   type Attachment,
+  type ValidationFinding,
 } from '../lib/api';
 import { streamChat } from '../lib/chat-stream';
 import { MermaidRenderer } from './MermaidRenderer';
@@ -35,6 +37,8 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 
@@ -47,6 +51,16 @@ interface ChatMessage {
   streaming?: boolean;
   error?: boolean;
   timestamp: string;
+  thoughts?: string;
+  skillCalled?: string;
+  sectionCard?: {
+    stepId: number;
+    title: string;
+    draftSnippet: string;
+    hasFindings: boolean;
+    findings: ValidationFinding[];
+    status: string;
+  };
 }
 
 // ── Helpers ──
@@ -55,6 +69,12 @@ const agentForDocType = (dt: string) => {
   if (dt === 'brs') return 'brs-agent';
   if (dt === 'srs') return 'srd-agent';
   return 'testcase-agent';
+};
+
+const skillPrefixForDocType = (dt: string) => {
+  if (dt === 'brs') return 'brs';
+  if (dt === 'srs') return 'srs';
+  return 'testcase';
 };
 
 const fileNameForDocType = (dt: string) => {
@@ -92,6 +112,7 @@ export function AetherStudio() {
   // UI state
   const [viewMode, setViewMode] = useState<'source' | 'split' | 'preview'>('preview');
   const [activeAgent, setActiveAgent] = useState<string>(agentForDocType(docType || 'brs'));
+  const [generating, setGenerating] = useState(false);
 
   // Input documents state
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -104,6 +125,7 @@ export function AetherStudio() {
   const [chatInput, setChatInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
 
   // ── Load project + documents ──
   const loadAttachments = useCallback(() => {
@@ -223,6 +245,7 @@ export function AetherStudio() {
 
   // ── Switch document type ──
   const handleSwitchDocType = (newDocType: string) => {
+    if (generating) return;
     const doc = documents.find((d) => d.docType === newDocType);
     if (doc) {
       setActiveAgent(agentForDocType(newDocType));
@@ -236,6 +259,7 @@ export function AetherStudio() {
 
   // ── Click a step in the sidebar ──
   const handleStepClick = (stepNum: number) => {
+    if (generating) return;
     setActiveInputDoc(null);
     void navigate({
       to: '/studio',
@@ -260,6 +284,129 @@ export function AetherStudio() {
   const handleBackToStep = () => {
     setActiveInputDoc(null);
   };
+
+  // ── Generate section with SSE streaming ──
+  const handleGenerate = useCallback(async () => {
+    if (!activeDoc || !activeStep || !projectId) return;
+    setGenerating(true);
+    setStepContent('');
+
+    const currentStepNumber = activeStep.stepNumber;
+    const currentDocId = activeDoc.id;
+    const currentDocType = activeDoc.docType;
+    let generatedContent = '';
+
+    try {
+      const stream = await generateSection({
+        projectId,
+        docId: currentDocId,
+        stepId: String(currentStepNumber),
+        agentId: activeAgent,
+      });
+
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(trimmed.slice(6));
+
+            if (event.type === 'status') {
+              const prefix = skillPrefixForDocType(currentDocType);
+              setChatMessages((prev) => [...prev, {
+                id: `status-${Date.now()}`,
+                sender: 'system',
+                content: event.message,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                skillCalled: event.step === 'generating'
+                  ? `generate-${prefix}-section`
+                  : event.step === 'validating'
+                  ? `validate-${prefix}-section`
+                  : undefined,
+                thoughts: event.step === 'generating'
+                  ? 'Reading section guide and dependencies, drafting content...'
+                  : event.step === 'validating'
+                  ? 'Running quality checks against acceptance criteria and project context...'
+                  : undefined,
+              }]);
+            } else if (event.type === 'token') {
+              generatedContent += event.delta;
+              setStepContent(generatedContent);
+            } else if (event.type === 'findings') {
+              const findings: ValidationFinding[] = event.findings || [];
+              const hasFindings = findings.length > 0;
+              const draftSnippet = generatedContent.match(/^##\s+.+$/m)?.[0]
+                || generatedContent.split('\n').filter(Boolean)[0]
+                || 'Section draft';
+              setChatMessages((prev) => [...prev, {
+                id: `findings-${Date.now()}`,
+                sender: 'assistant',
+                content: `Section draft complete. ${findings.length} validation findings.`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                sectionCard: {
+                  stepId: currentStepNumber,
+                  title: activeStep.stepName,
+                  draftSnippet,
+                  hasFindings,
+                  findings,
+                  status: findings.some((f) => f.type === 'BLOCKING') ? 'HAS_FINDINGS' : 'REVIEW',
+                },
+              }]);
+            } else if (event.type === 'done') {
+              if (generatedContent) {
+                await patchStep(currentDocId, currentStepNumber, {
+                  content: generatedContent,
+                  status: 'IN_PROGRESS',
+                });
+                setChatMessages((prev) => [...prev, {
+                  id: `saved-${Date.now()}`,
+                  sender: 'system',
+                  content: 'Draft saved to MinIO.',
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                }]);
+              }
+              setSteps((prev) => prev.map((s) =>
+                s.stepNumber === currentStepNumber
+                  ? { ...s, status: 'IN_PROGRESS', version: s.version + 1 }
+                  : s,
+              ));
+            } else if (event.type === 'error') {
+              setChatMessages((prev) => [...prev, {
+                id: `error-${Date.now()}`,
+                sender: 'assistant',
+                content: `Error: ${event.error}`,
+                error: true,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              }]);
+            }
+          } catch (e) {
+            if (import.meta.env.DEV) console.warn('Malformed SSE line', line, e);
+          }
+        }
+      }
+    } catch (err) {
+      setChatMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        sender: 'assistant',
+        content: `Generation failed: ${(err as Error).message}`,
+        error: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } finally {
+      setGenerating(false);
+    }
+  }, [activeDoc, activeStep, activeAgent, projectId]);
 
   // ── Agent chat: send message ──
   const handleSendMessage = useCallback(async () => {
@@ -450,7 +597,8 @@ export function AetherStudio() {
               <button
                 key={doc.id}
                 onClick={() => handleSwitchDocType(doc.docType)}
-                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+                disabled={generating}
+                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors disabled:opacity-50 ${
                   doc.docType === docType
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground'
@@ -495,18 +643,35 @@ export function AetherStudio() {
           </button>
         </div>
 
-        {/* Right: Save + Approve + Sign-Off */}
+        {/* Right: Save + Generate + Approve + Sign-Off */}
         <div className="flex items-center gap-2">
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || generating}
             className="px-2.5 py-0.5 rounded text-[11px] font-semibold border border-border bg-background text-foreground hover:bg-accent transition-colors disabled:opacity-50"
           >
             {saving ? t('studio.saving') : t('studio.save')}
           </button>
           <button
+            onClick={handleGenerate}
+            disabled={generating || !activeStep || activeStep.status === 'APPROVED'}
+            className="flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 px-2.5 py-0.5 rounded font-semibold text-[11px] transition-colors disabled:opacity-50"
+          >
+                {generating ? (
+              <>
+                <Loader2 className="size-3 animate-spin" />
+                {t('studio.generating')}
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-3" />
+                {t('studio.generateSection')}
+              </>
+            )}
+          </button>
+          <button
             onClick={handleApprove}
-            disabled={approving}
+            disabled={approving || generating}
             className="flex items-center gap-1.5 bg-status-approved/20 hover:bg-status-approved/30 text-status-approved border border-status-approved/30 px-2.5 py-0.5 rounded font-semibold text-[11px] transition-colors disabled:opacity-50"
           >
             <CheckCircle2 className="size-3" />
@@ -589,7 +754,8 @@ export function AetherStudio() {
                 <button
                   key={step.stepNumber}
                   onClick={() => handleStepClick(step.stepNumber)}
-                  className={`w-full text-left p-2 rounded-lg text-xs transition-all flex items-start gap-2 ${
+                  disabled={generating}
+                  className={`w-full text-left p-2 rounded-lg text-xs transition-all flex items-start gap-2 disabled:opacity-50 ${
                     isActive
                       ? 'bg-primary/20 border border-primary/40 text-foreground font-medium'
                       : 'hover:bg-accent text-foreground border border-transparent'
@@ -811,9 +977,84 @@ export function AetherStudio() {
                     ? 'border border-destructive/40 bg-destructive/10 text-destructive'
                     : 'bg-background border border-border text-foreground'
                 }`}>
+                  {msg.thoughts && (
+                    <div className="mb-2 p-2 bg-background rounded border border-border text-[10px] font-mono text-muted-foreground">
+                      💡 <strong className="text-foreground">Thoughts:</strong> {msg.thoughts}
+                    </div>
+                  )}
+                  {msg.skillCalled && (
+                    <div className="mb-2 font-mono text-[10px] text-status-approved flex items-center gap-1">
+                      <Sparkles className="size-3" />
+                      Skill: <code className="bg-status-approved/10 px-1 rounded border border-status-approved/20">{msg.skillCalled}</code>
+                    </div>
+                  )}
                   <div className="leading-relaxed whitespace-pre-wrap">{msg.content}</div>
                   {msg.streaming && (
                     <span className="inline-block w-2 h-4 ml-1 bg-primary/60 animate-pulse-dot align-text-bottom" />
+                  )}
+
+                  {/* Section HITL Card */}
+                  {msg.sectionCard && (
+                    <div className="mt-3 p-3 rounded-lg bg-background border border-border space-y-2">
+                      {/* Card Header */}
+                      <div className="flex items-center justify-between font-mono text-[10px]">
+                        <span className="font-bold text-foreground">{msg.sectionCard.title}</span>
+                        <span className={`px-1.5 py-0.5 rounded ${
+                          msg.sectionCard.status === 'HAS_FINDINGS'
+                            ? 'text-status-review bg-status-review/10 border border-status-review/30'
+                            : 'text-status-approved bg-status-approved/10 border border-status-approved/30'
+                        }`}>
+                          {msg.sectionCard.hasFindings ? 'HITL Review' : 'Ready'}
+                        </span>
+                      </div>
+
+                      {/* Draft Summary */}
+                      <p className="text-[11px] text-muted-foreground">{msg.sectionCard.draftSnippet}</p>
+
+                      {/* Findings List */}
+                      {msg.sectionCard.findings.length > 0 && (
+                        <div className="space-y-1">
+                          {msg.sectionCard.findings.map((f, i) => (
+                            <div key={i} className={`flex items-start gap-2 p-1.5 rounded text-[11px] ${
+                              f.type === 'BLOCKING'
+                                ? 'bg-destructive/10 border border-destructive/30 text-destructive'
+                                : f.type === 'WARNING'
+                                ? 'bg-status-review/10 border border-status-review/30 text-status-review'
+                                : 'bg-muted/30 border border-border text-muted-foreground'
+                            }`}>
+                              <span className="font-mono text-[9px] font-bold shrink-0 mt-0.5">
+                                {f.type === 'BLOCKING' ? '⛔' : f.type === 'WARNING' ? '⚠' : 'ℹ'}
+                              </span>
+                              <span className="flex-1">{f.message}</span>
+                              <span className="font-mono text-[9px] text-muted-foreground shrink-0">{f.rule}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* HITL Action Buttons */}
+                      <div className="grid grid-cols-2 gap-1.5 pt-1">
+                        <button
+                          onClick={handleApprove}
+                          disabled={approving}
+                          className="bg-status-approved/20 hover:bg-status-approved/30 text-status-approved border border-status-approved/30 font-semibold p-1.5 rounded text-[11px] flex items-center justify-center gap-1 disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="size-3" />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => {
+                            setChatInput('Please revise: ');
+                            chatInputRef.current?.focus();
+                          }}
+                          title="Type your feedback and press Enter to send"
+                          className="bg-muted hover:bg-accent text-foreground border border-border font-semibold p-1.5 rounded text-[11px] flex items-center justify-center gap-1"
+                        >
+                          <RefreshCw className="size-3" />
+                          Request Revision
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -843,6 +1084,7 @@ export function AetherStudio() {
           <div className="p-2.5 border-t border-border bg-background shrink-0">
             <div className="relative flex items-center">
               <input
+                ref={chatInputRef}
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
