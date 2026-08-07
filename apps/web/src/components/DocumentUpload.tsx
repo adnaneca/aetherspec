@@ -49,6 +49,8 @@ export function DocumentUpload({ projectId, onUploaded }: DocumentUploadProps) {
         };
         setUploadedFiles((prev) => [...prev, uploaded]);
         onUploaded?.(uploaded);
+        // Also refresh the attachments list in parent Studio
+        window.dispatchEvent(new CustomEvent('aetherspec:attachmentUploaded', { detail: uploaded }));
       } catch (err) {
         setError((err as Error).message);
       }

@@ -100,7 +100,14 @@
     "uploadDocs": "Upload source docs",
     "uploading": "Uploading…",
     "uploadsBucket": "uploads/ · MinIO bucket: {{bucket}}",
-    "step": "Step {{num}}"
+    "step": "Step {{num}}",
+    "inputDocuments": "Input Documents",
+    "noInputDocuments": "No source docs uploaded yet.",
+    "backToStep": "Back to Step",
+    "inputDocumentPreview": "Input Document Preview",
+    "download": "Download",
+    "downloadToView": "Preview not available · download to view",
+    "previewNotAvailable": "Preview is not available for {{name}}."
   },
   "userSettings": {
     "title": "User Settings & Studio Preferences",

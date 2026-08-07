@@ -10,6 +10,9 @@ import {
   getStepContent,
   patchStep,
   approveStep,
+  getAttachments,
+  downloadAttachment,
+  type Attachment,
 } from '../lib/api';
 import { streamChat } from '../lib/chat-stream';
 import { MermaidRenderer } from './MermaidRenderer';
@@ -29,6 +32,9 @@ import {
   User,
   ArrowLeft,
   Loader2,
+  ChevronDown,
+  ChevronRight,
+  Download,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 
@@ -57,6 +63,14 @@ const fileNameForDocType = (dt: string) => {
   return 'TC-001.md';
 };
 
+const formatBytes = (bytes: number) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`;
+};
+
 // ── Component ──
 
 export function AetherStudio() {
@@ -79,6 +93,12 @@ export function AetherStudio() {
   const [viewMode, setViewMode] = useState<'source' | 'split' | 'preview'>('preview');
   const [activeAgent, setActiveAgent] = useState<string>(agentForDocType(docType || 'brs'));
 
+  // Input documents state
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [showInputDocs, setShowInputDocs] = useState(true);
+  const [activeInputDoc, setActiveInputDoc] = useState<{ id: string; content: string; name: string; mimeType?: string } | null>(null);
+  const [loadingInputDoc, setLoadingInputDoc] = useState(false);
+
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -86,6 +106,13 @@ export function AetherStudio() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // ── Load project + documents ──
+  const loadAttachments = useCallback(() => {
+    if (!projectId) return;
+    getAttachments(projectId)
+      .then((atts) => setAttachments(atts.filter((a) => a.folder === 'input')))
+      .catch((err) => console.error('Failed to load attachments:', err));
+  }, [projectId]);
+
   useEffect(() => {
     if (!projectId) {
       setLoading(false);
@@ -114,7 +141,16 @@ export function AetherStudio() {
       .finally(() => {
         setLoading(false);
       });
-  }, [projectId, docType]);
+
+    loadAttachments();
+  }, [projectId, docType, loadAttachments]);
+
+  // Refresh attachments list when a new file is uploaded
+  useEffect(() => {
+    const handler = () => loadAttachments();
+    window.addEventListener('aetherspec:attachmentUploaded', handler);
+    return () => window.removeEventListener('aetherspec:attachmentUploaded', handler);
+  }, [loadAttachments]);
 
   // ── Load step content when step or document changes ──
   useEffect(() => {
@@ -190,6 +226,7 @@ export function AetherStudio() {
     const doc = documents.find((d) => d.docType === newDocType);
     if (doc) {
       setActiveAgent(agentForDocType(newDocType));
+      setActiveInputDoc(null);
       void navigate({
         to: '/studio',
         search: { project: projectId, doc: newDocType, step: 1 },
@@ -199,10 +236,29 @@ export function AetherStudio() {
 
   // ── Click a step in the sidebar ──
   const handleStepClick = (stepNum: number) => {
+    setActiveInputDoc(null);
     void navigate({
       to: '/studio',
       search: { project: projectId, doc: docType, step: stepNum },
     });
+  };
+
+  // ── View an input document ──
+  const handleInputDocClick = async (att: Attachment) => {
+    setLoadingInputDoc(true);
+    setActiveInputDoc(null);
+    try {
+      const data = await downloadAttachment(att.id);
+      setActiveInputDoc({ id: att.id, ...data });
+    } catch (err) {
+      console.error('Failed to load input document:', err);
+    } finally {
+      setLoadingInputDoc(false);
+    }
+  };
+
+  const handleBackToStep = () => {
+    setActiveInputDoc(null);
   };
 
   // ── Agent chat: send message ──
@@ -364,6 +420,7 @@ export function AetherStudio() {
 
   const activeStepNum = activeStep?.stepNumber || (typeof stepId === 'number' ? stepId : Number(stepId) || 1);
   const fileName = fileNameForDocType(docType || 'brs');
+  const isMarkdownInputDoc = activeInputDoc && /\.(md|txt)$/i.test(activeInputDoc.name);
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden font-sans">
@@ -480,6 +537,41 @@ export function AetherStudio() {
             ))}
           </div>
 
+          {/* Input Documents */}
+          <div className="border-b border-border">
+            <button
+              onClick={() => setShowInputDocs((v) => !v)}
+              className="w-full p-2 font-mono text-[10px] uppercase text-muted-foreground tracking-wider flex items-center justify-between hover:bg-accent transition-colors"
+            >
+              <span>{t('studio.inputDocuments')}</span>
+              <span className="flex items-center gap-1">
+                <span className="text-foreground font-bold">{attachments.length}</span>
+                {showInputDocs ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+              </span>
+            </button>
+
+            {showInputDocs && (
+              <div className="px-2 pb-2 space-y-1 text-xs font-mono">
+                {attachments.length === 0 && (
+                  <div className="text-muted-foreground text-[10px] px-2 py-1">{t('studio.noInputDocuments')}</div>
+                )}
+                {attachments.map((att) => (
+                  <button
+                    key={att.id}
+                    onClick={() => handleInputDocClick(att)}
+                    className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded cursor-pointer ${
+                      activeInputDoc?.name === att.name ? 'bg-primary/20 text-foreground font-semibold' : 'text-foreground hover:bg-accent'
+                    }`}
+                  >
+                    <FileText className="size-3.5 text-muted-foreground shrink-0" />
+                    <span className="truncate flex-1">{att.name}</span>
+                    <span className="text-[9px] text-muted-foreground shrink-0">{formatBytes(att.size ?? 0)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Template Step Stepper */}
           <div className="p-2 font-mono text-[10px] uppercase text-muted-foreground tracking-wider flex items-center justify-between border-b border-border">
             <span>{t('studio.templateStepper')}</span>
@@ -530,67 +622,127 @@ export function AetherStudio() {
           {/* Step Status Banner */}
           <div className="px-4 py-2 bg-card border-b border-border flex items-center justify-between text-xs shrink-0">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-foreground font-bold">{t('studio.step', { num: activeStepNum })}:</span>
-              <span className="font-bold text-foreground">{activeStep?.stepName || '—'}</span>
-              <span className={`font-mono text-[10px] px-2 py-0.5 rounded font-semibold ${
-                activeStep?.status === 'SIGNED_OFF'
-                  ? 'bg-status-approved/20 text-status-approved border border-status-approved/30'
-                  : activeStep?.status === 'HAS_FINDINGS'
-                  ? 'bg-status-review/20 text-status-review border border-status-review/30'
-                  : activeStep?.status === 'IN_PROGRESS'
-                  ? 'bg-status-signature/20 text-status-signature border border-status-signature/30'
-                  : 'bg-muted text-muted-foreground'
-              }`}>
-                {activeStep?.status?.replace(/_/g, ' ') || 'NOT STARTED'}
-              </span>
+              {activeInputDoc ? (
+                <>
+                  <FileText className="size-3.5 text-muted-foreground" />
+                  <span className="font-bold text-foreground">{activeInputDoc.name}</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">{activeInputDoc.mimeType}</span>
+                </>
+              ) : (
+                <>
+                  <span className="font-mono text-foreground font-bold">{t('studio.step', { num: activeStepNum })}:</span>
+                  <span className="font-bold text-foreground">{activeStep?.stepName || '—'}</span>
+                  <span className={`font-mono text-[10px] px-2 py-0.5 rounded font-semibold ${
+                    activeStep?.status === 'SIGNED_OFF'
+                      ? 'bg-status-approved/20 text-status-approved border border-status-approved/30'
+                      : activeStep?.status === 'HAS_FINDINGS'
+                      ? 'bg-status-review/20 text-status-review border border-status-review/30'
+                      : activeStep?.status === 'IN_PROGRESS'
+                      ? 'bg-status-signature/20 text-status-signature border border-status-signature/30'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {activeStep?.status?.replace(/_/g, ' ') || 'NOT STARTED'}
+                  </span>
+                </>
+              )}
             </div>
+
+            {activeInputDoc && (
+              <button
+                onClick={handleBackToStep}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border border-border bg-background text-foreground hover:bg-accent transition-colors"
+              >
+                <ArrowLeft className="size-3" />
+                {t('studio.backToStep')}
+              </button>
+            )}
           </div>
 
           {/* Editor / Preview Area */}
           <div className="flex-1 flex overflow-hidden">
-            {/* Source Editor */}
-            {(viewMode === 'source' || viewMode === 'split') && (
-              <div className={`h-full flex flex-col ${viewMode === 'split' ? 'w-1/2 border-r border-border' : 'w-full'}`}>
-                <div className="px-3 py-1 bg-card border-b border-border text-[10px] font-mono text-muted-foreground flex items-center justify-between shrink-0">
-                  <span>SOURCE EDITOR</span>
-                  <span>UTF-8 · Markdown</span>
-                </div>
-                <textarea
-                  value={stepContent}
-                  onChange={(e) => setStepContent(e.target.value)}
-                  className="w-full flex-1 p-4 bg-background text-foreground font-mono text-xs outline-none resize-none leading-relaxed border-none"
-                  placeholder={t('studio.contentPlaceholder')}
-                />
-              </div>
-            )}
-
-            {/* Preview Pane */}
-            {(viewMode === 'preview' || viewMode === 'split') && (
-              <div className={`h-full flex flex-col ${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-hidden`}>
+            {activeInputDoc ? (
+              <div className="flex-1 flex flex-col h-full overflow-hidden">
                 <div className="px-3 py-1 bg-card border-b border-border text-[10px] font-mono text-muted-foreground flex items-center justify-between shrink-0">
                   <span className="flex items-center gap-1.5 text-foreground font-semibold">
-                    <Eye className="size-3" /> LIVE PREVIEW
+                    <Eye className="size-3" /> {t('studio.inputDocumentPreview')}
                   </span>
-                  <span>Markdown + Mermaid</span>
+                  {!isMarkdownInputDoc && <span>{t('studio.downloadToView')}</span>}
                 </div>
                 <div className="flex-1 p-6 overflow-y-auto">
-                  {stepContent ? (
+                  {loadingInputDoc ? (
+                    <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                      <Loader2 className="size-4 animate-spin mr-2" /> {t('common.loading')}
+                    </div>
+                  ) : isMarkdownInputDoc ? (
                     <div className="prose-aether max-w-none text-sm leading-relaxed text-foreground space-y-4">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                        {stepContent}
+                        {activeInputDoc.content}
                       </ReactMarkdown>
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                      <div className="text-center">
+                      <div className="text-center space-y-3">
                         <FileText className="size-12 mx-auto mb-3 opacity-30" />
-                        <p>{t('studio.noContent')}</p>
-                        <p className="text-[10px] mt-1">{t('studio.noContentHint')}</p>
+                        <p>{t('studio.previewNotAvailable', { name: activeInputDoc.name })}</p>
+                        <a
+                          href={`${import.meta.env.VITE_GATEWAY_API_URL || 'https://api.aetherspec.ai'}/api/attachment/${activeInputDoc.id}`}
+                          download
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90"
+                        >
+                          <Download className="size-3" /> {t('studio.download')}
+                        </a>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
+            ) : (
+              <>
+                {/* Source Editor */}
+                {(viewMode === 'source' || viewMode === 'split') && (
+                  <div className={`h-full flex flex-col ${viewMode === 'split' ? 'w-1/2 border-r border-border' : 'w-full'}`}>
+                    <div className="px-3 py-1 bg-card border-b border-border text-[10px] font-mono text-muted-foreground flex items-center justify-between shrink-0">
+                      <span>SOURCE EDITOR</span>
+                      <span>UTF-8 · Markdown</span>
+                    </div>
+                    <textarea
+                      value={stepContent}
+                      onChange={(e) => setStepContent(e.target.value)}
+                      className="w-full flex-1 p-4 bg-background text-foreground font-mono text-xs outline-none resize-none leading-relaxed border-none"
+                      placeholder={t('studio.contentPlaceholder')}
+                    />
+                  </div>
+                )}
+
+                {/* Preview Pane */}
+                {(viewMode === 'preview' || viewMode === 'split') && (
+                  <div className={`h-full flex flex-col ${viewMode === 'split' ? 'w-1/2' : 'w-full'} overflow-hidden`}>
+                    <div className="px-3 py-1 bg-card border-b border-border text-[10px] font-mono text-muted-foreground flex items-center justify-between shrink-0">
+                      <span className="flex items-center gap-1.5 text-foreground font-semibold">
+                        <Eye className="size-3" /> LIVE PREVIEW
+                      </span>
+                      <span>Markdown + Mermaid</span>
+                    </div>
+                    <div className="flex-1 p-6 overflow-y-auto">
+                      {stepContent ? (
+                        <div className="prose-aether max-w-none text-sm leading-relaxed text-foreground space-y-4">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                            {stepContent}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                          <div className="text-center">
+                            <FileText className="size-12 mx-auto mb-3 opacity-30" />
+                            <p>{t('studio.noContent')}</p>
+                            <p className="text-[10px] mt-1">{t('studio.noContentHint')}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

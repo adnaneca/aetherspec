@@ -100,7 +100,14 @@
     "uploadDocs": "Kaynak belgeleri yükle",
     "uploading": "Yükleniyor…",
     "uploadsBucket": "uploads/ · MinIO bucket: {{bucket}}",
-    "step": "Adım {{num}}"
+    "step": "Adım {{num}}",
+    "inputDocuments": "Girdi Belgeleri",
+    "noInputDocuments": "Henüz kaynak belgesi yüklenmemiş.",
+    "backToStep": "Adıma Dön",
+    "inputDocumentPreview": "Girdi Belgesi Önizlemesi",
+    "download": "İndir",
+    "downloadToView": "Önizleme yok · görüntülemek için indirin",
+    "previewNotAvailable": "{{name}} için önizleme yapılamıyor."
   },
   "userSettings": {
     "title": "Kullanıcı Ayarları & Studio Tercihleri",

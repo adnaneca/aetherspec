@@ -155,3 +155,29 @@ export async function createDocument(data: { projectId: string; docType: string;
   if (!resp.ok) throw new Error(`Failed to create document: ${resp.status}`);
   return resp.json();
 }
+
+export interface Attachment {
+  id: string;
+  projectId: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+  folder: string;
+  minioPath: string;
+  href: string;
+  revision?: number;
+}
+
+export async function getAttachments(projectId: string): Promise<Attachment[]> {
+  const resp = await fetch(`${GATEWAY_URL}/api/attachment?projectId=${encodeURIComponent(projectId)}`);
+  if (!resp.ok) throw new Error(`Failed to fetch attachments: ${resp.status}`);
+  return resp.json();
+}
+
+export async function downloadAttachment(attachmentId: string): Promise<{ content: string; name: string; mimeType?: string }> {
+  const resp = await fetch(`${GATEWAY_URL}/api/attachment/${encodeURIComponent(attachmentId)}`);
+  if (!resp.ok) throw new Error(`Failed to download attachment: ${resp.status}`);
+  const name = resp.headers.get('Content-Disposition')?.match(/filename="?([^";]+)"?/)?.[1] || 'download';
+  const content = await resp.text();
+  return { content, name, mimeType: resp.headers.get('Content-Type') || undefined };
+}
