@@ -68,6 +68,9 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	attachmentsHandler.Register(app)
 
 	// Template routes (read from private MinIO templates bucket)
+	// NOTE: Intentionally registered outside the auth-protected /api group.
+	// Templates are read-only reference content and are safe to expose publicly.
+	// Auth will be added later when real Keycloak JWT validation is wired (PE-003).
 	templatesHandler := templates.NewHandler(minioClient, cfg, log)
 	templatesHandler.Register(app)
 
