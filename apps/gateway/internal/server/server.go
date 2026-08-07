@@ -37,8 +37,11 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 		Format: "${time} ${status} - ${method} ${path}\n",
 	}))
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:  "*",
-		ExposeHeaders: "Content-Disposition, Content-Type",
+		AllowOrigins:     cfg.Gateway.AllowOrigins,
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowCredentials: true,
+		ExposeHeaders:    "Content-Disposition, Content-Type",
 		// In production, restrict to the web app origin per customer.
 	}))
 

@@ -18,10 +18,11 @@ type Config struct {
 }
 
 type GatewayConfig struct {
-	Host     string
-	Port     string
-	Env      string
-	LogLevel string
+	Host         string
+	Port         string
+	Env          string
+	LogLevel     string
+	AllowOrigins string
 }
 
 type KeycloakConfig struct {
@@ -66,10 +67,11 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		Gateway: GatewayConfig{
-			Host:     getEnv("GATEWAY_HOST", "0.0.0.0"),
-			Port:     getEnv("GATEWAY_PORT", "3000"),
-			Env:      getEnv("GATEWAY_ENV", "development"),
-			LogLevel: getEnv("GATEWAY_LOG_LEVEL", "info"),
+			Host:         getEnv("GATEWAY_HOST", "0.0.0.0"),
+			Port:         getEnv("GATEWAY_PORT", "3000"),
+			Env:          getEnv("GATEWAY_ENV", "development"),
+			LogLevel:     getEnv("GATEWAY_LOG_LEVEL", "info"),
+			AllowOrigins: getEnv("GATEWAY_ALLOW_ORIGINS", "https://aetherspec.ai,https://app.aetherspec.ai"),
 		},
 		Keycloak: KeycloakConfig{
 			URL:     getEnv("KEYCLOAK_URL", "http://localhost:8081"),
