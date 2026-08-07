@@ -45,7 +45,7 @@ export async function fetchAdminConfig(gatewayUrl: string): Promise<AdminSetting
     return data;
   } catch (err) {
     logger.warn('failed to fetch admin config from gateway, using env fallback', err);
-    return {
+    const fallback: AdminSettings = {
       providers: [
         {
           id: 'ollama',
@@ -65,6 +65,8 @@ export async function fetchAdminConfig(gatewayUrl: string): Promise<AdminSetting
       internetAccessPolicy: 'allow',
       activeSkills: [],
     };
+    cachedConfig = fallback;
+    return fallback;
   }
 }
 
