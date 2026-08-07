@@ -10,6 +10,7 @@ import (
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/documents"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/merge"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/projects"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/templates"
@@ -81,6 +82,10 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	// Generation routes (auth-protected)
 	genHandler := generation.NewHandler(pool, minioClient, cfg, log)
 	genHandler.Register(api)
+
+	// Merge routes (auth-protected)
+	mergeHandler := merge.NewHandler(pool, minioClient, cfg, log)
+	mergeHandler.Register(api)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())

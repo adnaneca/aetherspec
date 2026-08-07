@@ -117,7 +117,11 @@
     "hitlReview": "HITL İnceleme",
     "ready": "Hazır",
     "skillGenerating": "generate-{{docType}}-section",
-    "skillValidating": "validate-{{docType}}-section"
+    "skillValidating": "validate-{{docType}}-section",
+    "completeBRS": "BRS'yi Tamamla",
+    "merging": "Birleştiriliyor…",
+    "mergeSuccess": "BRS birleştirildi: {{sections}} bölüm, {{ids}} izlenebilir kimlik. Dosyalar MinIO'ya kaydedildi.",
+    "brsCompleted": "BRS TAMAMLANDI"
   },
   "userSettings": {
     "title": "Kullanıcı Ayarları & Studio Tercihleri",

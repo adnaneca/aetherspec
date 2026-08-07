@@ -10,6 +10,7 @@ import {
   getStepContent,
   patchStep,
   approveStep,
+  mergeDocument,
   getAttachments,
   downloadAttachment,
   generateSection,
@@ -108,6 +109,8 @@ export function AetherStudio() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [, setMergeResult] = useState<{ sections: number; ids: number; files: Record<string, string> } | null>(null);
 
   // UI state
   const [viewMode, setViewMode] = useState<'source' | 'split' | 'preview'>('preview');
@@ -240,6 +243,34 @@ export function AetherStudio() {
       console.error('Approve failed:', err);
     } finally {
       setApproving(false);
+    }
+  };
+
+  // ── Merge all approved sections into final BRS ──
+  const handleMerge = async () => {
+    if (!activeDoc) return;
+    setMerging(true);
+    setMergeResult(null);
+    try {
+      const result = await mergeDocument(activeDoc.id);
+      setMergeResult(result);
+      setChatMessages((prev) => [...prev, {
+        id: `merge-${Date.now()}`,
+        sender: 'system',
+        content: t('studio.mergeSuccess', { sections: result.sections, ids: result.ids }),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+      setActiveDoc((prev) => prev ? { ...prev, status: 'APPROVED' } : prev);
+    } catch (err) {
+      console.error('Merge failed:', err);
+      setChatMessages((prev) => [...prev, {
+        id: `merge-error-${Date.now()}`,
+        sender: 'system',
+        content: `Merge failed: ${(err as Error).message}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } finally {
+      setMerging(false);
     }
   };
 
@@ -567,6 +598,11 @@ export function AetherStudio() {
 
   const activeStepNum = activeStep?.stepNumber || (typeof stepId === 'number' ? stepId : Number(stepId) || 1);
   const fileName = fileNameForDocType(docType || 'brs');
+  const allCoreSignedOff =
+    docType === 'brs' &&
+    activeDoc?.status !== 'APPROVED' &&
+    steps.length > 0 &&
+    steps.every((s) => s.status === 'SIGNED_OFF' || s.stepNumber >= 11);
   const isMarkdownInputDoc =
     activeInputDoc &&
     (/\.(md|txt)$/i.test(activeInputDoc.name) ||
@@ -677,6 +713,16 @@ export function AetherStudio() {
             <CheckCircle2 className="size-3" />
             {approving ? t('studio.approving') : t('studio.approve')}
           </button>
+          {allCoreSignedOff && (
+            <button
+              onClick={handleMerge}
+              disabled={merging}
+              className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground border border-primary px-2.5 py-0.5 rounded font-semibold text-[11px] transition-colors disabled:opacity-50"
+            >
+              {merging ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+              {merging ? t('studio.merging') : t('studio.completeBRS')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -792,17 +838,17 @@ export function AetherStudio() {
           {/* Step Status Banner */}
           <div className="px-4 py-2 bg-card border-b border-border flex items-center justify-between text-xs shrink-0">
             <div className="flex items-center gap-2">
-              {activeInputDoc ? (
-                <>
-                  <FileText className="size-3.5 text-muted-foreground" />
-                  <span className="font-bold text-foreground">{activeInputDoc.name}</span>
-                  <span className="text-[10px] text-muted-foreground font-mono">{activeInputDoc.mimeType}</span>
-                </>
-              ) : (
-                <>
-                  <span className="font-mono text-foreground font-bold">{t('studio.step', { num: activeStepNum })}:</span>
-                  <span className="font-bold text-foreground">{activeStep?.stepName || '—'}</span>
-                  <span className={`font-mono text-[10px] px-2 py-0.5 rounded font-semibold ${
+            {activeInputDoc ? (
+              <>
+                <FileText className="size-3.5 text-muted-foreground" />
+                <span className="font-bold text-foreground">{activeInputDoc.name}</span>
+                <span className="text-[10px] text-muted-foreground font-mono">{activeInputDoc.mimeType}</span>
+              </>
+            ) : (
+              <>
+                <span className="font-mono text-foreground font-bold">{t('studio.step', { num: activeStepNum })}:</span>
+                <span className="font-bold text-foreground">{activeStep?.stepName || '—'}</span>
+                <span className={`font-mono text-[10px] px-2 py-0.5 rounded font-semibold ${
                     activeStep?.status === 'SIGNED_OFF'
                       ? 'bg-status-approved/20 text-status-approved border border-status-approved/30'
                       : activeStep?.status === 'HAS_FINDINGS'
@@ -811,10 +857,15 @@ export function AetherStudio() {
                       ? 'bg-status-signature/20 text-status-signature border border-status-signature/30'
                       : 'bg-muted text-muted-foreground'
                   }`}>
-                    {activeStep?.status?.replace(/_/g, ' ') || 'NOT STARTED'}
+                  {activeStep?.status?.replace(/_/g, ' ') || 'NOT STARTED'}
+                </span>
+                {activeDoc?.status === 'APPROVED' && (
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded font-semibold bg-status-approved/20 text-status-approved border border-status-approved/30">
+                    {t('studio.brsCompleted')}
                   </span>
-                </>
-              )}
+                )}
+              </>
+            )}
             </div>
 
             {activeInputDoc && (

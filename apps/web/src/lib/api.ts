@@ -138,6 +138,15 @@ export async function patchStep(docId: string, stepId: number, patch: { content?
   return resp.json();
 }
 
+export async function mergeDocument(docId: string): Promise<{ status: string; sections: number; ids: number; files: Record<string, string> }> {
+  const resp = await fetch(`${GATEWAY_URL}/api/document/${docId}/merge`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!resp.ok) throw new Error(`Merge failed: ${resp.status}`);
+  return resp.json();
+}
+
 export async function approveStep(docId: string, stepId: number): Promise<{ status: string; nextStep: number }> {
   const resp = await fetch(`${GATEWAY_URL}/api/document/${docId}/step/${stepId}/approve`, {
     method: 'POST',
