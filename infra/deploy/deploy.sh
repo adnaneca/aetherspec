@@ -52,6 +52,11 @@ cd ..
 echo "📁 Deploying web static files..."
 sudo cp -r web/dist/* /var/www/aetherspec/
 
+echo "🔄 Ensuring environment file..."
+if [ ! -f infra/deploy/env/gateway.env ]; then
+  sudo cp infra/deploy/env/.env.prod.example infra/deploy/env/gateway.env
+fi
+
 echo "🔄 Restarting services..."
 sudo systemctl daemon-reload
 sudo systemctl restart aetherspec-gateway
