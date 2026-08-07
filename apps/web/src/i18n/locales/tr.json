@@ -71,7 +71,13 @@
     "title": "Aether Studio",
     "subtitle": "{{project}} · {{doc}} · Adım {{step}}",
     "placeholder": "Tam Aether Studio (markdown editör + önizleme + ajan sohbeti) bir sonraki epik. Backend hazır — projeler, doküman adımları ve MinIO içeriği API üzerinden erişilebilir.",
-    "selectProject": "Başlamak için bir proje seçin"
+    "selectProject": "Başlamak için bir proje seçin",
+    "steps": "{{doc}} Adımları",
+    "noSteps": "Bu doküman için adım bulunmuyor.",
+    "save": "Kaydet",
+    "approve": "Onayla",
+    "contentPlaceholder": "Bu adım için içeriği yazmaya başlayın veya yapıştırın…",
+    "startHint": "Adım başlatılmamış. Başlamak için yukarıya içerik yazıp Kaydet'e, hazır olduğunuzda Onayla'ya basın."
   },
   "userSettings": {
     "title": "Kullanıcı Ayarları & Studio Tercihleri",

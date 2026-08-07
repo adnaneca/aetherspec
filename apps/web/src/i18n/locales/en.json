@@ -71,7 +71,13 @@
     "title": "Aether Studio",
     "subtitle": "{{project}} · {{doc}} · Step {{step}}",
     "placeholder": "The full Aether Studio (markdown editor + preview + agent chat) is the next epic. The backend is ready — projects, document steps, and MinIO content are accessible via the API.",
-    "selectProject": "Select a project to start"
+    "selectProject": "Select a project to start",
+    "steps": "{{doc}} Steps",
+    "noSteps": "No steps available for this document.",
+    "save": "Save",
+    "approve": "Approve",
+    "contentPlaceholder": "Start writing or paste content for this step…",
+    "startHint": "Step is not started. Type content above and click Save to begin, then Approve when ready."
   },
   "userSettings": {
     "title": "User Settings & Studio Preferences",
