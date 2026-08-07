@@ -8,6 +8,8 @@ import {
   getStoredPersonaRole,
   setStoredPersonaRole,
 } from '../lib/persona-resolver';
+import { getProjects } from '../lib/api';
+import { getStoredProjectId, setStoredProjectId } from '../lib/project-storage';
 import { INITIAL_PERSONAS } from '../data/mockData';
 import type { Persona, PersonaRole, DocType, SDLCProject } from '../types';
 
@@ -27,8 +29,18 @@ export function ProjectHubPage() {
     return availablePersonas[0]?.id ?? INITIAL_PERSONAS[0].id;
   });
 
-  const [activeProjectId, setActiveProjectId] = useState('');
-  const [projects] = useState<SDLCProject[]>([]);
+  const [projects, setProjects] = useState<SDLCProject[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectIdState] = useState<string>(() => {
+    const stored = getStoredProjectId();
+    return stored || '';
+  });
+
+  const setActiveProjectId = (id: string) => {
+    setActiveProjectIdState(id);
+    if (id) setStoredProjectId(id);
+  };
 
   useEffect(() => {
     const stored = getStoredPersonaRole();
@@ -39,6 +51,23 @@ export function ProjectHubPage() {
       setActivePersonaRole(availablePersonas[0]?.id ?? INITIAL_PERSONAS[0].id);
     }
   }, [user, availablePersonas]);
+
+  useEffect(() => {
+    setLoadingProjects(true);
+    getProjects()
+      .then((data) => {
+        setProjects(data);
+        setProjectError(null);
+        // If nothing stored or stored project no longer exists, default to first.
+        const stored = getStoredProjectId();
+        const stillExists = data.some((p) => p.id === stored);
+        if (data.length > 0 && (!activeProjectId || !stillExists)) {
+          setActiveProjectId(data[0].id);
+        }
+      })
+      .catch((err) => setProjectError(err.message))
+      .finally(() => setLoadingProjects(false));
+  }, []);
 
   const activePersona =
     availablePersonas.find((p) => p.id === activePersonaRole) ??
@@ -52,13 +81,34 @@ export function ProjectHubPage() {
     setStoredPersonaRole(persona.id);
   };
 
+  const handleChangeProject = (projectId: string) => {
+    setActiveProjectId(projectId);
+  };
+
   const handleOpenStudio = (projectId: string, docType: DocType) => {
-    void navigate({ to: '/studio', search: { project: projectId, doc: docType, step: '1' } });
+    setActiveProjectId(projectId);
+    void navigate({ to: '/studio', search: { project: projectId, doc: docType, step: 1 } });
   };
 
   const handleOpenSignOff = () => {
     void navigate({ to: '/signoff' });
   };
+
+  if (loadingProjects) {
+    return (
+      <div className="min-h-screen bg-background text-foreground font-sans flex items-center justify-center">
+        <div className="text-muted-foreground text-sm">Loading projects…</div>
+      </div>
+    );
+  }
+
+  if (projectError) {
+    return (
+      <div className="min-h-screen bg-background text-foreground font-sans flex items-center justify-center">
+        <div className="text-destructive text-sm">Failed to load projects: {projectError}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans flex flex-col antialiased">
@@ -69,11 +119,12 @@ export function ProjectHubPage() {
         projects={projects}
         availablePersonas={availablePersonas}
         onChangePersona={handleChangePersona}
-        onChangeProject={setActiveProjectId}
+        onChangeProject={handleChangeProject}
       />
 
       <main className="flex-1">
         <ProjectHub
+          projects={projects}
           activeProjectId={activeProjectId}
           setActiveProjectId={setActiveProjectId}
           activePersona={activePersona}

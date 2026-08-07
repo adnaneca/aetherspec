@@ -9,7 +9,7 @@ export const Route = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     project: (search.project as string) || '',
     doc: (search.doc as string) || 'brs',
-    step: (search.step as string) || '1',
+    step: Number(search.step as string) || 1,
   }),
   component: () => (
     <AuthGuard>

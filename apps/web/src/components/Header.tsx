@@ -63,17 +63,18 @@ export function Header({
         <div className="relative">
           <button
             onClick={() => setShowProjectMenu(!showProjectMenu)}
-            className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
+            disabled={projects.length === 0}
+            className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <FolderKanban className="size-3.5 text-muted-foreground" />
-            <span className="font-semibold">{activeProject?.name || 'Select project'}</span>
+            <span className="font-semibold">{activeProject?.name || (projects.length ? 'Select project' : 'No projects')}</span>
             <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               {activeProject?.key || '-'}
             </span>
             <ChevronDown className="size-3 text-muted-foreground ml-1" />
           </button>
 
-          {showProjectMenu && (
+          {showProjectMenu && projects.length > 0 && (
             <div className="absolute left-0 mt-1.5 w-64 rounded-md border border-border bg-card shadow-2xl z-50 py-1 font-mono">
               <div className="px-3 py-1.5 text-[10px] text-muted-foreground uppercase tracking-wider border-b border-border">
                 Select Workspace Project
@@ -112,21 +113,23 @@ export function Header({
           {t('nav.projects')}
         </Link>
         <button
-          onClick={() =>
-            navigate({
+          onClick={() => {
+            const projectId = activeProject?.id;
+            if (!projectId) return;
+            void navigate({
               to: '/studio',
               search: {
-                project: activeProject?.id || '',
+                project: projectId,
                 doc: 'brs',
-                step: '1',
+                step: 1,
               },
-            })
-          }
+            });
+          }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${
             isActive('studio')
               ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
               : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-          }`}
+          } ${!activeProject ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <Wrench className="size-3.5" />
           {t('nav.studio')}

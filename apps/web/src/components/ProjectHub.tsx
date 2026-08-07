@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Persona, SDLCProject, DocType } from '../types';
 import {
   FolderKanban,
@@ -13,9 +13,10 @@ import {
   X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { getProjects, createProject } from '../lib/api';
+import { createProject, getProjects } from '../lib/api';
 
 interface ProjectHubProps {
+  projects: SDLCProject[];
   activeProjectId: string;
   setActiveProjectId: (id: string) => void;
   activePersona: Persona;
@@ -32,6 +33,7 @@ const statusColors: Record<string, string> = {
 };
 
 export function ProjectHub({
+  projects,
   activeProjectId,
   setActiveProjectId,
   activePersona,
@@ -39,10 +41,9 @@ export function ProjectHub({
   onOpenSignOff,
 }: ProjectHubProps) {
   const { t } = useTranslation();
-  const [projects, setProjects] = useState<SDLCProject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [newProject, setNewProject] = useState({
     name: '',
@@ -50,23 +51,6 @@ export function ProjectHub({
     description: '',
     targetDate: '2026-12-31',
   });
-  const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    getProjects()
-      .then((data) => {
-        setProjects(data);
-        if (data.length > 0 && !activeProjectId) {
-          setActiveProjectId(data[0].id);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, []);
 
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0];
 
@@ -75,35 +59,19 @@ export function ProjectHub({
     setCreating(true);
     try {
       const result = await createProject(newProject);
-      const updated = await getProjects();
-      setProjects(updated);
+      void getProjects();
+      // Notify parent to refresh list and select new project.
+      // For now we rely on the parent re-mounting or we can lift this later.
       setActiveProjectId(result.id);
       setShowNewModal(false);
       setNewProject({ name: '', key: '', description: '', targetDate: '2026-12-31' });
+      window.location.reload();
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setCreating(false);
     }
   };
-
-  if (loading) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="text-destructive text-sm">
-          {t('common.error')}: {error}
-        </div>
-      </div>
-    );
-  }
 
   if (projects.length === 0) {
     return (
@@ -123,7 +91,8 @@ export function ProjectHub({
             newProject={newProject}
             setNewProject={setNewProject}
             creating={creating}
-            onClose={() => setShowNewModal(false)}
+            error={error}
+            onClose={() => { setShowNewModal(false); setError(null); }}
             onCreate={handleCreateProject}
           />
         )}
@@ -321,7 +290,8 @@ export function ProjectHub({
           newProject={newProject}
           setNewProject={setNewProject}
           creating={creating}
-          onClose={() => setShowNewModal(false)}
+          error={error}
+          onClose={() => { setShowNewModal(false); setError(null); }}
           onCreate={handleCreateProject}
         />
       )}
@@ -335,11 +305,12 @@ interface NewProjectModalProps {
   newProject: { name: string; key: string; description: string; targetDate: string };
   setNewProject: (p: { name: string; key: string; description: string; targetDate: string }) => void;
   creating: boolean;
+  error: string | null;
   onClose: () => void;
   onCreate: () => void;
 }
 
-function NewProjectModal({ t, newProject, setNewProject, creating, onClose, onCreate }: NewProjectModalProps) {
+function NewProjectModal({ t, newProject, setNewProject, creating, error, onClose, onCreate }: NewProjectModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="bg-card border border-border p-6 rounded-xl w-full max-w-lg shadow-2xl">
@@ -355,6 +326,10 @@ function NewProjectModal({ t, newProject, setNewProject, creating, onClose, onCr
         <p className="text-xs text-muted-foreground mb-5">
           {t('projectHub.newProjectDesc')}
         </p>
+
+        {error && (
+          <div className="mb-4 text-destructive text-xs">{t('common.error')}: {error}</div>
+        )}
 
         <div className="space-y-3 text-xs">
           <div>

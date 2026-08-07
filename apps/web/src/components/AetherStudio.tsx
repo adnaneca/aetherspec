@@ -35,7 +35,7 @@ export function AetherStudio() {
         }
         return getDocumentSteps(doc.id).then((stepList) => {
           setSteps(stepList);
-          const stepNum = parseInt(stepId, 10) || 1;
+          const stepNum = typeof stepId === 'number' ? stepId : Number(stepId) || 1;
           const step = stepList.find((s) => s.stepNumber === stepNum) ?? stepList[0] ?? null;
           setActiveStep(step);
           if (step) {
@@ -135,9 +135,9 @@ export function AetherStudio() {
               <Link
                 key={step.stepNumber}
                 to="/studio"
-                search={{ project: projectId, doc: docType, step: String(step.stepNumber) }}
+                search={{ project: projectId, doc: docType, step: step.stepNumber }}
                 className={`block p-2 rounded-lg border text-xs ${
-                  String(step.stepNumber) === stepId
+                  step.stepNumber === stepId
                     ? 'border-primary/40 bg-primary/10 text-foreground'
                     : 'border-border bg-card text-muted-foreground hover:border-accent'
                 }`}
