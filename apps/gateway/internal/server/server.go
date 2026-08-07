@@ -6,6 +6,7 @@ import (
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/admin"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/agent"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/attachments"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/generation"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/documents"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
@@ -73,6 +74,10 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	// Auth will be added later when real Keycloak JWT validation is wired (PE-003).
 	templatesHandler := templates.NewHandler(minioClient, cfg, log)
 	templatesHandler.Register(app)
+
+	// Generation routes (auth-protected)
+	genHandler := generation.NewHandler(pool, minioClient, cfg, log)
+	genHandler.Register(api)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())

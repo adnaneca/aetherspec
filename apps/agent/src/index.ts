@@ -3,7 +3,7 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { buildMastra } from './mastra.js';
 import { fetchAdminConfig, getCachedAdminConfig } from './admin-config.js';
-import { runAgentStream, type ChatMessage } from './agent-runner.js';
+import { runAgentStream, type ChatMessage, AGENT_INSTRUCTIONS, buildGenerationPrompt, selfValidate } from './agent-runner.js';
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
@@ -123,6 +123,65 @@ const server = http.createServer(async (req, res) => {
           res.write(`data: ${JSON.stringify({ type: 'token', delta })}\n\n`);
         },
         onDone: (tokensUsed) => {
+          res.write(`data: ${JSON.stringify({ type: 'done', tokensUsed })}\n\n`);
+          res.end();
+        },
+        onError: (error) => {
+          res.write(`data: ${JSON.stringify({ type: 'error', error })}\n\n`);
+          res.end();
+        },
+      },
+    );
+    return;
+  }
+
+  // ── Agent generate endpoint (BRS section generation) ──
+  // POST /agents/:agentId/generate
+  // Body: { sectionId, sectionName, sectionGuide, dependencies, inputDocs, qualityChecks, existingDraft, projectId, docId, minioPath }
+  // Response: SSE stream (status → tokens → findings → done)
+
+  const generateMatch = url.match(/^\/agents\/([^\/]+)\/generate$/);
+  if (generateMatch && method === 'POST') {
+    const agentId = generateMatch[1];
+
+    let body = '';
+    for await (const chunk of req) {
+      body += chunk;
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      return;
+    }
+
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      'connection': 'keep-alive',
+      'access-control-allow-origin': '*',
+    });
+
+    res.write(`data: ${JSON.stringify({ type: 'status', step: 'generating', message: `Generating Section ${parsed.sectionId}: ${parsed.sectionName}...` })}\n\n`);
+
+    const systemPrompt = AGENT_INSTRUCTIONS[agentId] || AGENT_INSTRUCTIONS['general'];
+    const userPrompt = buildGenerationPrompt(parsed);
+
+    await runAgentStream(
+      { message: userPrompt, agentId, history: [{ role: 'system', content: systemPrompt }] },
+      {
+        onToken: (delta) => {
+          res.write(`data: ${JSON.stringify({ type: 'token', delta })}\n\n`);
+        },
+        onDone: (tokensUsed) => {
+          res.write(`data: ${JSON.stringify({ type: 'status', step: 'validating', message: 'Running quality checks...' })}\n\n`);
+
+          const findings = selfValidate(parsed.sectionId, parsed.sectionName, parsed.qualityChecks);
+          res.write(`data: ${JSON.stringify({ type: 'findings', findings })}\n\n`);
+
           res.write(`data: ${JSON.stringify({ type: 'done', tokensUsed })}\n\n`);
           res.end();
         },

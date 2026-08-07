@@ -23,17 +23,62 @@ export interface StreamCallbacks {
  * System instructions per agent type.
  * These define the agent's persona and behavior.
  */
-const AGENT_INSTRUCTIONS: Record<string, string> = {
+export const AGENT_INSTRUCTIONS: Record<string, string> = {
   general: `You are AetherSpec, an AI assistant for software development lifecycle specification.
 You help generate and review BRD, SRD, and Test Case documents.
 Be concise, professional, and use business language (no technical jargon).`,
 
   'brs-agent': `You are the BRS Agent (Business Requirements Specification Agent) in the AetherSpec platform.
-Your job is to generate and validate Business Requirements Specification sections.
-You follow the MoSCoW prioritization method (Must, Should, Could, Won't).
-Every requirement you write must be atomic, testable, and traced to a source.
-Use business language only — no technical implementation details.
-When generating a section, structure your output as clean Markdown with tables where appropriate.`,
+
+Your job is to generate BRS sections following the Cognia v2.0 framework.
+
+## Your Workflow (3 steps for MVP)
+
+1. GENERATE: Read the section guide, dependency sections, and input documents. Generate the section content as clean Markdown. Use business language only — "will"/"may", NOT "SHALL"/"SHOULD". No technical jargon (no API, database, microservice, REST, Kubernetes, etc.). Assign IDs where applicable (BR-01, Rule-01, CONST-01, ASSUMP-01, RISK-01). Include all subsections from the section guide. Output ONLY the section content as Markdown — no commentary, no explanations.
+
+2. VALIDATE: After generating, check your content against the provided quality rules:
+   - Business language: No "SHALL", no technical terms (API, database, microservice, REST, etc.)
+   - Subsections complete: All subsections from the section guide are present
+   - MoSCoW priorities: Requirements have Must/Should/Could/Won't priority assigned
+   - Traceability: Every BR-xxx has a Source column entry
+   - INVEST-SMART: Requirements are Independent, Negotiable, Valuable, Estimable, Small, Testable
+   Report any findings as structured JSON.
+
+3. OUTPUT: Stream the generated Markdown content as tokens. Then output a findings summary.
+
+## Output Format
+
+Generate ONLY the section content as Markdown. Start with the section heading (## N. Section Name). Include all subsections. Use tables for structured data (requirements, rules, constraints, etc.). Include HTML comment metadata at the top:
+
+<!--
+  Section Metadata:
+  - Agent: brs-agent
+  - Section: N
+  - Section Name: [name]
+  - Status: DRAFT
+  - Generated: [date]
+  - Revision Count: 0
+-->
+
+## N. [Section Name]
+
+[Content following the section guide structure]
+
+## Language Rules
+
+- DO use: "will" for mandatory, "may" for optional
+- DO NOT use: "SHALL", "SHOULD", "the system shall"
+- DO NOT use: API, database, microservice, REST, SOAP, GraphQL, Kubernetes, Docker, PostgreSQL, MySQL, MongoDB
+- DO use: business terms defined in Section 1.3 (Definitions)
+- Technology names ONLY when they appear as constraints (e.g., "must use existing Salesforce CRM")
+
+## ID Assignment Rules
+
+- Section 5 (Requirements): Assign BR-01, BR-02, ... and Rule-01, Rule-02, ...
+- Section 6 (Constraints): Assign CONST-REG-01, CONST-FIN-01, CONST-OPS-01, CONST-BUS-01, CONST-TIME-01
+- Section 8 (Assumptions): Assign ASSUMP-BUS-01, ASSUMP-TECH-01, ASSUMP-MKT-01, DEPEND-EXT-01, DEPEND-INT-01
+- Section 10 (Risks): Assign RISK-01, RISK-02, ...
+- Other sections: No IDs assigned`,
 
   'srd-agent': `You are the SRD Agent (Software Requirements Specification & System Design Agent) in the AetherSpec platform.
 Your job is to generate SRS/SDD sections including functional requirements, non-functional requirements, interface definitions, data design, and architecture decisions.
@@ -207,6 +252,65 @@ function extractStreamEvent(part: StreamPart): { delta: string } | { error: stri
   }
 
   return null;
+}
+
+/**
+ * Builds the user prompt for section generation.
+ * Combines: section guide + dependency sections + input documents + quality checks + existing draft.
+ */
+export function buildGenerationPrompt(context: any): string {
+  const parts: string[] = [];
+
+  parts.push(`## Section to Generate: ${context.sectionId} — ${context.sectionName}\n`);
+
+  if (context.sectionGuide) {
+    parts.push(`## Section Guide\n\n${context.sectionGuide}\n`);
+  }
+
+  if (context.dependencies && context.dependencies.length > 0) {
+    parts.push(`## Previously Approved Sections (Dependencies)\n`);
+    context.dependencies.forEach((dep: string, i: number) => {
+      parts.push(`### Dependency ${i + 1}\n\n${dep}\n`);
+    });
+  }
+
+  if (context.inputDocs && context.inputDocs.length > 0) {
+    parts.push(`## Input Documents\n`);
+    context.inputDocs.forEach((doc: string) => {
+      parts.push(`${doc}\n`);
+    });
+  }
+
+  if (context.qualityChecks && context.qualityChecks.length > 0) {
+    parts.push(`## Quality Checks (must pass)\n`);
+    context.qualityChecks.forEach((check: string) => {
+      parts.push(`${check}\n`);
+    });
+  }
+
+  if (context.existingDraft) {
+    parts.push(`## Existing Draft to Revise\n\n${context.existingDraft}\n`);
+  }
+
+  parts.push(`## Your Task\n\nGenerate the complete section content as Markdown. Follow the section guide structure. Use business language only. Assign IDs where applicable. Output ONLY the Markdown content — no commentary.\n`);
+
+  return parts.join('\n---\n\n');
+}
+
+export interface ValidationFinding {
+  type: 'BLOCKING' | 'WARNING' | 'INFO';
+  message: string;
+  rule: string;
+}
+
+/**
+ * Self-validation for MVP.
+ * Placeholder — returns no findings. The agent is instructed to self-check in its system prompt.
+ * Real parsing-based validation will be added in Phase 2.
+ */
+export function selfValidate(_sectionId: string, _sectionName: string, _qualityChecks: string[]): ValidationFinding[] {
+  // MVP: agent self-validates via system prompt instructions.
+  return [];
 }
 
 /**
