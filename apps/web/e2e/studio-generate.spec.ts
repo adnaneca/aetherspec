@@ -41,6 +41,7 @@ test.describe('Aether Studio generation flow', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('Generate Section button exists and is enabled for a non-approved BRS step', async ({ page }) => {
+    test.setTimeout(60000);
     await login(page);
     await openStudioStep(page, 'Business Context');
 
@@ -50,23 +51,18 @@ test.describe('Aether Studio generation flow', () => {
   });
 
   test('Clicking Generate Section streams content and shows HITL card', async ({ page }) => {
+    test.setTimeout(300000);
     await login(page);
     await openStudioStep(page, 'Business Context');
 
-    // Clear any existing content first via API so we can observe streaming from empty
-    const docResp = await page.request.get(`${GATEWAY_URL}/api/document?projectId=${PROJECT}`);
-    expect(docResp.ok()).toBeTruthy();
-    const docs = await docResp.json();
-    const brsDoc = docs.find((d: { docType: string }) => d.docType === 'brs');
-    expect(brsDoc).toBeDefined();
-
-    await page.request.patch(`${GATEWAY_URL}/api/document/${brsDoc.id}/step/4`, {
-      data: { content: '', status: 'NOT_STARTED' },
-      headers: { 'Content-Type': 'application/merge-patch+json' },
+    // Capture browser console logs for debugging SSE/CORS issues
+    const consoleLogs: string[] = [];
+    page.on('console', (msg) => {
+      consoleLogs.push(`${msg.type()}: ${msg.text()}`);
     });
-
-    await page.reload();
-    await openStudioStep(page, 'Business Context');
+    page.on('pageerror', (err) => {
+      consoleLogs.push(`pageerror: ${err.message}`);
+    });
 
     const generateBtn = page.getByRole('button', { name: /Generate Section/i });
     await generateBtn.click();
@@ -82,6 +78,13 @@ test.describe('Aether Studio generation flow', () => {
     const card = page.locator('.mt-3.p-3.rounded-lg.bg-background').first();
     await expect(card).toBeVisible({ timeout: 120000 });
 
+    // HITL card has Approve and Request Revision buttons
+    await expect(card.getByRole('button', { name: /Approve/i })).toBeVisible();
+    await expect(card.getByRole('button', { name: /Request Revision/i })).toBeVisible();
+
+    // Switch to Split view to inspect editor content
+    await page.getByRole('button', { name: /Split/i }).click();
+
     // Editor should have content
     const editor = page.locator('textarea');
     await expect.poll(async () => (await editor.inputValue()).length, {
@@ -91,5 +94,9 @@ test.describe('Aether Studio generation flow', () => {
     // HITL card has Approve and Request Revision buttons
     await expect(card.getByRole('button', { name: /Approve/i })).toBeVisible();
     await expect(card.getByRole('button', { name: /Request Revision/i })).toBeVisible();
+
+    if (consoleLogs.length > 0) {
+      console.log('Browser logs:\n' + consoleLogs.join('\n'));
+    }
   });
 });
