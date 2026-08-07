@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useKeycloak } from '../lib/keycloak';
+import { useTranslation } from 'react-i18next';
 
 interface HeaderProps {
   currentTab: string;
@@ -34,6 +35,7 @@ export function Header({
   onChangePersona,
   onChangeProject,
 }: HeaderProps) {
+  const { t } = useTranslation();
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const { logout } = useKeycloak();
@@ -106,7 +108,7 @@ export function Header({
           }`}
         >
           <FolderKanban className="size-3.5" />
-          Projects
+          {t('nav.projects')}
         </Link>
         <Link
           to="/studio"
@@ -117,7 +119,7 @@ export function Header({
           }`}
         >
           <Wrench className="size-3.5" />
-          Aether Studio
+          {t('nav.studio')}
         </Link>
         <Link
           to="/signoff"
@@ -128,7 +130,7 @@ export function Header({
           }`}
         >
           <FileCheck2 className="size-3.5" />
-          Sign-Off Matrix
+          {t('nav.signoff')}
         </Link>
         <Link
           to="/chat"
@@ -139,7 +141,7 @@ export function Header({
           }`}
         >
           <Bot className="size-3.5" />
-          Chat
+          {t('nav.chat')}
         </Link>
       </nav>
 
@@ -197,7 +199,7 @@ export function Header({
               ? 'bg-primary text-primary-foreground border-primary'
               : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent'
           }`}
-          title="User Preferences"
+          title={t('nav.userSettings')}
         >
           <Sliders className="size-4" />
         </Link>
@@ -209,7 +211,7 @@ export function Header({
               ? 'bg-primary text-primary-foreground border-primary'
               : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent'
           }`}
-          title="Admin Settings"
+          title={t('nav.adminSettings')}
         >
           <ShieldAlert className="size-4" />
         </Link>
@@ -217,7 +219,7 @@ export function Header({
         <button
           onClick={() => logout()}
           className="p-2 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          title="Sign Out"
+          title={t('nav.logout')}
         >
           <LogOut className="size-4" />
         </button>

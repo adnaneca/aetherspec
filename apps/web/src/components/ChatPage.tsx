@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Bot, User, Loader2, Hexagon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface ChatMessage {
   id: string;
@@ -10,6 +11,7 @@ interface ChatMessage {
 }
 
 export function ChatPage() {
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -115,7 +117,7 @@ export function ChatPage() {
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
-                    ? { ...m, streaming: false, error: true, content: `Error: ${event.error}` }
+                    ? { ...m, streaming: false, error: true, content: t('chat.connectionError', { error: event.error }) }
                     : m,
                 ),
               );
@@ -139,14 +141,14 @@ export function ChatPage() {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
-            ? { ...m, streaming: false, error: true, content: `Connection error: ${errorMsg}` }
+            ? { ...m, streaming: false, error: true, content: t('chat.connectionError', { error: errorMsg }) }
             : m,
         ),
       );
     } finally {
       setIsStreaming(false);
     }
-  }, [input, isStreaming, messages, agentId]);
+  }, [input, isStreaming, messages, agentId, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -167,9 +169,9 @@ export function ChatPage() {
           <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Hexagon className="size-4 fill-current" />
           </div>
-          <span className="text-sm font-semibold tracking-tight">AetherSpec Chat</span>
+          <span className="text-sm font-semibold tracking-tight">{t('chat.title')}</span>
           <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            Agent Test
+            {t('chat.subtitle')}
           </span>
         </div>
 
@@ -181,10 +183,10 @@ export function ChatPage() {
             disabled={isStreaming}
             className="bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground font-mono focus:outline-none focus:border-ring disabled:opacity-50"
           >
-            <option value="general">general (default)</option>
-            <option value="brs-agent">brs-agent (BRD generation)</option>
-            <option value="srd-agent">srd-agent (SRD generation)</option>
-            <option value="testcase-agent">testcase-agent (Test Cases)</option>
+            <option value="general">{t('chat.general')}</option>
+            <option value="brs-agent">{t('chat.brsAgent')}</option>
+            <option value="srd-agent">{t('chat.srdAgent')}</option>
+            <option value="testcase-agent">{t('chat.testcaseAgent')}</option>
           </select>
 
           <button
@@ -192,7 +194,7 @@ export function ChatPage() {
             disabled={isStreaming || messages.length === 0}
             className="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
           >
-            Clear
+            {t('chat.clear')}
           </button>
         </div>
       </header>
@@ -206,15 +208,14 @@ export function ChatPage() {
               <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-card mb-4">
                 <Bot className="size-8 text-muted-foreground" />
               </div>
-              <h2 className="text-lg font-semibold text-foreground">AetherSpec Agent</h2>
+              <h2 className="text-lg font-semibold text-foreground">{t('chat.emptyTitle')}</h2>
               <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                Type a message below to test the agent streaming pipeline.
-                Tokens will stream in real-time from Ollama Cloud via the Go gateway.
+                {t('chat.emptyDesc')}
               </p>
               <div className="mt-6 flex flex-wrap gap-2 justify-center">
-                <SuggestionButton text="Hello, who are you?" onClick={() => setInput("Hello, who are you?")} />
-                <SuggestionButton text="Explain what a BRD is in 3 sentences" onClick={() => setInput("Explain what a BRD document is in 3 sentences.")} />
-                <SuggestionButton text="List 5 acceptance criteria for a login page" onClick={() => setInput("List 5 acceptance criteria for a login page.")} />
+                <SuggestionButton text={t('chat.suggestion1')} onClick={() => setInput(t('chat.suggestion1'))} />
+                <SuggestionButton text={t('chat.suggestion2')} onClick={() => setInput("Explain what a BRD document is in 3 sentences.")} />
+                <SuggestionButton text={t('chat.suggestion3')} onClick={() => setInput("List 5 acceptance criteria for a login page.")} />
               </div>
             </div>
           )}
@@ -268,7 +269,7 @@ export function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isStreaming}
-              placeholder={isStreaming ? 'Agent is responding…' : 'Type a message…  (Enter to send, Shift+Enter for newline)'}
+              placeholder={isStreaming ? t('chat.streamingPlaceholder') : t('chat.placeholder')}
               rows={1}
               className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none disabled:opacity-50"
               style={{ minHeight: '38px', maxHeight: '200px' }}
@@ -277,13 +278,13 @@ export function ChatPage() {
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
               className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
-              title="Send message"
+              title={t('chat.send')}
             >
               {isStreaming ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </button>
           </div>
           <p className="mt-1.5 px-1 font-mono text-[10px] text-muted-foreground">
-            Streaming via SSE · Ollama Cloud · {agentId}
+            {t('chat.footer', { agent: agentId })}
           </p>
         </div>
       </div>

@@ -60,3 +60,15 @@ export interface SDLCProject {
   currentSrsStep: number;
   currentTestCaseStep: number;
 }
+
+export interface UserSettingsConfig {
+  theme: 'dark' | 'light' | 'system';
+  language: 'en' | 'tr';
+  canvasWidth: 'default' | 'wide' | 'full';
+  density: 'compact' | 'comfortable';
+  artifactReviewMode: 'agent-decides' | 'always-ask' | 'auto-proceed';
+  visualDiffs: boolean;
+  strictGherkin: boolean;
+  emailNotifications: boolean;
+  soundAlerts: boolean;
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/users"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -46,6 +47,9 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool) *fiber.App {
 
 	// Agent proxy routes (require auth — stub allows all for now)
 	agent.Register(app, cfg, log)
+
+	// User settings routes (require auth)
+	users.Register(app, pool, log)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())

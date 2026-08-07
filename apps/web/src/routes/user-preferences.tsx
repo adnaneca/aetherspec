@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import { AuthGuard } from '../components/AuthGuard';
-import { UserPreferences } from '../components/UserPreferences';
+import { UserSettingsPage } from '../components/UserSettingsPage';
 import { Route as RootRoute } from './__root';
 
 export const Route = createRoute({
@@ -8,7 +8,7 @@ export const Route = createRoute({
   path: '/user-preferences',
   component: () => (
     <AuthGuard>
-      <UserPreferences />
+      <UserSettingsPage />
     </AuthGuard>
   ),
 });

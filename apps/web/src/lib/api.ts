@@ -1,4 +1,4 @@
-import type { AdminSettingsConfig, AdminProvider } from '../types';
+import type { AdminSettingsConfig, AdminProvider, UserSettingsConfig } from '../types';
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'http://localhost:3000';
 
@@ -44,5 +44,21 @@ export async function testProvider(provider: AdminProvider): Promise<TestProvide
     }),
   });
   if (!resp.ok) throw new Error(`Provider test failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function getUserSettings(): Promise<UserSettingsConfig> {
+  const resp = await fetch(`${GATEWAY_URL}/api/user/settings`);
+  if (!resp.ok) throw new Error(`Failed to fetch user settings: ${resp.status}`);
+  return resp.json();
+}
+
+export async function saveUserSettings(settings: UserSettingsConfig): Promise<{ status: string }> {
+  const resp = await fetch(`${GATEWAY_URL}/api/user/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!resp.ok) throw new Error(`Failed to save user settings: ${resp.status}`);
   return resp.json();
 }

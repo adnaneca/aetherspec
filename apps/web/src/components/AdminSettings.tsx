@@ -21,6 +21,7 @@ import {
   ArrowLeft,
   RefreshCw,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 const FALLBACK_OLLAMA_MODELS = [
   'glm-5.2',
@@ -159,6 +160,7 @@ function normalizeConfig(raw: unknown): AdminSettingsConfig {
 
 export function AdminSettings() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [adminConfig, setAdminConfig] = useState<AdminSettingsConfig | null>(null);
   const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'policies' | 'mcp' | 'keycloak' | 'minio'>(
     'providers'
@@ -245,7 +247,7 @@ export function AdminSettings() {
   if (loading) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <div className="text-muted-foreground text-sm">Loading admin config…</div>
+        <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
       </div>
     );
   }
@@ -253,7 +255,7 @@ export function AdminSettings() {
   if (error) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <div className="text-destructive text-sm">Error: {error}</div>
+        <div className="text-destructive text-sm">{t('common.error')}: {error}</div>
       </div>
     );
   }
@@ -271,17 +273,17 @@ export function AdminSettings() {
             title="Return to ProjectHub"
           >
             <ArrowLeft className="size-4" />
-            Back
+            {t('common.back')}
           </button>
           <div className="h-6 w-px bg-border" />
           <div>
             <div className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider text-primary">
               <ShieldAlert className="size-4" />
-              <span>AetherSpec Platform Governance · Admin Scope</span>
+              <span>{t('adminSettings.header')}</span>
             </div>
-            <h1 className="text-xl font-bold text-foreground mt-1">Admin Settings & Model Router Console</h1>
+            <h1 className="text-xl font-bold text-foreground mt-1">{t('adminSettings.title')}</h1>
             <p className="text-muted-foreground text-xs mt-1">
-              Enable LLM providers, set their API keys, then route each agent to a model from the selected providers.
+              {t('adminSettings.subtitle')}
             </p>
           </div>
         </div>
@@ -291,18 +293,18 @@ export function AdminSettings() {
           className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs px-4 py-2 rounded-lg transition-all"
         >
           <CheckCircle2 className="size-4" />
-          {saved ? 'Saved!' : 'Save Config'}
+          {saved ? t('adminSettings.saved') : t('adminSettings.save')}
         </button>
       </div>
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border pb-2 text-xs font-mono">
-        <TabButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')} icon={<Key className="size-4" />} label="Provider Setup" />
-        <TabButton active={activeTab === 'models'} onClick={() => setActiveTab('models')} icon={<Cpu className="size-4" />} label="Model Routing" />
-        <TabButton active={activeTab === 'policies'} onClick={() => setActiveTab('policies')} icon={<Lock className="size-4" />} label="Execution Policies" />
-        <TabButton active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} icon={<Wrench className="size-4" />} label="Skills & MCP" />
-        <TabButton active={activeTab === 'keycloak'} onClick={() => setActiveTab('keycloak')} icon={<ShieldCheck className="size-4" />} label="Keycloak OIDC" />
-        <TabButton active={activeTab === 'minio'} onClick={() => setActiveTab('minio')} icon={<HardDrive className="size-4" />} label="MinIO & KVKK" />
+        <TabButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')} icon={<Key className="size-4" />} label={t('adminSettings.models')} />
+        <TabButton active={activeTab === 'models'} onClick={() => setActiveTab('models')} icon={<Cpu className="size-4" />} label={t('adminSettings.routingMatrix')} />
+        <TabButton active={activeTab === 'policies'} onClick={() => setActiveTab('policies')} icon={<Lock className="size-4" />} label={t('adminSettings.policies')} />
+        <TabButton active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} icon={<Wrench className="size-4" />} label={t('adminSettings.skills')} />
+        <TabButton active={activeTab === 'keycloak'} onClick={() => setActiveTab('keycloak')} icon={<ShieldCheck className="size-4" />} label={t('adminSettings.keycloak')} />
+        <TabButton active={activeTab === 'minio'} onClick={() => setActiveTab('minio')} icon={<HardDrive className="size-4" />} label={t('adminSettings.minio')} />
       </div>
 
       {/* Providers Tab */}
@@ -310,10 +312,10 @@ export function AdminSettings() {
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
             <Key className="size-4" />
-            <span>LLM Provider Setup</span>
+            <span>{t('adminSettings.apiKeys')}</span>
           </div>
           <p className="text-muted-foreground">
-            Tick the providers you want to use, enter their API keys, then switch to the Model Routing tab to assign models per agent.
+            {t('adminSettings.subtitle')}
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -333,13 +335,13 @@ export function AdminSettings() {
                   />
                   <span className="font-semibold text-foreground">{provider.name}</span>
                   {provider.id === 'ollama' && ollamaModelsLoading && (
-                    <span className="text-[10px] text-muted-foreground ml-auto">fetching models…</span>
+                    <span className="text-[10px] text-muted-foreground ml-auto">{t('common.loading')}</span>
                   )}
                 </label>
 
                 {provider.id === 'ollama' && (
                   <ConfigInput
-                    label="Endpoint URL"
+                    label={t('adminSettings.ollamaEndpoint')}
                     type="text"
                     value={provider.baseUrl || ''}
                     onChange={(v) => updateProvider(provider.id, { baseUrl: v })}
@@ -347,7 +349,7 @@ export function AdminSettings() {
                 )}
 
                 <ConfigInput
-                  label="API Key"
+                  label={t('adminSettings.ollamaApiKey')}
                   type="password"
                   value={provider.apiKey}
                   onChange={(v) => updateProvider(provider.id, { apiKey: v })}
@@ -361,7 +363,7 @@ export function AdminSettings() {
                     className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1.5 rounded border border-border bg-background hover:bg-accent disabled:opacity-50 transition-colors"
                   >
                     <RefreshCw className={`size-3 ${testingProvider === provider.id ? 'animate-spin' : ''}`} />
-                    {testingProvider === provider.id ? 'Testing…' : 'Test'}
+                    {testingProvider === provider.id ? t('common.loading') : 'Test'}
                   </button>
                   <ProviderStatus status={providerTestStatus[provider.id]} />
                 </div>
@@ -384,9 +386,9 @@ export function AdminSettings() {
             <div className="flex items-center justify-between border-b border-border pb-2">
               <div className="flex items-center gap-2 text-primary font-bold text-sm">
                 <Cpu className="size-4" />
-                <span>Per-Agent Model Routing Matrix</span>
+                <span>{t('adminSettings.routingMatrix')}</span>
               </div>
-              <span className="font-mono text-[10px] text-muted-foreground">Only models from enabled providers are shown</span>
+              <span className="font-mono text-[10px] text-muted-foreground">{t('adminSettings.routingDesc')}</span>
             </div>
 
             {enabledProviders.length === 0 && (
@@ -442,37 +444,37 @@ export function AdminSettings() {
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
             <Lock className="size-4" />
-            <span>Tool Execution & File Access Governance</span>
+            <span>{t('adminSettings.executionPolicy')}</span>
           </div>
 
           <div className="space-y-4">
             <PolicySelect
-              label="Tool Execution Policy"
+              label={t('adminSettings.executionPolicy')}
               value={adminConfig.executionPolicy}
               options={[
-                { value: 'request-review', label: 'request-review (HITL mandatory on validation warnings)' },
-                { value: 'strict-approvals', label: 'strict-approvals (Require admin approval for every section)' },
-                { value: 'always-proceed', label: 'always-proceed (Automated fast mode)' },
+                { value: 'request-review', label: t('adminSettings.executionReview') },
+                { value: 'strict-approvals', label: t('adminSettings.executionStrict') },
+                { value: 'always-proceed', label: t('adminSettings.executionAuto') },
               ]}
               onChange={(v) => setAdminConfig({ ...adminConfig, executionPolicy: v as AdminSettingsConfig['executionPolicy'] })}
             />
             <PolicySelect
-              label="File Access Scope Boundary"
+              label={t('adminSettings.fileAccess')}
               value={adminConfig.fileAccessPolicy}
               options={[
-                { value: 'workspace-only', label: 'Workspace Only (Restricted to project templates & specs)' },
-                { value: 'external-minio', label: 'External MinIO S3 (Allow bucket reading)' },
-                { value: 'unrestricted', label: 'Unrestricted (Not recommended)' },
+                { value: 'workspace-only', label: t('adminSettings.fileWorkspace') },
+                { value: 'external-minio', label: t('adminSettings.fileMinio') },
+                { value: 'unrestricted', label: t('adminSettings.fileUnrestricted') },
               ]}
               onChange={(v) => setAdminConfig({ ...adminConfig, fileAccessPolicy: v as AdminSettingsConfig['fileAccessPolicy'] })}
             />
             <PolicySelect
-              label="Internet Access Policy"
+              label={t('adminSettings.internetPolicy')}
               value={adminConfig.internetAccessPolicy}
               options={[
-                { value: 'allow', label: 'Allow (Agent can access internet)' },
-                { value: 'ask', label: 'Ask (Require approval for internet access)' },
-                { value: 'deny', label: 'Deny (No internet access)' },
+                { value: 'allow', label: t('adminSettings.internetAllow') },
+                { value: 'ask', label: t('adminSettings.internetAsk') },
+                { value: 'deny', label: t('adminSettings.internetDeny') },
               ]}
               onChange={(v) => setAdminConfig({ ...adminConfig, internetAccessPolicy: v as AdminSettingsConfig['internetAccessPolicy'] })}
             />
@@ -486,9 +488,9 @@ export function AdminSettings() {
           <div className="flex items-center justify-between border-b border-border pb-2">
             <div className="flex items-center gap-2 text-primary font-bold text-sm">
               <Wrench className="size-4" />
-              <span>Agent Skills</span>
+              <span>{t('adminSettings.activeSkills')}</span>
             </div>
-            <span className="font-mono text-[10px] text-muted-foreground">{adminConfig.activeSkills.length} active</span>
+            <span className="font-mono text-[10px] text-muted-foreground">{t('adminSettings.activeSkillsCount', { count: adminConfig.activeSkills.length })}</span>
           </div>
 
           <div className="space-y-2">
@@ -498,11 +500,11 @@ export function AdminSettings() {
                   <CheckCircle2 className="size-4 text-status-approved" />
                   <span className="text-foreground font-semibold">{skill}</span>
                 </div>
-                <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded">Loaded</span>
+                <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded">{t('adminSettings.loaded')}</span>
               </div>
             ))}
             {adminConfig.activeSkills.length === 0 && (
-              <div className="text-muted-foreground text-center py-4">No skills configured</div>
+              <div className="text-muted-foreground text-center py-4">{t('adminSettings.noSkills')}</div>
             )}
           </div>
         </div>
@@ -513,7 +515,7 @@ export function AdminSettings() {
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
             <ShieldCheck className="size-4" />
-            <span>Keycloak OIDC Configuration</span>
+            <span>{t('adminSettings.keycloak')}</span>
           </div>
           <div className="space-y-2 font-mono">
             <ReadOnlyRow label="Issuer URL" value={`${import.meta.env.VITE_KEYCLOAK_URL}/realms/${import.meta.env.VITE_KEYCLOAK_REALM}`} />
@@ -528,7 +530,7 @@ export function AdminSettings() {
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
             <HardDrive className="size-4" />
-            <span>MinIO Object Storage</span>
+            <span>{t('adminSettings.minio')}</span>
           </div>
           <div className="space-y-2 font-mono">
             <ReadOnlyRow label="Endpoint" value="127.0.0.1:9000 (server-side)" />

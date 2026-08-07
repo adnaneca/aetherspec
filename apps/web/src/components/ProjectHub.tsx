@@ -13,6 +13,7 @@ import {
   FileCode,
   X,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface ProjectHubProps {
   projects: SDLCProject[];
@@ -39,6 +40,7 @@ export function ProjectHub({
   onOpenStudio,
   onOpenSignOff,
 }: ProjectHubProps) {
+  const { t } = useTranslation();
   const [showNewModal, setShowNewModal] = useState(false);
 
   return (
@@ -48,13 +50,13 @@ export function ProjectHub({
         <div>
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
             <Sparkles className="size-3.5" />
-            <span>Agentic SDLC Workspace · Keycloak Authenticated</span>
+            <span>{t('projectHub.authenticated')}</span>
           </div>
           <h1 className="text-xl font-semibold tracking-tight text-foreground mt-1">
-            Welcome back, {activePersona.name}
+            {t('projectHub.welcome', { name: activePersona.name })}
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Logged in as{' '}
+            {t('projectHub.loggedInAs')}{' '}
             <span className="text-foreground font-medium">{activePersona.title}</span>
             {' '}· {activePersona.department}
           </p>
@@ -65,7 +67,7 @@ export function ProjectHub({
           className="flex items-center gap-2 rounded-md border border-border bg-primary text-primary-foreground font-semibold text-xs px-4 py-2.5 hover:bg-primary/90 transition-colors shrink-0"
         >
           <Plus className="size-4" />
-          New SDLC Project
+          {t('projectHub.newProject')}
         </button>
       </div>
 
@@ -74,7 +76,7 @@ export function ProjectHub({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2 text-foreground font-medium text-sm">
             <UserCheck className="size-4 text-muted-foreground" />
-            <span>Persona Action Inbox</span>
+            <span>{t('projectHub.actionInbox')}</span>
           </div>
           <span className="text-xs font-mono border border-border text-muted-foreground px-2 py-0.5 rounded">
             {activePersona.id}
@@ -87,15 +89,15 @@ export function ProjectHub({
             className="text-left p-4 rounded-lg bg-background border border-status-review/30 hover:border-status-review/60 transition-colors"
           >
             <div className="flex items-center justify-between font-mono text-[10px] text-status-review mb-2">
-              <span>BRS GENERATION HITL</span>
-              <span className="bg-status-review/10 px-1.5 py-0.5 rounded border border-status-review/30">Action Required</span>
+              <span>{t('projectHub.brsHitlTitle')}</span>
+              <span className="bg-status-review/10 px-1.5 py-0.5 rounded border border-status-review/30">{t('projectHub.brsHitlStatus')}</span>
             </div>
             <div className="font-semibold text-foreground text-sm">HedefFilo Fleet Telematics</div>
             <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
-              Step 3 (Target Situation To-Be) has 1 validation finding needing analyst review.
+              {t('projectHub.brsHitlDesc')}
             </p>
             <div className="mt-3 flex items-center justify-end text-status-review gap-1 text-[11px] font-medium">
-              <span>Resume HITL Studio</span>
+              <span>{t('projectHub.brsHitlAction')}</span>
               <ArrowRight className="size-3" />
             </div>
           </button>
@@ -105,15 +107,15 @@ export function ProjectHub({
             className="text-left p-4 rounded-lg bg-background border border-status-approved/30 hover:border-status-approved/60 transition-colors"
           >
             <div className="flex items-center justify-between font-mono text-[10px] text-status-approved mb-2">
-              <span>EXECUTIVE SIGN-OFF</span>
-              <span className="bg-status-approved/10 px-1.5 py-0.5 rounded border border-status-approved/30">Pending Approval</span>
+              <span>{t('projectHub.signoffTitle')}</span>
+              <span className="bg-status-approved/10 px-1.5 py-0.5 rounded border border-status-approved/30">{t('projectHub.signoffStatus')}</span>
             </div>
             <div className="font-semibold text-foreground text-sm">Payment & Invoicing Gateway</div>
             <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
-              BRS artifact generated. Requires sign-off from Lead BA & Marketing Director.
+              {t('projectHub.signoffDesc')}
             </p>
             <div className="mt-3 flex items-center justify-end text-status-approved gap-1 text-[11px] font-medium">
-              <span>Open Sign-Off Matrix</span>
+              <span>{t('projectHub.signoffAction')}</span>
               <ArrowRight className="size-3" />
             </div>
           </button>
@@ -123,15 +125,15 @@ export function ProjectHub({
             className="text-left p-4 rounded-lg bg-background border border-border hover:border-accent transition-colors"
           >
             <div className="flex items-center justify-between font-mono text-[10px] text-muted-foreground mb-2">
-              <span>SRS & BACKLOG AGENT</span>
-              <span className="bg-muted px-1.5 py-0.5 rounded">Ready to Start</span>
+              <span>{t('projectHub.srsTitle')}</span>
+              <span className="bg-muted px-1.5 py-0.5 rounded">{t('projectHub.srsStatus')}</span>
             </div>
             <div className="font-semibold text-foreground text-sm">Payment & Invoicing Gateway</div>
             <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
-              BRS signed off. Ready to initiate SRS & Backlog Agent section generation.
+              {t('projectHub.srsDesc')}
             </p>
             <div className="mt-3 flex items-center justify-end text-foreground gap-1 text-[11px] font-medium">
-              <span>Launch SRS Agent</span>
+              <span>{t('projectHub.srsAction')}</span>
               <ArrowRight className="size-3" />
             </div>
           </button>
@@ -143,9 +145,9 @@ export function ProjectHub({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <FolderKanban className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Active SDLC Workspaces</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t('projectHub.activeWorkspaces')}</h2>
           </div>
-          <span className="text-xs text-muted-foreground font-mono">{projects.length} workspaces</span>
+          <span className="text-xs text-muted-foreground font-mono">{t('projectHub.workspaces', { count: projects.length })}</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -178,14 +180,14 @@ export function ProjectHub({
                         : 'bg-muted text-foreground hover:bg-accent'
                     }`}
                   >
-                    {isSelected ? 'Active' : 'Switch'}
+                    {isSelected ? t('projectHub.active') : t('projectHub.switch')}
                   </button>
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-border space-y-2">
                   <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider flex justify-between mb-3">
-                    <span>SDLC Artifact Pipeline</span>
-                    <span>Target: {project.targetDate}</span>
+                    <span>{t('projectHub.pipeline')}</span>
+                    <span>{t('projectHub.target', { date: project.targetDate })}</span>
                   </div>
 
                   <PipelineRow
@@ -239,7 +241,7 @@ export function ProjectHub({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-card border border-border p-6 rounded-xl w-full max-w-lg shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-foreground">Create New SDLC Project</h3>
+              <h3 className="text-base font-semibold text-foreground">{t('projectHub.newProjectTitle')}</h3>
               <button
                 onClick={() => setShowNewModal(false)}
                 className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
@@ -248,12 +250,12 @@ export function ProjectHub({
               </button>
             </div>
             <p className="text-xs text-muted-foreground mb-5">
-              Initialize workspace with BRS (8 steps), SRD-SDD (11 steps), Backlog (3 steps), and Test Cases (3 steps).
+              {t('projectHub.newProjectDesc')}
             </p>
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-foreground font-medium mb-1.5">Project Name</label>
+                <label className="block text-foreground font-medium mb-1.5">{t('projectHub.projectName')}</label>
                 <input
                   type="text"
                   placeholder="e.g. AI Customer Service Agent"
@@ -261,7 +263,7 @@ export function ProjectHub({
                 />
               </div>
               <div>
-                <label className="block text-foreground font-medium mb-1.5">Project Key</label>
+                <label className="block text-foreground font-medium mb-1.5">{t('projectHub.projectKey')}</label>
                 <input
                   type="text"
                   placeholder="e.g. AICARE"
@@ -269,7 +271,7 @@ export function ProjectHub({
                 />
               </div>
               <div>
-                <label className="block text-foreground font-medium mb-1.5">Target Completion Date</label>
+                <label className="block text-foreground font-medium mb-1.5">{t('projectHub.targetDate')}</label>
                 <input
                   type="date"
                   defaultValue="2026-12-31"
@@ -283,13 +285,13 @@ export function ProjectHub({
                 onClick={() => setShowNewModal(false)}
                 className="px-4 py-2 rounded-md bg-muted text-foreground hover:bg-accent text-xs font-medium transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={() => setShowNewModal(false)}
                 className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-colors"
               >
-                Create Workspace
+                {t('projectHub.createWorkspace')}
               </button>
             </div>
           </div>
@@ -310,6 +312,7 @@ interface PipelineRowProps {
 }
 
 function PipelineRow({ icon, label, step, total, status, onOpen }: PipelineRowProps) {
+  const { t } = useTranslation();
   const pct = Math.round((step / total) * 100);
   const statusCls = statusColors[status] ?? statusColors.DRAFT;
 
@@ -324,7 +327,7 @@ function PipelineRow({ icon, label, step, total, status, onOpen }: PipelineRowPr
           <span className="text-xs font-medium text-foreground truncate">{label}</span>
           <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] font-medium uppercase tracking-wider shrink-0 ${statusCls}`}>
             <span className="size-1.5 rounded-full bg-current" />
-            {status.replace('_', ' ')}
+            {t(`status.${status}`)}
           </span>
         </div>
         <div className="mt-1 flex items-center gap-2">

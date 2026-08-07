@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Hexagon, ShieldCheck, Lock, KeyRound, ArrowRight } from 'lucide-react';
 import { useKeycloak } from '../lib/keycloak';
+import { useTranslation } from 'react-i18next';
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const { login } = useKeycloak();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
@@ -34,10 +36,10 @@ export function LoginPage() {
 
         <div className="max-w-md my-auto">
           <h1 className="text-pretty text-2xl font-semibold leading-tight tracking-tight text-foreground">
-            Agentic SDLC specification workspace
+            {t('login.brandTitle')}
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Generate and govern BRD, SRD-SDD, Backlog and Test Case artifacts with human-in-the-loop agents. Access is brokered through your identity provider.
+            {t('login.brandDesc')}
           </p>
 
           <ul className="mt-8 space-y-3">
@@ -45,19 +47,19 @@ export function LoginPage() {
               <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background">
                 <ShieldCheck className="size-3.5 text-primary" />
               </span>
-              Keycloak IAM · single sign-on & role-based access
+              {t('login.feature1')}
             </li>
             <li className="flex items-center gap-3 text-sm text-muted-foreground">
               <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background">
                 <Lock className="size-3.5 text-primary" />
               </span>
-              KVKK / GDPR compliant artifact storage on MinIO
+              {t('login.feature2')}
             </li>
             <li className="flex items-center gap-3 text-sm text-muted-foreground">
               <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background">
                 <KeyRound className="size-3.5 text-primary" />
               </span>
-              Per-agent model routing configured by admins
+              {t('login.feature3')}
             </li>
           </ul>
         </div>
@@ -78,9 +80,9 @@ export function LoginPage() {
           </div>
 
           <div>
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">Sign in to console</h2>
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">{t('login.title')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Administrators manage providers, models and projects.
+              {t('login.subtitle')}
             </p>
           </div>
 
@@ -91,14 +93,14 @@ export function LoginPage() {
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground text-foreground cursor-pointer disabled:opacity-70 shadow-sm"
           >
             <ShieldCheck className="size-4 text-primary" />
-            <span>{isAuthenticating ? 'Redirecting to Keycloak...' : 'Continue with Keycloak SSO'}</span>
+            <span>{isAuthenticating ? t('login.redirecting') : t('login.ssoButton')}</span>
             <ArrowRight className="size-4 ml-auto text-muted-foreground" />
           </button>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Need provider setup?{' '}
+            {t('login.adminLink')}{' '}
             <span className="font-medium text-primary hover:underline cursor-pointer">
-              Open admin settings
+              {t('login.adminLinkAction')}
             </span>
           </p>
         </div>
