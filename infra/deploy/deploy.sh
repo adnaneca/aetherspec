@@ -25,7 +25,10 @@ cd ${SERVER_DIR}
 
 echo "📦 Checking out version: ${VERSION}"
 git fetch origin
-git checkout -B "${VERSION}" "origin/${VERSION}"
+# Reset any build artifacts or local changes before force-checking out the target branch
+git checkout -B "${VERSION}" "origin/${VERSION}" -- || true
+git reset --hard "origin/${VERSION}"
+git clean -fd
 
 echo "📦 Installing dependencies..."
 pnpm install --frozen-lockfile

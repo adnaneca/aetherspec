@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useI18n } from '../lib/i18n-context';
+import { useTheme } from '../lib/theme';
 import type { Persona, UserSettingsConfig } from '../types';
 import { getUserSettings, saveUserSettings } from '../lib/api';
 import {
@@ -16,6 +17,8 @@ import {
   Monitor,
 } from 'lucide-react';
 
+type AetherTheme = 'tomorrow-night-blue' | 'bank' | 'rental' | 'default';
+
 interface UserSettingsProps {
   activePersona: Persona;
 }
@@ -23,10 +26,12 @@ interface UserSettingsProps {
 export function UserSettings({ activePersona }: UserSettingsProps) {
   const { t } = useTranslation();
   const { setLanguage } = useI18n();
+  const { theme, setTheme } = useTheme();
   const [settings, setSettings] = useState<UserSettingsConfig | null>(null);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [appliedTheme, setAppliedTheme] = useState<AetherTheme>(theme);
 
   useEffect(() => {
     getUserSettings()
@@ -48,6 +53,15 @@ export function UserSettings({ activePersona }: UserSettingsProps) {
     updateSettings({ language: lang });
     setLanguage(lang);
   };
+
+  const applyTheme = (themeName: AetherTheme) => {
+    setAppliedTheme(themeName);
+    setTheme(themeName);
+  };
+
+  useEffect(() => {
+    setAppliedTheme(theme);
+  }, [theme]);
 
   const handleSave = async () => {
     if (!settings) return;
@@ -160,6 +174,31 @@ export function UserSettings({ activePersona }: UserSettingsProps) {
                   onClick={() => updateSettings({ theme: 'system' })}
                   icon={<Monitor className="size-3.5" />}
                   label={t('userSettings.system')}
+                />
+              </div>
+
+              {/* AetherSpec Theme Selector */}
+              <label className="block text-foreground font-medium mb-1 mt-3">AetherSpec Theme</label>
+              <div className="grid grid-cols-2 gap-2">
+                <ThemeButton
+                  active={appliedTheme === 'tomorrow-night-blue'}
+                  onClick={() => applyTheme('tomorrow-night-blue')}
+                  label="Tomorrow Night Blue"
+                />
+                <ThemeButton
+                  active={appliedTheme === 'bank'}
+                  onClick={() => applyTheme('bank')}
+                  label="Bank Enterprise"
+                />
+                <ThemeButton
+                  active={appliedTheme === 'rental'}
+                  onClick={() => applyTheme('rental')}
+                  label="Rental Modern"
+                />
+                <ThemeButton
+                  active={appliedTheme === 'default'}
+                  onClick={() => applyTheme('default')}
+                  label="Plain Dark"
                 />
               </div>
             </div>
