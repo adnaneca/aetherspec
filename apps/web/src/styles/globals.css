@@ -88,3 +88,15 @@
   50% { opacity: 0.2; }
 }
 .animate-pulse-dot { animation: pulse-dot 1s ease-in-out infinite; }
+
+/* ── Prose styles for markdown preview in Aether Studio ── */
+.prose-aether h1 { font-size: 1.5rem; font-weight: 600; color: var(--color-foreground); margin: 0.5rem 0 1rem; }
+.prose-aether h2 { font-size: 1.125rem; font-weight: 600; color: var(--color-foreground); margin: 2rem 0 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-border); }
+.prose-aether h3 { font-size: 0.9375rem; font-weight: 600; color: var(--color-foreground); margin: 1.5rem 0 0.5rem; }
+.prose-aether p { font-size: 0.875rem; line-height: 1.75; color: var(--color-foreground); margin-bottom: 1rem; }
+.prose-aether ul, .prose-aether ol { margin-left: 1.25rem; margin-bottom: 1rem; font-size: 0.875rem; color: var(--color-foreground); }
+.prose-aether li { line-height: 1.75; margin-bottom: 0.25rem; }
+.prose-aether code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color-background); padding: 0.1em 0.35em; border-radius: 0.25rem; }
+.prose-aether blockquote { border-left: 2px solid var(--color-primary); background: color-mix(in srgb, var(--color-primary) 5%, transparent); padding: 0.5rem 1rem; margin-bottom: 1rem; border-radius: 0 0.375rem 0.375rem 0; font-size: 0.875rem; color: var(--color-muted-foreground); }
+.prose-aether strong { color: var(--color-foreground); font-weight: 600; }
+.prose-aether em { color: var(--color-muted-foreground); }

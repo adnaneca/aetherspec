@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Bot, User, Loader2, Hexagon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { streamChat } from '../lib/chat-stream';
 
 interface ChatMessage {
   id: string;
@@ -52,88 +53,43 @@ export function ChatPage() {
     }));
 
     try {
-      const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'https://api.aetherspec.ai';
-
-      const response = await fetch(`${GATEWAY_URL}/api/agent/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      await streamChat(
+        {
           message: userMessage.content,
           agentId,
           history,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No response stream available');
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Parse SSE events from buffer
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-          const jsonStr = trimmed.slice(6); // Remove "data: " prefix
-          try {
-            const event = JSON.parse(jsonStr);
-
-            if (event.type === 'token') {
-              // Append token to assistant message
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, content: m.content + event.delta }
-                    : m,
-                ),
-              );
-            } else if (event.type === 'done') {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, streaming: false }
-                    : m,
-                ),
-              );
-            } else if (event.type === 'error') {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, streaming: false, error: true, content: t('chat.connectionError', { error: event.error }) }
-                    : m,
-                ),
-              );
-            }
-          } catch {
-            // Ignore malformed JSON lines
-          }
-        }
-      }
+        },
+        {
+          onToken: (delta) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, content: m.content + delta } : m,
+              ),
+            );
+          },
+          onDone: () => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, streaming: false } : m,
+              ),
+            );
+          },
+          onError: (error) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, streaming: false, error: true, content: t('chat.connectionError', { error }) }
+                  : m,
+              ),
+            );
+          },
+        },
+      );
 
       // Mark as done if still streaming (in case done event was missed)
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === assistantId && m.streaming
-            ? { ...m, streaming: false }
-            : m,
+          m.id === assistantId && m.streaming ? { ...m, streaming: false } : m,
         ),
       );
     } catch (err) {
