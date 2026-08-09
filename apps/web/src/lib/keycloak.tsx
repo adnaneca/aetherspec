@@ -95,24 +95,34 @@ export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
         setAuthState({ isAuthenticated: authenticated });
 
         if (authenticated) {
-          kc.loadUserInfo().then((info: any) => {
-            const roles = extractRoles(kc.tokenParsed);
-            const token = kc.token ?? '';
-            setAuthToken(token);
-            setAuthState({
-              user: {
-                username: info.preferred_username || info.username,
-                firstName: info.given_name || '',
-                lastName: info.family_name || '',
-                email: info.email || '',
-                roles,
-                token,
-              },
-              isLoading: false,
+          // If the token is expired or about to expire, refresh it immediately.
+          const refreshIfNeeded = kc.isTokenExpired(30)
+            ? kc.updateToken(30).catch(() => {
+                console.warn('[Keycloak] initial token refresh failed');
+                return Promise.resolve();
+              })
+            : Promise.resolve();
+
+          refreshIfNeeded.then(() => {
+            kc.loadUserInfo().then((info: any) => {
+              const roles = extractRoles(kc.tokenParsed);
+              const token = kc.token ?? '';
+              setAuthToken(token);
+              setAuthState({
+                user: {
+                  username: info.preferred_username || info.username,
+                  firstName: info.given_name || '',
+                  lastName: info.family_name || '',
+                  email: info.email || '',
+                  roles,
+                  token,
+                },
+                isLoading: false,
+              });
+            }).catch((err) => {
+              console.error('[Keycloak] loadUserInfo failed:', err);
+              setAuthState({ isLoading: false });
             });
-          }).catch((err) => {
-            console.error('[Keycloak] loadUserInfo failed:', err);
-            setAuthState({ isLoading: false });
           });
         } else {
           setAuthState({ isLoading: false });
