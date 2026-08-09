@@ -13,19 +13,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// Register sets up admin routes on the given Fiber app.
-// All routes require the ROLE_REALM_ADMIN role (enforced by auth middleware).
-func Register(app *fiber.App, pool *pgxpool.Pool, log *zap.Logger) {
-	api := app.Group("/api/admin", middleware.KeycloakAuth(), middleware.RequireRole("ROLE_REALM_ADMIN"))
+// Register sets up admin routes on the given router.
+// The admin sub-tree is additionally guarded by adminRole.
+// The internal config endpoint is restricted to loopback only.
+func Register(r fiber.Router, adminRole fiber.Handler, pool *pgxpool.Pool, log *zap.Logger) {
+	adminAPI := r.Group("/admin", adminRole)
 
-	api.Get("/config", getConfig(pool, log))
-	api.Patch("/config", patchConfig(pool, log))
-	api.Get("/providers/ollama/models", getOllamaModels(log))
-	api.Post("/providers/:id/test", testProvider(log))
+	adminAPI.Get("/config", getConfig(pool, log))
+	adminAPI.Patch("/config", patchConfig(pool, log))
+	adminAPI.Get("/providers/ollama/models", getOllamaModels(log))
+	adminAPI.Post("/providers/:id/test", testProvider(log))
 
 	// Internal endpoint for the agent sidecar to fetch unmasked admin config.
 	// Restricted to loopback to keep API keys out of browser-facing routes.
-	internal := app.Group("/api/internal/admin", middleware.RequireLocalhost())
+	internal := r.Group("/internal/admin", middleware.RequireLocalhost())
 	internal.Get("/config", getInternalConfig(pool, log))
 }
 
@@ -108,12 +109,7 @@ func patchConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 			return c.Status(400).JSON(fiber.Map{"error": "invalid JSON"})
 		}
 
-		updatedBy := "system"
-		if user := c.Locals("user"); user != nil {
-			if s, ok := user.(string); ok && s != "" {
-				updatedBy = s
-			}
-		}
+	updatedBy := middleware.GetUsername(c)
 
 		_, err := pool.Exec(c.Context(),
 			`INSERT INTO app_config (key, value, updated_by, updated_at)

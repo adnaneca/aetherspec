@@ -2,7 +2,6 @@ package users
 
 import (
 	"encoding/json"
-	"strings"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
@@ -11,29 +10,16 @@ import (
 )
 
 // Register sets up user settings routes.
-func Register(app *fiber.App, pool *pgxpool.Pool, log *zap.Logger) {
-	api := app.Group("/api/user", middleware.KeycloakAuth())
+func Register(r fiber.Router, pool *pgxpool.Pool, log *zap.Logger) {
+	api := r.Group("/user")
 
 	api.Get("/settings", getSettings(pool, log))
 	api.Patch("/settings", patchSettings(pool, log))
 }
 
 // getUsername extracts the username from the Keycloak JWT claims (set by auth middleware).
-// Falls back to "anonymous" if not available.
 func getUsername(c *fiber.Ctx) string {
-	if claims, ok := c.Locals("claims").(map[string]interface{}); ok {
-		if pref, ok := claims["preferred_username"].(string); ok && pref != "" {
-			return pref
-		}
-	}
-	if user, ok := c.Locals("user").(string); ok && user != "" && user != "anonymous" {
-		return user
-	}
-	// Allow explicit username override for testing
-	if username := c.Query("username"); username != "" && !strings.Contains(username, "..") {
-		return username
-	}
-	return "anonymous"
+	return middleware.GetUsername(c)
 }
 
 // getSettings returns the user's settings JSON.

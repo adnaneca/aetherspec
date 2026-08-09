@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/tmf"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,13 +25,13 @@ func NewHandler(pool *pgxpool.Pool, minioClient *minio.Client, log *zap.Logger) 
 	return &Handler{pool: pool, minioClient: minioClient, log: log}
 }
 
-func (h *Handler) Register(app *fiber.App) {
-	api := app.Group("/api/attachment")
+func (h *Handler) Register(r fiber.Router, auth fiber.Handler) {
+	api := r.Group("/attachment", auth)
 
 	api.Get("/", h.listAttachments)
 	api.Get("/:id", h.downloadAttachment)
 	api.Post("/", h.uploadAttachment)
-	api.Delete("/:id", h.deleteAttachment)
+	api.Delete("/:id", middleware.RequireRole("ROLE_REALM_ADMIN"), h.deleteAttachment)
 }
 
 // GET /api/attachment — list attachments, filter by projectId.
@@ -157,12 +158,13 @@ func (h *Handler) uploadAttachment(c *fiber.Ctx) error {
 		return tmf.SendError(c, 500, "upload failed")
 	}
 
+	createdBy := middleware.GetUsername(c)
 	mime := file.Header.Get("Content-Type")
 	_, err = h.pool.Exec(c.Context(),
 		`INSERT INTO attachments (id, project_id, name, mime_type, size, folder, minio_path, href, revision,
 		                          created_by, created_date, updated_by, updated_date)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 'system', $9, 'system', $9)`,
-		id, projectID, file.Filename, mime, file.Size, folder, objectPath, href, now)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $9, $10)`,
+		id, projectID, file.Filename, mime, file.Size, folder, objectPath, href, createdBy, now)
 	if err != nil {
 		h.log.Error("attachment metadata save failed", zap.Error(err))
 		return tmf.SendError(c, 500, "metadata save failed")
@@ -171,7 +173,7 @@ func (h *Handler) uploadAttachment(c *fiber.Ctx) error {
 	h.log.Info("file uploaded", zap.String("attachment", id), zap.String("project", projectID), zap.String("path", objectPath))
 
 	return c.Status(201).JSON(h.toAttachmentMap(id, projectID, file.Filename, &mime, (*int64)(&file.Size),
-		folder, objectPath, href, 1, "system", now, "system", now))
+		folder, objectPath, href, 1, createdBy, now, createdBy, now))
 }
 
 // DELETE /api/attachment/:id — delete attachment.

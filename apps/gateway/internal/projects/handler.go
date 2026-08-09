@@ -9,6 +9,7 @@ import (
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	minioHelper "github.com/adnaneca/aetherspec/apps/gateway/internal/minio"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/tmf"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,14 +28,14 @@ func NewHandler(pool *pgxpool.Pool, minioClient *minio.Client, cfg *config.Confi
 	return &Handler{pool: pool, minioClient: minioClient, cfg: cfg, log: log}
 }
 
-func (h *Handler) Register(app *fiber.App) {
-	api := app.Group("/api/project")
+func (h *Handler) Register(r fiber.Router, auth fiber.Handler) {
+	api := r.Group("/project", auth)
 
 	api.Get("/", h.listProjects)
 	api.Get("/:id", h.getProject)
 	api.Post("/", h.createProject)
 	api.Patch("/:id", h.patchProject)
-	api.Delete("/:id", h.deleteProject)
+	api.Delete("/:id", middleware.RequireRole("ROLE_REALM_ADMIN"), h.deleteProject)
 }
 
 // GET /api/project — list all projects.
@@ -175,11 +176,13 @@ func (h *Handler) createProject(c *fiber.Ctx) error {
 	pipelineJSON, _ := json.Marshal(defaultPipeline)
 	href := fmt.Sprintf("/api/project/%s", projectID)
 
+	createdBy := middleware.GetUsername(c)
+
 	_, err := h.pool.Exec(c.Context(),
 		`INSERT INTO projects (id, name, key, description, target_date, status, pipeline,
 		                       href, revision, created_by, created_date, updated_by, updated_date)
-		 VALUES ($1, $2, $3, $4, $5, 'Active', $6::jsonb, $7, 1, 'system', $8, 'system', $8)`,
-		projectID, body.Name, body.Key, body.Description, targetDate, pipelineJSON, href, now)
+		 VALUES ($1, $2, $3, $4, $5, 'Active', $6::jsonb, $7, 1, $8, $9, $8, $9)`,
+		projectID, body.Name, body.Key, body.Description, targetDate, pipelineJSON, href, createdBy, now)
 	if err != nil {
 		h.log.Error("create project failed", zap.Error(err))
 		return tmf.SendError(c, 500, "create failed")
@@ -205,7 +208,7 @@ func (h *Handler) createProject(c *fiber.Ctx) error {
 	h.log.Info("project created", zap.String("id", projectID), zap.String("name", body.Name))
 
 	return c.Status(201).JSON(h.toProjectMap(projectID, body.Name, body.Key, &body.Description,
-		targetDate, "Active", pipelineJSON, "system", now, now, "system", 1, href))
+		targetDate, "Active", pipelineJSON, createdBy, now, now, createdBy, 1, href))
 }
 
 // PATCH /api/project/:id — partial update.
@@ -243,8 +246,9 @@ func (h *Handler) patchProject(c *fiber.Ctx) error {
 		return tmf.SendError(c, 400, "No updatable fields provided")
 	}
 
+	updatedBy := middleware.GetUsername(c)
 	setClauses = append(setClauses, fmt.Sprintf("revision = revision + 1, updated_date = NOW(), updated_by = $%d", argIdx))
-	args = append(args, "system")
+	args = append(args, updatedBy)
 	argIdx++
 
 	args = append(args, id)
@@ -253,18 +257,19 @@ func (h *Handler) patchProject(c *fiber.Ctx) error {
 
 	var project map[string]interface{}
 	row := h.pool.QueryRow(c.Context(), query, args...)
-	var pid, name, key, status, createdBy, updatedBy, href string
+	var pid, name, key, status, cb, ub, href string
 	var description *string
 	var targetDate *time.Time
 	var pipeline []byte
 	var createdAt, updatedAt time.Time
 	var revision int
 	if err := row.Scan(&pid, &name, &key, &description, &targetDate, &status, &pipeline,
-		&createdBy, &createdAt, &updatedAt, &updatedBy, &revision, &href); err != nil {
+		&cb, &createdAt, &updatedAt, &ub, &revision, &href); err != nil {
 		return tmf.SendError(c, 404, fmt.Sprintf("Project %s not found", id))
 	}
+
 	project = h.toProjectMap(pid, name, key, description, targetDate, status, pipeline,
-		createdBy, createdAt, updatedAt, updatedBy, revision, href)
+		cb, createdAt, updatedAt, ub, revision, href)
 
 	return c.JSON(project)
 }

@@ -25,8 +25,9 @@ func NewHandler(minioClient *minio.Client, cfg *config.Config, log *zap.Logger) 
 }
 
 // Register adds template routes to the Fiber app.
-func (h *Handler) Register(app *fiber.App) {
-	api := app.Group("/api/template")
+// Templates remain intentionally public (read-only reference content).
+func (h *Handler) Register(r fiber.Router) {
+	api := r.Group("/template")
 
 	api.Get("/sections", h.getSections)
 	api.Get("/section-guide/:sectionId", h.getSectionGuide)

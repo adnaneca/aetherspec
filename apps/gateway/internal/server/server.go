@@ -6,9 +6,9 @@ import (
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/admin"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/agent"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/attachments"
-	"github.com/adnaneca/aetherspec/apps/gateway/internal/generation"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/documents"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/generation"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/merge"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
@@ -32,6 +32,8 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 		ServerHeader: "AetherSpec-Gateway",
 	})
 
+	middleware.SetLogger(log)
+
 	// Global middleware
 	app.Use(recover.New())
 	app.Use(logger.New(logger.Config{
@@ -46,46 +48,53 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 		// In production, restrict to the web app origin per customer.
 	}))
 
-	// Auth + tenant middleware on API routes
-	api := app.Group("/api", middleware.KeycloakAuth(), middleware.TenantResolver())
-	_ = api // routes wired in later phases
+	// JWKS provider for Keycloak JWT validation.
+	jwksProvider := middleware.NewJWKSProvider(
+		cfg.Keycloak.JWKSURL,
+		"aetherspec-web",
+		fmt.Sprintf("%s/realms/%s", cfg.Keycloak.URL, cfg.Keycloak.Realm),
+	)
+	auth := jwksProvider.KeycloakAuth()
+	adminRole := middleware.RequireRole("ROLE_REALM_ADMIN")
 
 	// Health (no auth)
 	health.Register(app)
 
-	// Admin routes (require ROLE_REALM_ADMIN)
-	admin.Register(app, pool, log)
-
-	// Agent proxy routes (require auth — stub allows all for now)
-	agent.Register(app, cfg, log)
-
-	// User settings routes (require auth)
-	users.Register(app, pool, log)
-
-	// Project, document, step, and attachment routes
-	projectsHandler := projects.NewHandler(pool, minioClient, cfg, log)
-	projectsHandler.Register(app)
-
-	documentsHandler := documents.NewHandler(pool, minioClient, cfg, log)
-	documentsHandler.Register(app)
-
-	attachmentsHandler := attachments.NewHandler(pool, minioClient, log)
-	attachmentsHandler.Register(app)
-
-	// Template routes (read from private MinIO templates bucket)
-	// NOTE: Intentionally registered outside the auth-protected /api group.
-	// Templates are read-only reference content and are safe to expose publicly.
-	// Auth will be added later when real Keycloak JWT validation is wired (PE-003).
+	// Public template routes (read-only reference content).
 	templatesHandler := templates.NewHandler(minioClient, cfg, log)
 	templatesHandler.Register(app)
 
-	// Generation routes (auth-protected)
+	// Authenticated API base group.
+	api := app.Group("/api", auth, middleware.TenantResolver())
+
+	// Projects
+	projectsHandler := projects.NewHandler(pool, minioClient, cfg, log)
+	projectsHandler.Register(api, auth)
+
+	// Documents
+	documentsHandler := documents.NewHandler(pool, minioClient, cfg, log)
+	documentsHandler.Register(api, auth)
+
+	// Attachments
+	attachmentsHandler := attachments.NewHandler(pool, minioClient, log)
+	attachmentsHandler.Register(api, auth)
+
+	// Agent (chat proxy)
+	agent.Register(api, cfg, log)
+
+	// Generation (BRS section streaming)
 	genHandler := generation.NewHandler(pool, minioClient, cfg, log)
 	genHandler.Register(api)
 
-	// Merge routes (auth-protected)
+	// Merge (BRS assembly)
 	mergeHandler := merge.NewHandler(pool, minioClient, cfg, log)
 	mergeHandler.Register(api)
+
+	// User settings
+	users.Register(api, pool, log)
+
+	// Admin config (admin only)
+	admin.Register(api, adminRole, pool, log)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())

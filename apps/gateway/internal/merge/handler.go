@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
@@ -205,8 +206,9 @@ approved: %s
 		}
 	}
 
+	mergedBy := middleware.GetUsername(c)
 	approvalContent += "\n## Final Document Approval\n\n"
-	approvalContent += fmt.Sprintf("| Role | Name | Date |\n|---|---|---|\n| Approved By | %s | %s |\n", "system", now)
+	approvalContent += fmt.Sprintf("| Role | Name | Date |\n|---|---|---|\n| Approved By | %s | %s |\n", mergedBy, now)
 
 	// 6. Build Appendix C (Change History — placeholder)
 	changeHistory := "# Appendix C: Change History (Post-Approval)\n\n"
@@ -237,8 +239,8 @@ approved: %s
 
 	// 9. Update document status to APPROVED
 	_, err = h.pool.Exec(c.Context(),
-		`UPDATE documents SET status = 'APPROVED', revision = revision + 1, updated_date = NOW(), updated_by = 'system' WHERE id = $1`,
-		docID)
+		`UPDATE documents SET status = 'APPROVED', revision = revision + 1, updated_date = NOW(), updated_by = $2 WHERE id = $1`,
+		docID, mergedBy)
 	if err != nil {
 		h.log.Warn("failed to update document status", zap.String("doc", docID), zap.Error(err))
 	}

@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
-	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
 // Register sets up the agent proxy routes.
-func Register(app *fiber.App, cfg *config.Config, log *zap.Logger) {
-	api := app.Group("/api/agent", middleware.KeycloakAuth())
+func Register(r fiber.Router, cfg *config.Config, log *zap.Logger) {
+	api := r.Group("/agent")
 	api.Post("/chat", chatProxy(cfg, log))
 }
 

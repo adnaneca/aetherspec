@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/tmf"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,20 +29,20 @@ func NewHandler(pool *pgxpool.Pool, minioClient *minio.Client, cfg *config.Confi
 	return &Handler{pool: pool, minioClient: minioClient, cfg: cfg, log: log}
 }
 
-func (h *Handler) Register(app *fiber.App) {
+func (h *Handler) Register(r fiber.Router, auth fiber.Handler) {
 	// Register specific /step sub-routes before the /:id catch-all.
-	stepAPI := app.Group("/api/document/:id/step")
+	stepAPI := r.Group("/document/:id/step", auth)
 	stepAPI.Get("/", h.listSteps)
 	stepAPI.Get("/:stepId", h.getStep)
 	stepAPI.Patch("/:stepId", h.patchStep)
 	stepAPI.Post("/:stepId/approve", h.approveStep)
 
-	api := app.Group("/api/document")
+	api := r.Group("/document", auth)
 	api.Get("/", h.listDocuments)
 	api.Post("/", h.createDocument)
 	api.Get("/:id", h.getDocument)
 	api.Patch("/:id", h.patchDocument)
-	api.Delete("/:id", h.deleteDocument)
+	api.Delete("/:id", middleware.RequireRole("ROLE_REALM_ADMIN"), h.deleteDocument)
 }
 
 // GET /api/document — list documents, filter by projectId/docType.
@@ -94,7 +95,7 @@ func (h *Handler) listDocuments(c *fiber.Ctx) error {
 func (h *Handler) getDocument(c *fiber.Ctx) error {
 	docID := c.Params("id")
 
-	var projectID, docType, status, createdBy, updatedBy, href string
+	var projectID, docType, status, cb, ub, href string
 	var currentStep, totalSteps, revision int
 	var createdAt, updatedAt time.Time
 
@@ -103,14 +104,14 @@ func (h *Handler) getDocument(c *fiber.Ctx) error {
 		        created_by, created_date, updated_by, updated_date
 		 FROM documents WHERE id = $1`, docID,
 	).Scan(&projectID, &docType, &status, &currentStep, &totalSteps, &href, &revision,
-		&createdBy, &createdAt, &updatedBy, &updatedAt)
+		&cb, &createdAt, &ub, &updatedAt)
 	if err != nil {
 		return tmf.SendError(c, 404, fmt.Sprintf("Document %s not found", docID))
 	}
 
 	steps, _ := h.getStepsForDocument(c.Context(), docID)
 	doc := h.toDocumentMap(docID, projectID, docType, status, currentStep, totalSteps,
-		href, revision, createdBy, createdAt, updatedBy, updatedAt)
+		href, revision, cb, createdAt, ub, updatedAt)
 	doc["step"] = steps
 
 	return c.JSON(doc)
@@ -154,11 +155,13 @@ func (h *Handler) createDocument(c *fiber.Ctx) error {
 	now := time.Now().UTC()
 	href := fmt.Sprintf("/api/document/%s", docID)
 
+	createdBy := middleware.GetUsername(c)
+
 	_, err := h.pool.Exec(c.Context(),
 		`INSERT INTO documents (id, project_id, doc_type, status, current_step, total_steps, href, revision,
 		                       created_by, created_date, updated_by, updated_date)
-		 VALUES ($1, $2, $3, 'NOT_STARTED', 1, $4, $5, 1, 'system', $6, 'system', $6)`,
-		docID, body.ProjectID, body.DocType, body.TotalSteps, href, now)
+		 VALUES ($1, $2, $3, 'NOT_STARTED', 1, $4, $5, 1, $6, $7, $6, $7)`,
+		docID, body.ProjectID, body.DocType, body.TotalSteps, href, createdBy, now)
 	if err != nil {
 		h.log.Error("create document failed", zap.Error(err))
 		return tmf.SendError(c, 500, "create failed")
@@ -167,7 +170,7 @@ func (h *Handler) createDocument(c *fiber.Ctx) error {
 	h.seedSteps(c.Context(), docID, body.ProjectID, body.DocType, body.TotalSteps)
 
 	return c.Status(201).JSON(h.toDocumentMap(docID, body.ProjectID, body.DocType, "NOT_STARTED",
-		1, body.TotalSteps, href, 1, "system", now, "system", now))
+		1, body.TotalSteps, href, 1, createdBy, now, createdBy, now))
 }
 
 // PATCH /api/document/:id — update metadata.
@@ -204,26 +207,27 @@ func (h *Handler) patchDocument(c *fiber.Ctx) error {
 		return tmf.SendError(c, 400, "No updatable fields provided")
 	}
 
+	updatedBy := middleware.GetUsername(c)
 	setClauses = append(setClauses, fmt.Sprintf("revision = revision + 1, updated_date = NOW(), updated_by = $%d", argIdx))
-	args = append(args, "system")
+	args = append(args, updatedBy)
 	argIdx++
 
 	args = append(args, docID)
 	query := fmt.Sprintf("UPDATE documents SET %s WHERE id = $%d RETURNING id, project_id, doc_type, status, current_step, total_steps, href, revision, created_by, created_date, updated_by, updated_date",
 		strings.Join(setClauses, ", "), argIdx)
 
-	var projectID, docType, status, createdBy, updatedBy, href string
+	var projectID, docType, status, cb, ub, href string
 	var currentStep, totalSteps, revision int
 	var createdAt, updatedAt time.Time
 	err := h.pool.QueryRow(c.Context(), query, args...).Scan(
 		&docID, &projectID, &docType, &status, &currentStep, &totalSteps, &href, &revision,
-		&createdBy, &createdAt, &updatedBy, &updatedAt)
+		&cb, &createdAt, &ub, &updatedAt)
 	if err != nil {
 		return tmf.SendError(c, 404, fmt.Sprintf("Document %s not found", docID))
 	}
 
 	return c.JSON(h.toDocumentMap(docID, projectID, docType, status, currentStep, totalSteps,
-		href, revision, createdBy, createdAt, updatedBy, updatedAt))
+		href, revision, cb, createdAt, ub, updatedAt))
 }
 
 // DELETE /api/document/:id — delete document and its steps.
@@ -371,8 +375,9 @@ func (h *Handler) patchStep(c *fiber.Ctx) error {
 	}
 
 	if len(setClauses) > 0 {
+		updatedBy := middleware.GetUsername(c)
 		setClauses = append(setClauses, fmt.Sprintf("updated_date = NOW(), updated_by = $%d", argIdx))
-		args = append(args, "system")
+		args = append(args, updatedBy)
 		argIdx++
 
 		args = append(args, docID, stepNum)
@@ -393,7 +398,25 @@ func (h *Handler) approveStep(c *fiber.Ctx) error {
 		return tmf.SendError(c, 400, "stepId must be an integer")
 	}
 
-	approvedBy := "system" // TODO: extract from Keycloak JWT
+	// Verify the user has an approver role for this document type.
+	var docType string
+	err = h.pool.QueryRow(c.Context(), "SELECT doc_type FROM documents WHERE id = $1", docID).Scan(&docType)
+	if err != nil {
+		return tmf.SendError(c, 404, fmt.Sprintf("Document %s not found", docID))
+	}
+
+	approverRoles := map[string][]string{
+		"brs":      {"BRS_APPROVER", "ROLE_BA_LEAD", "ROLE_REALM_ADMIN"},
+		"srs":      {"SRS_APPROVER", "ROLE_SOLUTION_ARCHITECT", "ROLE_REALM_ADMIN"},
+		"testcase": {"TESTCASE_APPROVER", "ROLE_QA_LEAD", "ROLE_REALM_ADMIN"},
+	}
+	if roles, ok := approverRoles[docType]; ok {
+		if !middleware.HasAnyRole(c, roles...) {
+			return tmf.SendError(c, 403, fmt.Sprintf("Requires one of roles: %s", strings.Join(roles, ", ")))
+		}
+	}
+
+	approvedBy := middleware.GetUsername(c)
 
 	_, err = h.pool.Exec(c.Context(),
 		`UPDATE document_steps
@@ -405,10 +428,10 @@ func (h *Handler) approveStep(c *fiber.Ctx) error {
 	}
 
 	// Advance current_step in the document and project pipeline, but do not exceed total steps.
-	var docType, projectID string
+	var projectID string
 	var totalSteps int
 	err = h.pool.QueryRow(c.Context(),
-		`SELECT doc_type, project_id, total_steps FROM documents WHERE id = $1`, docID).Scan(&docType, &projectID, &totalSteps)
+		`SELECT project_id, total_steps FROM documents WHERE id = $1`, docID).Scan(&projectID, &totalSteps)
 	if err != nil {
 		return tmf.SendError(c, 500, "failed to read document metadata")
 	}
@@ -423,14 +446,15 @@ func (h *Handler) approveStep(c *fiber.Ctx) error {
 		docStatus = "SIGNED_OFF"
 	}
 
+	updatedBy := middleware.GetUsername(c)
 	h.pool.Exec(c.Context(),
-		`UPDATE documents SET current_step = $2, status = $3, updated_date = NOW(), updated_by = 'system' WHERE id = $1`,
-		docID, nextStep, docStatus)
+		`UPDATE documents SET current_step = $2, status = $3, updated_date = NOW(), updated_by = $4 WHERE id = $1`,
+		docID, nextStep, docStatus, updatedBy)
 
 	if docType != "" && projectID != "" {
 		h.pool.Exec(c.Context(),
-			`UPDATE projects SET pipeline = jsonb_set(pipeline, $1, to_jsonb($2::int)), updated_date = NOW(), updated_by = 'system' WHERE id = $3`,
-			fmt.Sprintf("{%s,currentStep}", docType), nextStep, projectID)
+			`UPDATE projects SET pipeline = jsonb_set(pipeline, $1, to_jsonb($2::int)), updated_date = NOW(), updated_by = $3 WHERE id = $4`,
+			fmt.Sprintf("{%s,currentStep}", docType), nextStep, updatedBy, projectID)
 	}
 
 	return c.JSON(map[string]interface{}{
@@ -534,9 +558,9 @@ func (h *Handler) seedSteps(ctx context.Context, docID, projectID, docType strin
 		stepHref := fmt.Sprintf("/api/document/%s/step/%d", docID, stepNum)
 		_, _ = h.pool.Exec(ctx,
 			`INSERT INTO document_steps (document_id, step_number, step_name, status, minio_path, href, revision, created_by, created_date, updated_by, updated_date)
-			 VALUES ($1, $2, $3, 'NOT_STARTED', $4, $5, 1, 'system', NOW(), 'system', NOW())
+			 VALUES ($1, $2, $3, 'NOT_STARTED', $4, $5, 1, $6, NOW(), $6, NOW())
 			 ON CONFLICT (document_id, step_number) DO NOTHING`,
-			docID, stepNum, name, minioPath, stepHref)
+			docID, stepNum, name, minioPath, stepHref, "system")
 	}
 }
 
