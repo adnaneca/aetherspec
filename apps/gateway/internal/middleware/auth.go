@@ -31,7 +31,7 @@ func (p *JWKSProvider) KeycloakAuth() fiber.Handler {
 		// Parse and validate the token: signature, issuer, expiry.
 		// Keycloak access tokens set aud="account" and azp=<client_id>, so we validate
 		// the authorized party (azp) manually after parse.
-		token, err := jwt.Parse(tokenString, p.getKey, jwt.WithIssuer(p.issuer))
+		token, err := jwt.Parse(tokenString, p.GetKey, jwt.WithIssuer(p.issuer))
 		if err != nil {
 			if middlewareLogger != nil {
 				middlewareLogger.Warn("KeycloakAuth: token parse failed", zap.Error(err))
