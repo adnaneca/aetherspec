@@ -3,7 +3,7 @@ import { config } from './config.js';
 import { logger } from './logger.js';
 import { buildMastra } from './mastra.js';
 import { fetchAdminConfig, getCachedAdminConfig } from './admin-config.js';
-import { runAgentStream, type ChatMessage, AGENT_INSTRUCTIONS, buildGenerationPrompt, selfValidate } from './agent-runner.js';
+import { runAgentStream, type ChatMessage, AGENT_INSTRUCTIONS, buildGenerationPrompt, selfValidate, stripValidationArtifacts } from './agent-runner.js';
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
@@ -170,23 +170,27 @@ const server = http.createServer(async (req, res) => {
     const systemPrompt = AGENT_INSTRUCTIONS[agentId] || AGENT_INSTRUCTIONS['general'];
     const userPrompt = buildGenerationPrompt(parsed);
 
+    let generatedContent = '';
+
     await runAgentStream(
       { message: userPrompt, agentId, history: [{ role: 'system', content: systemPrompt }] },
       {
         onToken: (delta) => {
+          generatedContent += delta;
           res.write(`data: ${JSON.stringify({ type: 'token', delta })}\n\n`);
         },
         onDone: (tokensUsed) => {
           res.write(`data: ${JSON.stringify({ type: 'status', step: 'validating', message: 'Running quality checks...' })}\n\n`);
 
-          const findings = selfValidate(parsed.sectionId, parsed.sectionName, parsed.qualityChecks);
+          const cleanContent = stripValidationArtifacts(generatedContent);
+          const findings = selfValidate(parsed.sectionId, parsed.sectionName, cleanContent);
           res.write(`data: ${JSON.stringify({ type: 'findings', findings })}\n\n`);
 
           res.write(`data: ${JSON.stringify({ type: 'done', tokensUsed })}\n\n`);
           res.end();
         },
         onError: (error) => {
-          res.write(`data: ${JSON.stringify({ type: 'error', error })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'error', error })}\\n\\n`);
           res.end();
         },
       },

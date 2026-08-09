@@ -32,19 +32,11 @@ Be concise, professional, and use business language (no technical jargon).`,
 
 Your job is to generate BRS sections following the Cognia v2.0 framework.
 
-## Your Workflow (3 steps for MVP)
+## Your Workflow
 
-1. GENERATE: Read the section guide, dependency sections, and input documents. Generate the section content as clean Markdown. Use business language only — "will"/"may", NOT "SHALL"/"SHOULD". No technical jargon (no API, database, microservice, REST, Kubernetes, etc.). Assign IDs where applicable (BR-01, Rule-01, CONST-01, ASSUMP-01, RISK-01). Include all subsections from the section guide. Output ONLY the section content as Markdown — no commentary, no explanations.
+1. GENERATE: Read the section guide, dependency sections, and input documents. Generate the section content as clean Markdown. Use business language only — "will"/"may", NOT "SHALL"/"SHOULD". No technical jargon (no API, database, microservice, REST, Kubernetes, etc.). Assign IDs where applicable (BR-01, Rule-01, CONST-01, ASSUMP-01, RISK-01). Include all subsections from the section guide. Output ONLY the section content as Markdown — no commentary, no explanations, no validation findings, no JSON summaries.
 
-2. VALIDATE: After generating, check your content against the provided quality rules:
-   - Business language: No "SHALL", no technical terms (API, database, microservice, REST, etc.)
-   - Subsections complete: All subsections from the section guide are present
-   - MoSCoW priorities: Requirements have Must/Should/Could/Won't priority assigned
-   - Traceability: Every BR-xxx has a Source column entry
-   - INVEST-SMART: Requirements are Independent, Negotiable, Valuable, Estimable, Small, Testable
-   Report any findings as structured JSON.
-
-3. OUTPUT: Stream the generated Markdown content as tokens. Then output a findings summary.
+2. INTERNAL CHECK: Before finalising, mentally verify your content against the quality rules, but do NOT write the verification output into the section. The platform will run validation separately.
 
 ## Output Format
 
@@ -304,13 +296,205 @@ export interface ValidationFinding {
 }
 
 /**
- * Self-validation for MVP.
- * Placeholder — returns no findings. The agent is instructed to self-check in its system prompt.
- * Real parsing-based validation will be added in Phase 2.
+ * Removes validation appendices that the model sometimes adds after the main section.
+ * Strips content from the first occurrence of "---\n\n**Validation" or similar markers.
  */
-export function selfValidate(_sectionId: string, _sectionName: string, _qualityChecks: string[]): ValidationFinding[] {
-  // MVP: agent self-validates via system prompt instructions.
-  return [];
+export function stripValidationArtifacts(content: string): string {
+  const markers = [
+    /\n---\n\n\*\*Validation Findings:?\*\*/i,
+    /\n---\n\n\*\*Validation:?\*\*/i,
+    /\n---\n\n<!-- End of Section \d+ -->/i,
+    /\n---\n\nValidation Findings:/i,
+  ];
+
+  for (const marker of markers) {
+    const match = content.match(marker);
+    if (match && match.index !== undefined) {
+      return content.slice(0, match.index);
+    }
+  }
+
+  return content;
+}
+
+/**
+ * Real validation for MVP.
+ * Parses generated content and checks it against Cognia quality rules.
+ * Returns structured findings (BLOCKING/WARNING/INFO).
+ *
+ * TODO(Phase 2): Parse qualityChecks markdown files for configurable rules.
+ */
+export function selfValidate(
+  sectionId: string,
+  sectionName: string,
+  generatedContent: string,
+): ValidationFinding[] {
+  const rawFindings: ValidationFinding[] = [];
+  const content = generatedContent || '';
+
+  // ── Check 1: Business Language ──
+  const forbiddenTerms: { term: string; reason: string }[] = [
+    { term: 'the system shall', reason: 'SRS pattern. Use "the business will" or describe the capability directly.' },
+    { term: 'shall', reason: 'SRS language (RFC 2119). Use "will" for mandatory or "may" for optional.' },
+    { term: 'api', reason: 'Technical term. Describe the business capability instead.' },
+    { term: 'database', reason: 'Technical term. Use "business records" or describe the data.' },
+    { term: 'microservice', reason: 'Technical term. Use "modular service" or describe the business function.' },
+    { term: 'rest', reason: 'Technical term. Describe the integration need at business level.' },
+    { term: 'soap', reason: 'Technical term. Describe the integration need at business level.' },
+    { term: 'graphql', reason: 'Technical term. Describe the integration need at business level.' },
+    { term: 'kubernetes', reason: 'Technical term. Describe the deployment requirement at business level.' },
+    { term: 'docker', reason: 'Technical term. Describe the deployment requirement at business level.' },
+    { term: 'postgresql', reason: 'Technical term. Describe data storage needs at business level.' },
+    { term: 'mysql', reason: 'Technical term. Describe data storage needs at business level.' },
+    { term: 'mongodb', reason: 'Technical term. Describe data storage needs at business level.' },
+  ];
+
+  // Track matched ranges to avoid overlapping findings (e.g., "the system shall" + "shall").
+  const matchedRanges: Array<{ start: number; end: number; finding: ValidationFinding }> = [];
+
+  for (const { term, reason } of forbiddenTerms) {
+    const regex = new RegExp(`(?<!\\w)${escapeRegex(term)}(?!\\w)`, 'gi');
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+
+      // Skip if this range overlaps with an already-recorded longer phrase.
+      const overlaps = matchedRanges.some(
+        (r) =>
+          (start >= r.start && start < r.end) ||
+          (end > r.start && end <= r.end) ||
+          (start <= r.start && end >= r.end),
+      );
+      if (overlaps) continue;
+
+      const finding: ValidationFinding = {
+        type: 'BLOCKING',
+        message: `Forbidden term "${match[0]}" found. ${reason}`,
+        rule: 'business-language',
+      };
+      rawFindings.push(finding);
+      matchedRanges.push({ start, end, finding });
+    }
+  }
+
+  // ── Check 2: Subsections Present ──
+  // A section should have at least one subsection (## or ### heading) beyond the top-level heading.
+  const subsectionMatches = content.match(/^#{2,3}\s+.+$/gm);
+  if (!subsectionMatches || subsectionMatches.length < 1) {
+    rawFindings.push({
+      type: 'WARNING',
+      message: `Section "${sectionName}" appears to have no subsections (## or ### headings). Check the section guide for required subsections.`,
+      rule: 'subsections-complete',
+    });
+  }
+
+  // ── Check 3: MoSCoW Priorities (Section 5 only) ──
+  if (sectionId === '5') {
+    const brMatches = content.match(/\bBR-\d+\b/g);
+    if (brMatches && brMatches.length > 0) {
+      const hasPriorityColumn = /priority/i.test(content);
+      if (!hasPriorityColumn) {
+        rawFindings.push({
+          type: 'BLOCKING',
+          message: 'Requirements table is missing a Priority column. All BR-xxx must have MoSCoW priority (Must/Should/Could/Won\'t Have).',
+          rule: 'moscow',
+        });
+      } else {
+        const tableRows = content.match(/\|.*BR-\d+.*\|/g);
+        if (tableRows) {
+          for (const row of tableRows) {
+            const hasMust = /must\s*have/i.test(row);
+            const hasShould = /should\s*have/i.test(row);
+            const hasCould = /could\s*have/i.test(row);
+            const hasWont = /won.?t\s*have/i.test(row);
+            if (!hasMust && !hasShould && !hasCould && !hasWont) {
+              const brId = row.match(/\bBR-\d+\b/)?.[0] || 'unknown';
+              rawFindings.push({
+                type: 'BLOCKING',
+                message: `${brId} is missing a MoSCoW priority (Must/Should/Could/Won't Have).`,
+                rule: 'moscow',
+              });
+            }
+          }
+        }
+      }
+
+      const mustCount = (content.match(/must\s*have/gi) || []).length;
+      const shouldCount = (content.match(/should\s*have/gi) || []).length;
+      const couldCount = (content.match(/could\s*have/gi) || []).length;
+      const wontCount = (content.match(/won.?t\s*have/gi) || []).length;
+      const totalPriorities = mustCount + shouldCount + couldCount + wontCount;
+      if (totalPriorities > 0 && mustCount / totalPriorities > 0.7) {
+        rawFindings.push({
+          type: 'WARNING',
+          message: `${Math.round((mustCount / totalPriorities) * 100)}% of requirements are "Must Have". Consider reprioritizing — too many Must Haves dilutes the priority signal.`,
+          rule: 'moscow',
+        });
+      }
+    }
+  }
+
+  // ── Check 4: Traceability (Sections 5, 6, 8, 10) ──
+  const traceabilitySections = ['5', '6', '8', '10'];
+  if (traceabilitySections.includes(sectionId)) {
+    const idPrefix = sectionId === '5' ? 'BR' : sectionId === '6' ? 'CONST' : sectionId === '8' ? 'ASSUMP' : 'RISK';
+    const idRegex = new RegExp(`\\b${idPrefix}[-A-Z]*\\d+\\b`, 'g');
+    const idMatches = content.match(idRegex);
+
+    if (idMatches && idMatches.length > 0) {
+      const hasSourceColumn = /source/i.test(content);
+      if (!hasSourceColumn) {
+        rawFindings.push({
+          type: 'BLOCKING',
+          message: `Missing "Source" column. Every ${idPrefix}-xxx must trace to a source (Problem Statement, Business Objective, Stakeholder Interview, etc.).`,
+          rule: 'traceability',
+        });
+      }
+    }
+  }
+
+  // ── Check 5: No Placeholder Text ──
+  const placeholderPatterns = [
+    /\[TBD\]/gi,
+    /\[to be determined\]/gi,
+    /\[insert.*\]/gi,
+    /\.\.\.\.\./g,
+  ];
+  for (const pattern of placeholderPatterns) {
+    if (pattern.test(content)) {
+      rawFindings.push({
+        type: 'WARNING',
+        message: 'Content contains placeholder text (e.g., [TBD], [insert...]). Replace with actual content before approving.',
+        rule: 'no-placeholders',
+      });
+      break;
+    }
+  }
+
+  // ── Check 6: Section Metadata Present ──
+  if (!content.includes('<!--') || !content.includes('Section Metadata')) {
+    rawFindings.push({
+      type: 'WARNING',
+      message: 'Section metadata HTML comment is missing. Add <!-- Section Metadata: ... --> at the top.',
+      rule: 'metadata-present',
+    });
+  }
+
+  // ── Deduplicate findings by (type, rule, message) ──
+  const seen = new Map<string, ValidationFinding>();
+  for (const finding of rawFindings) {
+    const key = `${finding.type}|${finding.rule}|${finding.message}`;
+    if (!seen.has(key)) {
+      seen.set(key, finding);
+    }
+  }
+
+  return Array.from(seen.values());
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&');
 }
 
 /**

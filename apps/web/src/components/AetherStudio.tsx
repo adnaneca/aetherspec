@@ -72,11 +72,7 @@ const agentForDocType = (dt: string) => {
   return 'testcase-agent';
 };
 
-const skillPrefixForDocType = (dt: string) => {
-  if (dt === 'brs') return 'brs';
-  if (dt === 'srs') return 'srs';
-  return 'testcase';
-};
+
 
 const fileNameForDocType = (dt: string) => {
   if (dt === 'brs') return 'BRS-001.md';
@@ -324,7 +320,6 @@ export function AetherStudio() {
 
     const currentStepNumber = activeStep.stepNumber;
     const currentDocId = activeDoc.id;
-    const currentDocType = activeDoc.docType;
     let generatedContent = '';
 
     try {
@@ -354,21 +349,20 @@ export function AetherStudio() {
             const event = JSON.parse(trimmed.slice(6));
 
             if (event.type === 'status') {
-              const prefix = skillPrefixForDocType(currentDocType);
               setChatMessages((prev) => [...prev, {
                 id: `status-${Date.now()}`,
                 sender: 'system',
                 content: event.message,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 skillCalled: event.step === 'generating'
-                  ? `generate-${prefix}-section`
+                  ? t('studio.draftingSection')
                   : event.step === 'validating'
-                  ? `validate-${prefix}-section`
+                  ? t('studio.checkingQuality')
                   : undefined,
                 thoughts: event.step === 'generating'
-                  ? 'Reading section guide and dependencies, drafting content...'
+                  ? t('studio.generatingThoughts')
                   : event.step === 'validating'
-                  ? 'Running quality checks against acceptance criteria and project context...'
+                  ? t('studio.validatingThoughts')
                   : undefined,
               }]);
             } else if (event.type === 'token') {
@@ -1034,9 +1028,9 @@ export function AetherStudio() {
                     </div>
                   )}
                   {msg.skillCalled && (
-                    <div className="mb-2 font-mono text-[10px] text-status-approved flex items-center gap-1">
+                    <div className="mb-2 font-mono text-[10px] text-muted-foreground flex items-center gap-1">
                       <Sparkles className="size-3" />
-                      Skill: <code className="bg-status-approved/10 px-1 rounded border border-status-approved/20">{msg.skillCalled}</code>
+                      <span className="capitalize bg-muted px-1.5 py-0.5 rounded border border-border">{msg.skillCalled}</span>
                     </div>
                   )}
                   <div className="leading-relaxed whitespace-pre-wrap">{msg.content}</div>
@@ -1055,7 +1049,12 @@ export function AetherStudio() {
                             ? 'text-status-review bg-status-review/10 border border-status-review/30'
                             : 'text-status-approved bg-status-approved/10 border border-status-approved/30'
                         }`}>
-                          {msg.sectionCard.hasFindings ? 'HITL Review' : 'Ready'}
+                          {msg.sectionCard.hasFindings
+                            ? t('studio.hitlFindingCounts', {
+                                blocking: msg.sectionCard.findings.filter((f) => f.type === 'BLOCKING').length,
+                                warning: msg.sectionCard.findings.filter((f) => f.type === 'WARNING').length,
+                              })
+                            : t('studio.readyToApprove')}
                         </span>
                       </div>
 
