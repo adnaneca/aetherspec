@@ -30,7 +30,7 @@ func NewHandler(pool *pgxpool.Pool, minioClient *minio.Client, cfg *config.Confi
 
 func (h *Handler) Register(r fiber.Router) {
 	api := r.Group("/document")
-	api.Post("/:docId/merge", h.mergeBRS)
+	api.Post("/:docId/merge", middleware.RequireAnyRole("ROLE_BA_LEAD", "ROLE_REALM_ADMIN"), h.mergeBRS)
 }
 
 type stepInfo struct {
