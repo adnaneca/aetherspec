@@ -3,19 +3,30 @@ package server
 import (
 	"fmt"
 
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/admin"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/agent"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/attachments"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/generation"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/documents"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/health"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/merge"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/middleware"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/projects"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/templates"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/users"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
 )
 
 // New constructs and returns a configured Fiber app.
-func New(cfg *config.Config, log *zap.Logger) *fiber.App {
+func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *minio.Client) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "aetherspec-gateway",
 		ServerHeader: "AetherSpec-Gateway",
@@ -27,7 +38,11 @@ func New(cfg *config.Config, log *zap.Logger) *fiber.App {
 		Format: "${time} ${status} - ${method} ${path}\n",
 	}))
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins:     cfg.Gateway.AllowOrigins,
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowCredentials: true,
+		ExposeHeaders:    "Content-Disposition, Content-Type",
 		// In production, restrict to the web app origin per customer.
 	}))
 
@@ -37,6 +52,40 @@ func New(cfg *config.Config, log *zap.Logger) *fiber.App {
 
 	// Health (no auth)
 	health.Register(app)
+
+	// Admin routes (require ROLE_REALM_ADMIN)
+	admin.Register(app, pool, log)
+
+	// Agent proxy routes (require auth — stub allows all for now)
+	agent.Register(app, cfg, log)
+
+	// User settings routes (require auth)
+	users.Register(app, pool, log)
+
+	// Project, document, step, and attachment routes
+	projectsHandler := projects.NewHandler(pool, minioClient, cfg, log)
+	projectsHandler.Register(app)
+
+	documentsHandler := documents.NewHandler(pool, minioClient, cfg, log)
+	documentsHandler.Register(app)
+
+	attachmentsHandler := attachments.NewHandler(pool, minioClient, log)
+	attachmentsHandler.Register(app)
+
+	// Template routes (read from private MinIO templates bucket)
+	// NOTE: Intentionally registered outside the auth-protected /api group.
+	// Templates are read-only reference content and are safe to expose publicly.
+	// Auth will be added later when real Keycloak JWT validation is wired (PE-003).
+	templatesHandler := templates.NewHandler(minioClient, cfg, log)
+	templatesHandler.Register(app)
+
+	// Generation routes (auth-protected)
+	genHandler := generation.NewHandler(pool, minioClient, cfg, log)
+	genHandler.Register(api)
+
+	// Merge routes (auth-protected)
+	mergeHandler := merge.NewHandler(pool, minioClient, cfg, log)
+	mergeHandler.Register(api)
 
 	// WebSocket upgrade guard
 	app.Use("/ws", middleware.WSUpgrade())
