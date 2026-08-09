@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import Keycloak from 'keycloak-js';
 import { getAuthState, setAuthState, subscribeAuthState } from './auth-store';
+import { setAuthToken, setOnTokenExpired } from './auth-fetch';
 
 export interface KeycloakUser {
   username: string;
@@ -9,6 +10,23 @@ export interface KeycloakUser {
   email: string;
   roles: string[];
   token: string;
+}
+
+// Extract roles from both realm and client (aetherspec-web) role mappings.
+function extractRoles(tokenParsed: any): string[] {
+  const roles = new Set<string>();
+
+  const realmAccess = tokenParsed?.realm_access?.roles;
+  if (Array.isArray(realmAccess)) {
+    realmAccess.forEach((r: string) => roles.add(r));
+  }
+
+  const clientAccess = tokenParsed?.resource_access?.[KEYCLOAK_CLIENT_ID]?.roles;
+  if (Array.isArray(clientAccess)) {
+    clientAccess.forEach((r: string) => roles.add(r));
+  }
+
+  return Array.from(roles);
 }
 
 export interface KeycloakContextValue {
@@ -78,7 +96,9 @@ export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
 
         if (authenticated) {
           kc.loadUserInfo().then((info: any) => {
-            const roles = (kc.tokenParsed?.realm_access?.roles || []) as string[];
+            const roles = extractRoles(kc.tokenParsed);
+            const token = kc.token ?? '';
+            setAuthToken(token);
             setAuthState({
               user: {
                 username: info.preferred_username || info.username,
@@ -86,7 +106,7 @@ export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
                 lastName: info.family_name || '',
                 email: info.email || '',
                 roles,
-                token: kc.token ?? '',
+                token,
               },
               isLoading: false,
             });
@@ -101,7 +121,9 @@ export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
         kc.onAuthSuccess = () => {
           setAuthState({ isAuthenticated: true });
           kc.loadUserInfo().then((info: any) => {
-            const roles = (kc.tokenParsed?.realm_access?.roles || []) as string[];
+            const roles = extractRoles(kc.tokenParsed);
+            const token = kc.token ?? '';
+            setAuthToken(token);
             setAuthState({
               user: {
                 username: info.preferred_username || info.username,
@@ -109,13 +131,14 @@ export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
                 lastName: info.family_name || '',
                 email: info.email || '',
                 roles,
-                token: kc.token ?? '',
+                token,
               },
             });
           });
         };
 
         kc.onAuthLogout = () => {
+          setAuthToken(null);
           setAuthState({ isAuthenticated: false, user: null });
         };
 
@@ -123,14 +146,28 @@ export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
           kc.updateToken(30)
             .then(() => {
               const current = getAuthState();
+              const token = kc.token ?? '';
+              const roles = extractRoles(kc.tokenParsed);
+              setAuthToken(token);
               if (current.user) {
-                setAuthState({ user: { ...current.user, token: kc.token ?? '' } });
+                setAuthState({ user: { ...current.user, token, roles } });
               }
             })
             .catch(() => {
+              setAuthToken(null);
               setAuthState({ isAuthenticated: false, user: null });
             });
         };
+
+        // 401 handler: token is no longer valid. Clear state and redirect to login.
+        // Proactive refresh is handled by Keycloak's own onTokenExpired above.
+        setOnTokenExpired(() => {
+          setAuthToken(null);
+          setAuthState({ isAuthenticated: false, user: null });
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        });
       })
       .catch((err) => {
         if (finished) return;

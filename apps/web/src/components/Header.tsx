@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useKeycloak } from '../lib/keycloak';
+import { useRoles, getRoleLabel } from '../lib/use-roles';
 import { useTranslation } from 'react-i18next';
 
 interface HeaderProps {
@@ -39,7 +40,8 @@ export function Header({
   const navigate = useNavigate();
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
-  const { logout } = useKeycloak();
+  const { logout, user } = useKeycloak();
+  const { canManageAdmin } = useRoles();
 
   const isActive = (tab: string) => currentTab === tab;
 
@@ -194,14 +196,17 @@ export function Header({
         )}
 
         <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5">
-          <img
-            src={activePersona.avatarUrl}
-            alt={activePersona.name}
-            className="size-5 rounded-full object-cover"
-          />
+          <div className="flex size-5 items-center justify-center rounded-full bg-primary/15 font-mono text-[11px] font-semibold text-primary">
+            {user?.firstName?.[0] || user?.username?.[0] || 'U'}
+            {user?.lastName?.[0] || ''}
+          </div>
           <div className="text-left">
-            <div className="font-semibold text-foreground text-xs leading-none">{activePersona.name}</div>
-            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{activePersona.title}</div>
+            <div className="font-semibold text-foreground text-xs leading-none">
+              {user?.firstName} {user?.lastName}
+            </div>
+            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+              {user ? getRoleLabel(user.roles) : activePersona.title}
+            </div>
           </div>
         </div>
 
@@ -217,17 +222,19 @@ export function Header({
           <Sliders className="size-4" />
         </Link>
 
-        <Link
-          to="/admin-settings"
-          className={`p-2 rounded-md border transition-colors ${
-            isActive('admin-settings')
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent'
-          }`}
-          title={t('nav.adminSettings')}
-        >
-          <ShieldAlert className="size-4" />
-        </Link>
+        {canManageAdmin && (
+          <Link
+            to="/admin-settings"
+            className={`p-2 rounded-md border transition-colors ${
+              isActive('admin-settings')
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent'
+            }`}
+            title={t('nav.adminSettings')}
+          >
+            <ShieldAlert className="size-4" />
+          </Link>
+        )}
 
         <button
           onClick={() => logout()}

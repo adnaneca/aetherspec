@@ -42,6 +42,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
+import { useRoles } from '../lib/use-roles';
 
 // ── Types ──
 
@@ -94,6 +95,7 @@ export function AetherStudio() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { project: projectId, doc: docType, step: stepId } = useSearch({ from: '/studio' });
+  const { canApproveDoc, canMergeBRS } = useRoles();
 
   // Data state
   const [project, setProject] = useState<SDLCProject | null>(null);
@@ -699,15 +701,17 @@ export function AetherStudio() {
               </>
             )}
           </button>
-          <button
-            onClick={handleApprove}
-            disabled={approving || generating}
-            className="flex items-center gap-1.5 bg-status-approved/20 hover:bg-status-approved/30 text-status-approved border border-status-approved/30 px-2.5 py-0.5 rounded font-semibold text-[11px] transition-colors disabled:opacity-50"
-          >
-            <CheckCircle2 className="size-3" />
-            {approving ? t('studio.approving') : t('studio.approve')}
-          </button>
-          {allCoreSignedOff && (
+          {canApproveDoc(docType || 'brs') && (
+            <button
+              onClick={handleApprove}
+              disabled={approving || generating || !activeStep || activeStep.status === 'APPROVED'}
+              className="flex items-center gap-1.5 bg-status-approved/20 hover:bg-status-approved/30 text-status-approved border border-status-approved/30 px-2.5 py-0.5 rounded font-semibold text-[11px] transition-colors disabled:opacity-50"
+            >
+              <CheckCircle2 className="size-3" />
+              {approving ? t('studio.approving') : t('studio.approve')}
+            </button>
+          )}
+          {allCoreSignedOff && canMergeBRS && (
             <button
               onClick={handleMerge}
               disabled={merging}
@@ -1084,21 +1088,23 @@ export function AetherStudio() {
 
                       {/* HITL Action Buttons */}
                       <div className="grid grid-cols-2 gap-1.5 pt-1">
-                        <button
-                          onClick={handleApprove}
-                          disabled={approving}
-                          className="bg-status-approved/20 hover:bg-status-approved/30 text-status-approved border border-status-approved/30 font-semibold p-1.5 rounded text-[11px] flex items-center justify-center gap-1 disabled:opacity-50"
-                        >
-                          <CheckCircle2 className="size-3" />
-                          Approve
-                        </button>
+                        {canApproveDoc(docType || 'brs') && (
+                          <button
+                            onClick={handleApprove}
+                            disabled={approving}
+                            className="bg-status-approved/20 hover:bg-status-approved/30 text-status-approved border border-status-approved/30 font-semibold p-1.5 rounded text-[11px] flex items-center justify-center gap-1 disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="size-3" />
+                            Approve
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setChatInput('Please revise: ');
                             chatInputRef.current?.focus();
                           }}
                           title="Type your feedback and press Enter to send"
-                          className="bg-muted hover:bg-accent text-foreground border border-border font-semibold p-1.5 rounded text-[11px] flex items-center justify-center gap-1"
+                          className={`bg-muted hover:bg-accent text-foreground border border-border font-semibold p-1.5 rounded text-[11px] flex items-center justify-center gap-1 ${canApproveDoc(docType || 'brs') ? '' : 'col-span-2'}`}
                         >
                           <RefreshCw className="size-3" />
                           Request Revision

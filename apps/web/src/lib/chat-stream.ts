@@ -1,3 +1,5 @@
+import { authFetchStream } from './auth-fetch';
+
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'https://api.aetherspec.ai';
 
 export interface ChatHistoryMessage {
@@ -21,17 +23,9 @@ export async function streamChat(
   body: ChatRequestBody,
   callbacks: ChatStreamCallbacks,
 ): Promise<void> {
-  const response = await fetch(`${GATEWAY_URL}/api/agent/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const response = await authFetchStream(`${GATEWAY_URL}/api/agent/chat`, body);
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const reader = response.body?.getReader();
+  const reader = response.getReader();
   if (!reader) {
     throw new Error('No response stream available');
   }

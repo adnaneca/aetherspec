@@ -70,6 +70,19 @@ func (p *JWKSProvider) KeycloakAuth() fiber.Handler {
 			}
 		}
 
+		// Extract client roles for the configured audience (e.g. aetherspec-web)
+		if resourceAccess, ok := claims["resource_access"].(map[string]interface{}); ok {
+			if clientAccess, ok := resourceAccess[p.audience].(map[string]interface{}); ok {
+				if roleList, ok := clientAccess["roles"].([]interface{}); ok {
+					for _, r := range roleList {
+						if roleStr, ok := r.(string); ok {
+							roles = append(roles, roleStr)
+						}
+					}
+				}
+			}
+		}
+
 		c.Locals("user", username)
 		c.Locals("email", email)
 		c.Locals("roles", roles)
