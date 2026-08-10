@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import Keycloak from 'keycloak-js';
 import { getAuthState, setAuthState, subscribeAuthState } from './auth-store';
-import { setAuthToken, setOnTokenExpired } from './auth-fetch';
+import { setAuthToken, setAuthTokenGetter, setOnTokenExpired } from './auth-fetch';
 
 export interface KeycloakUser {
   username: string;
@@ -78,6 +78,18 @@ export function KeycloakProvider({ children, mode }: KeycloakProviderProps) {
     }, INIT_TIMEOUT_MS);
 
     console.log('[Keycloak] initializing, mode:', mode);
+
+    // Register the token getter immediately so any early fetch calls can
+    // refresh the token on demand. It is safe to call before init resolves.
+    setAuthTokenGetter(async () => {
+      try {
+        await kc.updateToken(30);
+      } catch {
+        // Refresh failed; return whatever token we have so the 401 handler
+        // can redirect.
+      }
+      return kc.token ?? null;
+    });
 
     kc.init({
       onLoad: mode,

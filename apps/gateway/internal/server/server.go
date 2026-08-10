@@ -64,6 +64,10 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	templatesHandler := templates.NewHandler(minioClient, cfg, log)
 	templatesHandler.Register(app)
 
+	// Internal admin config endpoint for the agent sidecar.
+	// Registered before the authenticated /api group so it only enforces localhost.
+	admin.RegisterInternal(app, pool, log)
+
 	// Authenticated API base group.
 	api := app.Group("/api", auth, middleware.TenantResolver())
 

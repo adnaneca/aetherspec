@@ -15,7 +15,6 @@ import (
 
 // Register sets up admin routes on the given router.
 // The admin sub-tree is additionally guarded by adminRole.
-// The internal config endpoint is restricted to loopback only.
 func Register(r fiber.Router, adminRole fiber.Handler, pool *pgxpool.Pool, log *zap.Logger) {
 	adminAPI := r.Group("/admin", adminRole)
 
@@ -23,11 +22,12 @@ func Register(r fiber.Router, adminRole fiber.Handler, pool *pgxpool.Pool, log *
 	adminAPI.Patch("/config", patchConfig(pool, log))
 	adminAPI.Get("/providers/ollama/models", getOllamaModels(log))
 	adminAPI.Post("/providers/:id/test", testProvider(log))
+}
 
-	// Internal endpoint for the agent sidecar to fetch unmasked admin config.
-	// Restricted to loopback to keep API keys out of browser-facing routes.
-	internal := r.Group("/internal/admin", middleware.RequireLocalhost())
-	internal.Get("/config", getInternalConfig(pool, log))
+// RegisterInternal mounts the internal admin config endpoint on the root app.
+// It is intentionally NOT under the authenticated /api group; only localhost is allowed.
+func RegisterInternal(app *fiber.App, pool *pgxpool.Pool, log *zap.Logger) {
+	app.Get("/api/internal/admin/config", middleware.RequireLocalhost(), getInternalConfig(pool, log))
 }
 
 // getConfig returns the admin_settings JSON from app_config table.

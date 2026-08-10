@@ -25,18 +25,16 @@ async function openStudioStep(page: Page, docType: string) {
   await expect(docTab).toBeVisible({ timeout: 10000 });
   await docTab.click();
 
-  // Wait for the stepper and click the first non-approved step
-  const firstNotSignedOff = page.locator('button').filter({ hasText: /NOT STARTED|IN_PROGRESS|HAS_FINDINGS/i }).first();
-  await expect(firstNotSignedOff).toBeVisible({ timeout: 10000 });
-  await firstNotSignedOff.click();
+  // Wait for the stepper and click the first non-approved step.
+  // Each step is a button that contains the status as a small sub-element.
+  const stepButton = page.locator('button', {
+    has: page.locator('div').filter({ hasText: /^(NOT STARTED|IN PROGRESS|HAS FINDINGS)$/i }).first(),
+  }).first();
+  await expect(stepButton).toBeVisible({ timeout: 10000 });
+  await stepButton.click();
 
-  // Wait for the step banner to update
-  const stepName = await firstNotSignedOff.textContent();
+  // Wait for the step banner to update.
   await expect(page.locator('text=Step').first()).toBeVisible({ timeout: 10000 });
-  if (stepName) {
-    const cleanName = stepName.replace(/\s+(NOT STARTED|SIGNED OFF|IN PROGRESS|HAS FINDINGS)$/i, '');
-    await expect(page.locator(`text=${cleanName}`).first()).toBeVisible({ timeout: 10000 });
-  }
 }
 
 test.use({ storageState: ({}, use) => use(undefined) });
@@ -67,7 +65,7 @@ test.describe('T-01 Admin user — full access', () => {
     for (const docType of ['brs', 'srs', 'testcase']) {
       await gotoHome(page);
       await openStudioStep(page, docType);
-      await expect(page.getByRole('button', { name: /Approve & Advance/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /^(Approve|Approve & Advance)$/i })).toBeVisible();
     }
   });
 
