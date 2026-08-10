@@ -17,9 +17,9 @@ export const config = {
     logLevel: required('AGENT_LOG_LEVEL', 'info'),
   },
   ollama: {
-    baseURL: required('OLLAMA_BASE_URL', 'https://api.ollama.cloud/v1'),
+    baseURL: required('OLLAMA_BASE_URL', 'https://ollama.com'),
     apiKey: required('OLLAMA_API_KEY', ''),
-    model: required('OLLAMA_MODEL', 'llama3.1:70b'),
+    model: required('OLLAMA_MODEL', 'glm-5.2'),
   },
   postgres: {
     host: required('POSTGRES_HOST', 'localhost'),

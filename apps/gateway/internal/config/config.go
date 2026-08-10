@@ -18,10 +18,11 @@ type Config struct {
 }
 
 type GatewayConfig struct {
-	Host     string
-	Port     string
-	Env      string
-	LogLevel string
+	Host         string
+	Port         string
+	Env          string
+	LogLevel     string
+	AllowOrigins string
 }
 
 type KeycloakConfig struct {
@@ -44,11 +45,12 @@ type PostgresConfig struct {
 }
 
 type MinIOConfig struct {
-	Endpoint  string
-	AccessKey string
-	SecretKey string
-	UseSSL    string
-	Bucket    string
+	Endpoint       string
+	AccessKey      string
+	SecretKey      string
+	UseSSL         string
+	Bucket         string
+	TemplateBucket string
 }
 
 type OTelConfig struct {
@@ -65,10 +67,11 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		Gateway: GatewayConfig{
-			Host:     getEnv("GATEWAY_HOST", "0.0.0.0"),
-			Port:     getEnv("GATEWAY_PORT", "3000"),
-			Env:      getEnv("GATEWAY_ENV", "development"),
-			LogLevel: getEnv("GATEWAY_LOG_LEVEL", "info"),
+			Host:         getEnv("GATEWAY_HOST", "0.0.0.0"),
+			Port:         getEnv("GATEWAY_PORT", "3000"),
+			Env:          getEnv("GATEWAY_ENV", "development"),
+			LogLevel:     getEnv("GATEWAY_LOG_LEVEL", "info"),
+			AllowOrigins: getEnv("GATEWAY_ALLOW_ORIGINS", "https://aetherspec.ai,https://app.aetherspec.ai"),
 		},
 		Keycloak: KeycloakConfig{
 			URL:     getEnv("KEYCLOAK_URL", "http://localhost:8081"),
@@ -81,17 +84,18 @@ func Load() (*Config, error) {
 		Postgres: PostgresConfig{
 			Host:     getEnv("POSTGRES_HOST", "localhost"),
 			Port:     getEnv("POSTGRES_PORT", "5432"),
-			DB:       getEnv("POSTGRES_DB", "aetherspec"),
-			User:     getEnv("POSTGRES_USER", "aetherspec"),
+			DB:       getEnv("POSTGRES_DB", "app"),
+			User:     getEnv("POSTGRES_USER", "appuser"),
 			Password: getEnv("POSTGRES_PASSWORD", ""),
 			SSLMode:  getEnv("POSTGRES_SSLMODE", "disable"),
 		},
 		MinIO: MinIOConfig{
-			Endpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
-			AccessKey: getEnv("MINIO_ACCESS_KEY", ""),
-			SecretKey: getEnv("MINIO_SECRET_KEY", ""),
-			UseSSL:    getEnv("MINIO_USE_SSL", "false"),
-			Bucket:    getEnv("MINIO_BUCKET", "aetherspec-artifacts"),
+			Endpoint:       getEnv("MINIO_ENDPOINT", "localhost:9000"),
+			AccessKey:      getEnv("MINIO_ACCESS_KEY", ""),
+			SecretKey:      getEnv("MINIO_SECRET_KEY", ""),
+			UseSSL:         getEnv("MINIO_USE_SSL", "false"),
+			Bucket:         getEnv("MINIO_BUCKET", "aetherspec-artifacts"),
+			TemplateBucket: getEnv("MINIO_TEMPLATE_BUCKET", "aetherspec-templates"),
 		},
 		OTel: OTelConfig{
 			OTLPExporterEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),

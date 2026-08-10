@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="theme-default">
+<html lang="en" class="theme-tomorrow-night-blue">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,6 +7,10 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Preserve Keycloak auth code before the SPA router can strip it.
+      window.__KEYCLOAK_CALLBACK_URL__ = window.location.href;
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
