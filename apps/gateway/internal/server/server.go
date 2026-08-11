@@ -15,6 +15,7 @@ import (
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/projects"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/templates"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/users"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/workflows"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -93,6 +94,10 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	// Merge (BRS assembly)
 	mergeHandler := merge.NewHandler(pool, minioClient, cfg, log)
 	mergeHandler.Register(api)
+
+	// Workflow state (interactive Mastra workflow pause/resume)
+	workflowsHandler := workflows.NewHandler(pool, log)
+	workflowsHandler.Register(api)
 
 	// User settings
 	users.Register(api, pool, log)

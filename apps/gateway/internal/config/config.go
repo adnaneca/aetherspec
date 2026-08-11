@@ -9,12 +9,13 @@ import (
 
 // Config holds all application configuration loaded from environment.
 type Config struct {
-	Gateway    GatewayConfig
-	Keycloak   KeycloakConfig
-	Agent      AgentConfig
-	Postgres   PostgresConfig
-	MinIO      MinIOConfig
-	OTel       OTelConfig
+	Gateway  GatewayConfig
+	Keycloak KeycloakConfig
+	Agent    AgentConfig
+	Merge    MergeConfig
+	Postgres PostgresConfig
+	MinIO    MinIOConfig
+	OTel     OTelConfig
 }
 
 type GatewayConfig struct {
@@ -33,6 +34,10 @@ type KeycloakConfig struct {
 
 type AgentConfig struct {
 	GRPCURL string
+}
+
+type MergeConfig struct {
+	ScriptPath string
 }
 
 type PostgresConfig struct {
@@ -80,6 +85,9 @@ func Load() (*Config, error) {
 		},
 		Agent: AgentConfig{
 			GRPCURL: getEnv("AGENT_GRPC_URL", "localhost:50051"),
+		},
+		Merge: MergeConfig{
+			ScriptPath: getEnv("MERGE_SCRIPT_PATH", "/opt/aetherspec-v2/scripts/merge_brs.py"),
 		},
 		Postgres: PostgresConfig{
 			Host:     getEnv("POSTGRES_HOST", "localhost"),

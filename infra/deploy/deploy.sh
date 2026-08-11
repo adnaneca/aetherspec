@@ -33,6 +33,11 @@ git clean -fd
 echo "📦 Installing dependencies..."
 pnpm install --frozen-lockfile
 
+echo "🐍 Installing Python scripts dependencies..."
+if [ -f scripts/requirements.txt ]; then
+  pip3 install -q -r scripts/requirements.txt
+fi
+
 echo "🔨 Building gateway..."
 cd apps/gateway
 export PATH=/usr/local/go/bin:\$PATH
