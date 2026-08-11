@@ -4,17 +4,20 @@ import { logger } from './logger.js';
 import { buildMastra } from './mastra.js';
 import { fetchAdminConfig, getCachedAdminConfig } from './admin-config.js';
 import { runAgentStream, type ChatMessage, AGENT_INSTRUCTIONS, buildGenerationPrompt, selfValidate, stripValidationArtifacts } from './agent-runner.js';
+import { getBRSAgents, type BRSAgentId } from './agents.js';
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3000';
 
-// Fetch admin config on startup
+// Fetch admin config on startup, then register BRS workflow agents
 let adminConfigReady = false;
 fetchAdminConfig(GATEWAY_URL)
   .then(() => {
     adminConfigReady = true;
-    logger.info('admin config loaded — agent ready for requests');
+    const brsAgents = getBRSAgents();
+    const registeredIds = Object.keys(brsAgents);
+    logger.info('admin config loaded — BRS agents registered', { registeredIds, count: registeredIds.length });
   })
   .catch((err) => {
     logger.error('admin config fetch failed', err);
@@ -53,9 +56,15 @@ const server = http.createServer(async (req, res) => {
         ...p,
         apiKey: p.apiKey ? '***' : '',
       }));
+      const safeAgents = cfg.agents
+        ? Object.fromEntries(
+            Object.entries(cfg.agents).map(([id, a]) => [id, { ...a, apiKey: a.apiKey ? '***' : '' }])
+          )
+        : undefined;
       const safe = {
         ...cfg,
         providers: safeProviders,
+        agents: safeAgents,
       };
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(safe));
@@ -63,6 +72,17 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(503, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'config not loaded yet' }));
     }
+    return;
+  }
+
+  if (url === '/agents' && method === 'GET') {
+    const brsAgents = getBRSAgents();
+    const entries = Object.entries(brsAgents).map(([id, agent]) => ({
+      id,
+      name: agent.name,
+    }));
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ agents: entries }));
     return;
   }
 
@@ -84,7 +104,7 @@ const server = http.createServer(async (req, res) => {
 
   const streamMatch = url.match(/^\/agents\/([^\/]+)\/stream$/);
   if (streamMatch && method === 'POST') {
-    const agentId = streamMatch[1];
+    const agentId = streamMatch[1] as BRSAgentId | (string & {});
 
     // Read request body
     let body = '';

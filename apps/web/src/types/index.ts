@@ -30,6 +30,12 @@ export interface AdminProvider {
   baseUrl?: string;
 }
 
+export interface AdminAgentConfig {
+  model: string;
+  apiKey: string;
+  baseURL: string;
+}
+
 export interface AdminAgent {
   id: string;
   name: string;
@@ -39,6 +45,7 @@ export interface AdminAgent {
 export interface AdminSettingsConfig {
   providers: AdminProvider[];
   agentModels: Record<string, string>; // agentId -> "providerId/modelId"
+  agents?: Record<string, AdminAgentConfig>; // per-agent LLM config (WP-02)
   executionPolicy: 'always-proceed' | 'request-review' | 'strict-approvals';
   fileAccessPolicy: 'workspace-only' | 'external-minio' | 'unrestricted';
   internetAccessPolicy: 'allow' | 'ask' | 'deny';

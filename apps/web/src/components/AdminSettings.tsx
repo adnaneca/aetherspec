@@ -70,6 +70,13 @@ const AGENTS = [
   },
 ];
 
+const BRS_WORKFLOW_AGENTS = [
+  { id: 'brs-orchestrator', name: 'BRS Orchestrator', description: 'Coordinates the interactive BRS workflow', icon: Bot },
+  { id: 'brs-writer', name: 'BRS Writer', description: 'Generates section content', icon: Bot },
+  { id: 'brs-negotiator', name: 'BRS Negotiator', description: 'Proposes answers and fixes', icon: Bot },
+  { id: 'brs-validator', name: 'BRS Validator', description: 'Independent quality checker', icon: Bot },
+];
+
 const DEFAULT_PROVIDERS: AdminProvider[] = [
   { id: 'ollama', name: 'Ollama Cloud', enabled: true, apiKey: '', baseUrl: 'https://ollama.com' },
   { id: 'openai', name: 'OpenAI', enabled: false, apiKey: '' },
@@ -78,6 +85,13 @@ const DEFAULT_PROVIDERS: AdminProvider[] = [
   { id: 'deepseek', name: 'DeepSeek', enabled: false, apiKey: '' },
 ];
 
+const DEFAULT_BRS_AGENTS: Record<string, { model: string; apiKey: string; baseURL: string }> = {
+  'brs-orchestrator': { model: 'qwen3.5:7b', apiKey: '', baseURL: 'https://ollama.com' },
+  'brs-writer': { model: 'glm-5.2', apiKey: '', baseURL: 'https://ollama.com' },
+  'brs-negotiator': { model: 'nemotron3:ultra', apiKey: '', baseURL: 'https://ollama.com' },
+  'brs-validator': { model: 'deepseek-v4:pro', apiKey: '', baseURL: 'https://ollama.com' },
+};
+
 const DEFAULT_CONFIG: AdminSettingsConfig = {
   providers: DEFAULT_PROVIDERS,
   agentModels: {
@@ -85,6 +99,7 @@ const DEFAULT_CONFIG: AdminSettingsConfig = {
     'srd-agent': 'ollama/llama3.1:70b',
     'testcase-agent': 'ollama/llama3.1:70b',
   },
+  agents: DEFAULT_BRS_AGENTS,
   executionPolicy: 'request-review',
   fileAccessPolicy: 'workspace-only',
   internetAccessPolicy: 'allow',
@@ -146,6 +161,22 @@ function normalizeConfig(raw: unknown): AdminSettingsConfig {
       });
     }
 
+    // Per-agent LLM configs (WP-02)
+    const rawAgents = (cfg as any).agents;
+    if (rawAgents && typeof rawAgents === 'object') {
+      const nextAgents: Record<string, { model: string; apiKey: string; baseURL: string }> = {};
+      Object.entries(rawAgents as Record<string, any>).forEach(([k, v]) => {
+        if (typeof v === 'object' && v.model) {
+          nextAgents[k] = {
+            model: String(v.model),
+            apiKey: v.apiKey ? String(v.apiKey) : '',
+            baseURL: v.baseURL ? String(v.baseURL) : '',
+          };
+        }
+      });
+      next.agents = { ...DEFAULT_BRS_AGENTS, ...nextAgents };
+    }
+
     // Policies
     if (cfg.executionPolicy) next.executionPolicy = cfg.executionPolicy as AdminSettingsConfig['executionPolicy'];
     if (cfg.fileAccessPolicy) next.fileAccessPolicy = cfg.fileAccessPolicy as AdminSettingsConfig['fileAccessPolicy'];
@@ -162,7 +193,7 @@ export function AdminSettings() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [adminConfig, setAdminConfig] = useState<AdminSettingsConfig | null>(null);
-  const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'policies' | 'mcp' | 'keycloak' | 'minio'>(
+  const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'workflowAgents' | 'policies' | 'mcp' | 'keycloak' | 'minio'>(
     'providers'
   );
   const [saved, setSaved] = useState(false);
@@ -301,6 +332,7 @@ export function AdminSettings() {
       <div className="flex items-center gap-2 border-b border-border pb-2 text-xs font-mono">
         <TabButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')} icon={<Key className="size-4" />} label={t('adminSettings.models')} />
         <TabButton active={activeTab === 'models'} onClick={() => setActiveTab('models')} icon={<Cpu className="size-4" />} label={t('adminSettings.routingMatrix')} />
+        <TabButton active={activeTab === 'workflowAgents'} onClick={() => setActiveTab('workflowAgents')} icon={<Bot className="size-4" />} label={t('adminSettings.brsAgents')} />
         <TabButton active={activeTab === 'policies'} onClick={() => setActiveTab('policies')} icon={<Lock className="size-4" />} label={t('adminSettings.policies')} />
         <TabButton active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} icon={<Wrench className="size-4" />} label={t('adminSettings.skills')} />
         <TabButton active={activeTab === 'keycloak'} onClick={() => setActiveTab('keycloak')} icon={<ShieldCheck className="size-4" />} label={t('adminSettings.keycloak')} />
@@ -432,6 +464,74 @@ export function AdminSettings() {
                       );
                     })}
                   </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BRS Workflow Agents Tab */}
+      {activeTab === 'workflowAgents' && adminConfig.agents && (
+        <div className="space-y-6 text-xs">
+          <div className="p-5 rounded-xl border border-border bg-card space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <div className="flex items-center gap-2 text-primary font-bold text-sm">
+                <Bot className="size-4" />
+                <span>{t('adminSettings.brsAgents')}</span>
+              </div>
+              <span className="font-mono text-[10px] text-muted-foreground">{t('adminSettings.brsAgentsDesc')}</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {BRS_WORKFLOW_AGENTS.map((agent) => (
+                <div key={agent.id} className="p-3 bg-background rounded-lg border border-border space-y-2">
+                  <div className="font-bold text-primary flex items-center gap-1.5">
+                    <agent.icon className="size-3.5" /> {agent.name}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">{agent.description}</div>
+                  <ConfigInput
+                    label="Base URL"
+                    type="text"
+                    value={adminConfig.agents?.[agent.id]?.baseURL || ''}
+                    onChange={(v) =>
+                      setAdminConfig({
+                        ...adminConfig,
+                        agents: {
+                          ...adminConfig.agents,
+                          [agent.id]: { ...(adminConfig.agents?.[agent.id] || { model: '', apiKey: '' }), baseURL: v },
+                        },
+                      })
+                    }
+                  />
+                  <ConfigInput
+                    label="API Key"
+                    type="password"
+                    value={adminConfig.agents?.[agent.id]?.apiKey || ''}
+                    onChange={(v) =>
+                      setAdminConfig({
+                        ...adminConfig,
+                        agents: {
+                          ...adminConfig.agents,
+                          [agent.id]: { ...(adminConfig.agents?.[agent.id] || { model: '', baseURL: '' }), apiKey: v },
+                        },
+                      })
+                    }
+                  />
+                  <ConfigInput
+                    label="Model"
+                    type="text"
+                    value={adminConfig.agents?.[agent.id]?.model || ''}
+                    onChange={(v) =>
+                      setAdminConfig({
+                        ...adminConfig,
+                        agents: {
+                          ...adminConfig.agents,
+                          [agent.id]: { ...(adminConfig.agents?.[agent.id] || { apiKey: '', baseURL: '' }), model: v },
+                        },
+                      })
+                    }
+                  />
                 </div>
               ))}
             </div>

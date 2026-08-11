@@ -9,6 +9,15 @@ export interface AdminProvider {
   baseUrl?: string;
 }
 
+export interface AgentConfig {
+  /** Base URL / OpenAI-compatible endpoint for this agent */
+  baseURL?: string;
+  /** API key for this agent */
+  apiKey?: string;
+  /** Model identifier, may include provider prefix */
+  model?: string;
+}
+
 export interface AdminSettings {
   providers: AdminProvider[];
   agentModels: Record<string, string> & {
@@ -16,6 +25,8 @@ export interface AdminSettings {
     srsAgentModel?: string;
     testCaseAgentModel?: string;
   };
+  /** Per-agent LLM configs for the interactive BRS workflow (WP-02) */
+  agents?: Record<string, AgentConfig>;
   executionPolicy: string;
   fileAccessPolicy: string;
   internetAccessPolicy: string;
@@ -41,6 +52,7 @@ export async function fetchAdminConfig(gatewayUrl: string): Promise<AdminSetting
       ollamaEndpoint: ollama?.baseUrl,
       hasApiKey: !!ollama?.apiKey,
       brsModel: data.agentModels['brs-agent'],
+      brsAgents: data.agents ? Object.keys(data.agents) : [],
     });
     return data;
   } catch (err) {

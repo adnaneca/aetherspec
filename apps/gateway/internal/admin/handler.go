@@ -72,6 +72,17 @@ func getConfig(pool *pgxpool.Pool, log *zap.Logger) fiber.Handler {
 			}
 		}
 
+		// Mask API keys in per-agent configs (WP-02)
+		if agents, ok := cfg["agents"].(map[string]interface{}); ok {
+			for _, val := range agents {
+				if agent, ok := val.(map[string]interface{}); ok {
+					if apiKey, exists := agent["apiKey"].(string); exists && apiKey != "" {
+						agent["apiKey"] = "***"
+					}
+				}
+			}
+		}
+
 		masked, err := json.Marshal(cfg)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "config serialize error"})
