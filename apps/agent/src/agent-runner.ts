@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { getCachedAdminConfig, type AdminProvider, type AdminSettings } from './admin-config.js';
+import { getOrCreateBRSAgent, BRS_AGENT_IDS } from './agents.js';
 import { logger } from './logger.js';
 
 export interface ChatMessage {
@@ -157,6 +158,11 @@ function getCacheKey(agentId: string, model: string, apiKey: string): string {
  * The agent is configured with the model and credentials from admin config.
  */
 function getOrCreateAgent(agentId: string, config: AdminSettings): Agent | null {
+  // Delegate to the BRS workflow agent factory for interactive BRS agents (WP-03).
+  if (BRS_AGENT_IDS.includes(agentId as any)) {
+    return getOrCreateBRSAgent(agentId as any);
+  }
+
   const ollama = resolveOllamaProvider(config);
   if (!ollama || !ollama.apiKey) {
     logger.error('no Ollama provider configured');
