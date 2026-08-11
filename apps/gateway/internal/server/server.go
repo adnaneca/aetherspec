@@ -96,7 +96,7 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	mergeHandler.Register(api)
 
 	// Workflow state (interactive Mastra workflow pause/resume)
-	workflowsHandler := workflows.NewHandler(pool, log)
+	workflowsHandler := workflows.NewHandler(pool, cfg, log)
 	workflowsHandler.Register(api)
 
 	// User settings

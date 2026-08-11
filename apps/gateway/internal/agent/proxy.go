@@ -14,6 +14,52 @@ import (
 	"go.uber.org/zap"
 )
 
+// Register sets up the agent proxy routes.
+func Register(r fiber.Router, cfg *config.Config, log *zap.Logger) {
+	api := r.Group("/agent")
+	api.Post("/chat", chatProxy(cfg, log))
+}
+
+// chatProxy proxies the browser's chat request to the Mastra agent sidecar
+// and streams the SSE response back to the browser.
+func chatProxy(cfg *config.Config, log *zap.Logger) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		body := c.Body()
+		if len(body) == 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "request body is required"})
+		}
+
+		var req struct {
+			Message string `json:"message"`
+			AgentID string `json:"agentId"`
+			History []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"history"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "invalid JSON"})
+		}
+		if req.Message == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "message is required"})
+		}
+
+		agentID := req.AgentID
+		if agentID == "" {
+			agentID = "general"
+		}
+
+		log.Info("agent chat proxy",
+			zap.String("agentId", agentID),
+			zap.Int("messageLen", len(req.Message)),
+		)
+
+		agentURL := fmt.Sprintf("http://%s/agents/%s/stream", cfg.Agent.GRPCURL, agentID)
+
+		return sseProxy(cfg, log, agentURL, body)(c)
+	}
+}
+
 // sseProxy forwards a POST to the agent sidecar and streams the SSE response back to the client.
 func sseProxy(cfg *config.Config, log *zap.Logger, agentURL string, body []byte) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -68,86 +114,5 @@ func sseProxy(cfg *config.Config, log *zap.Logger, agentURL string, body []byte)
 		})
 
 		return nil
-	}
-}
-
-// Register sets up the agent proxy routes.
-func Register(r fiber.Router, cfg *config.Config, log *zap.Logger) {
-	api := r.Group("/agent")
-	api.Post("/chat", chatProxy(cfg, log))
-	api.Post("/workflow/start", workflowStartProxy(cfg, log))
-	api.Post("/workflow/:id/resume", workflowResumeProxy(cfg, log))
-}
-
-// chatProxy proxies the browser's chat request to the Mastra agent sidecar
-// and streams the SSE response back to the browser.
-func chatProxy(cfg *config.Config, log *zap.Logger) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		body := c.Body()
-		if len(body) == 0 {
-			return c.Status(400).JSON(fiber.Map{"error": "request body is required"})
-		}
-
-		var req struct {
-			Message string `json:"message"`
-			AgentID string `json:"agentId"`
-			History []struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
-			} `json:"history"`
-		}
-		if err := json.Unmarshal(body, &req); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "invalid JSON"})
-		}
-		if req.Message == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "message is required"})
-		}
-
-		agentID := req.AgentID
-		if agentID == "" {
-			agentID = "general"
-		}
-
-		log.Info("agent chat proxy",
-			zap.String("agentId", agentID),
-			zap.Int("messageLen", len(req.Message)),
-		)
-
-		agentURL := fmt.Sprintf("http://%s/agents/%s/stream", cfg.Agent.GRPCURL, agentID)
-
-		return sseProxy(cfg, log, agentURL, body)(c)
-	}
-}
-
-// workflowStartProxy starts a new interactive BRS workflow on the agent sidecar.
-func workflowStartProxy(cfg *config.Config, log *zap.Logger) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		body := c.Body()
-		if len(body) == 0 {
-			return c.Status(400).JSON(fiber.Map{"error": "request body is required"})
-		}
-
-		agentID := c.Query("agentId", "brs-orchestrator")
-		agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/start", cfg.Agent.GRPCURL, agentID)
-
-		log.Info("workflow start proxy", zap.String("agentId", agentID))
-		return sseProxy(cfg, log, agentURL, body)(c)
-	}
-}
-
-// workflowResumeProxy resumes a paused interactive BRS workflow on the agent sidecar.
-func workflowResumeProxy(cfg *config.Config, log *zap.Logger) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		body := c.Body()
-		if len(body) == 0 {
-			return c.Status(400).JSON(fiber.Map{"error": "request body is required"})
-		}
-
-		workflowID := c.Params("id")
-		agentID := c.Query("agentId", "brs-orchestrator")
-		agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/%s/resume", cfg.Agent.GRPCURL, agentID, workflowID)
-
-		log.Info("workflow resume proxy", zap.String("workflowId", workflowID), zap.String("agentId", agentID))
-		return sseProxy(cfg, log, agentURL, body)(c)
 	}
 }

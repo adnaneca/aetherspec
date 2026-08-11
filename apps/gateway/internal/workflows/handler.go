@@ -1,12 +1,20 @@
 package workflows
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/tmf"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -31,18 +39,25 @@ var validStatuses = map[string]bool{
 
 type Handler struct {
 	pool *pgxpool.Pool
+	cfg  *config.Config
 	log  *zap.Logger
 }
 
-func NewHandler(pool *pgxpool.Pool, log *zap.Logger) *Handler {
-	return &Handler{pool: pool, log: log}
+func NewHandler(pool *pgxpool.Pool, cfg *config.Config, log *zap.Logger) *Handler {
+	return &Handler{pool: pool, cfg: cfg, log: log}
 }
 
 func (h *Handler) Register(api fiber.Router) {
+	// Generic workflow CRUD (WP-01)
 	api.Get("/workflow/:id", h.GetWorkflow)
 	api.Post("/workflow", h.CreateWorkflow)
 	api.Patch("/workflow/:id", h.UpdateWorkflowState)
 	api.Post("/workflow/:id/resume", h.ResumeWorkflow)
+
+	// Agent-driven interactive workflow API (WP-04)
+	api.Post("/agent/workflow/start", h.StartAgentWorkflow)
+	api.Post("/agent/workflow/:id/resume", h.ResumeAgentWorkflow)
+	api.Get("/agent/workflow/:id", h.GetWorkflow)
 }
 
 // workflowRow is the raw database row for a workflow.
@@ -72,15 +87,15 @@ func renderWorkflow(w *workflowRow) fiber.Map {
 	json.Unmarshal(w.State, &stateData)
 
 	return fiber.Map{
-		"id":         w.ID,
-		"projectId":  w.ProjectID,
-		"docId":      w.DocID,
-		"stepId":     w.StepID,
-		"agentId":    w.AgentID,
-		"state":      stateData,
-		"status":     w.Status,
-		"createdAt":  w.CreatedAt,
-		"updatedAt":  w.UpdatedAt,
+		"id":        w.ID,
+		"projectId": w.ProjectID,
+		"docId":     w.DocID,
+		"stepId":    w.StepID,
+		"agentId":   w.AgentID,
+		"state":     stateData,
+		"status":    w.Status,
+		"createdAt": w.CreatedAt,
+		"updatedAt": w.UpdatedAt,
 	}
 }
 
@@ -196,4 +211,193 @@ func (h *Handler) ResumeWorkflow(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(renderWorkflow(w))
+}
+
+// StartAgentWorkflow starts a new interactive BRS section workflow.
+// It generates a workflow UUID, persists the workflow to Postgres, then proxies the SSE stream from the agent sidecar.
+func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
+	body := c.Body()
+	if len(body) == 0 {
+		return tmf.SendError(c, 400, "Request body is required")
+	}
+
+	var req struct {
+		ProjectID string `json:"projectId"`
+		DocID     string `json:"docId"`
+		StepID    int    `json:"stepId"`
+		AgentID   string `json:"agentId"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return tmf.SendError(c, 400, "Invalid JSON")
+	}
+
+	if req.ProjectID == "" || req.DocID == "" {
+		return tmf.SendError(c, 400, "projectId and docId are required")
+	}
+	if req.AgentID == "" {
+		req.AgentID = "brs-orchestrator"
+	}
+
+	workflowID := uuid.New().String()
+
+	// Insert the workflow row. The agent sidecar will overwrite state with the full WorkflowState on first pause.
+	_, err := h.pool.Exec(c.Context(),
+		`INSERT INTO agent_workflows (id, project_id, doc_id, step_id, agent_id, state, status)
+		 VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6)
+		 ON CONFLICT (id) DO NOTHING`,
+		workflowID, req.ProjectID, req.DocID, req.StepID, req.AgentID, StatusActive,
+	)
+	if err != nil {
+		h.log.Error("Failed to persist workflow", zap.Error(err))
+		return tmf.SendError(c, 500, "Failed to create workflow")
+	}
+
+	h.log.Info("Workflow started",
+		zap.String("id", workflowID),
+		zap.String("project", req.ProjectID),
+		zap.String("doc", req.DocID),
+		zap.Int("step", req.StepID),
+		zap.String("agent", req.AgentID),
+	)
+
+	// Inject the generated workflowId into the forwarded body so the agent sidecar uses the same ID.
+	forwardBody, err := injectWorkflowID(body, workflowID)
+	if err != nil {
+		h.log.Error("Failed to inject workflowId", zap.Error(err))
+		return tmf.SendError(c, 500, "Failed to prepare agent request")
+	}
+
+	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/start", h.cfg.Agent.GRPCURL, req.AgentID)
+	return h.proxyAgentSSE(c, agentURL, forwardBody, workflowID)
+}
+
+// ResumeAgentWorkflow resumes a paused workflow with user input.
+func (h *Handler) ResumeAgentWorkflow(c *fiber.Ctx) error {
+	workflowID := c.Params("id")
+	body := c.Body()
+	if len(body) == 0 {
+		return tmf.SendError(c, 400, "Request body is required")
+	}
+
+	// Mark workflow as active.
+	_, err := h.pool.Exec(c.Context(),
+		`UPDATE agent_workflows SET status = $1, updated_at = NOW() WHERE id = $2`,
+		StatusActive, workflowID,
+	)
+	if err != nil {
+		h.log.Error("Failed to resume workflow", zap.Error(err))
+		return tmf.SendError(c, 500, "Failed to resume workflow")
+	}
+
+	// Resolve agent_id from the persisted workflow.
+	var agentID string
+	err = h.pool.QueryRow(c.Context(),
+		`SELECT agent_id FROM agent_workflows WHERE id = $1`, workflowID,
+	).Scan(&agentID)
+	if err != nil {
+		return tmf.SendError(c, 404, "Workflow not found")
+	}
+
+	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/%s/resume", h.cfg.Agent.GRPCURL, agentID, workflowID)
+	return h.proxyAgentSSE(c, agentURL, body, workflowID)
+}
+
+// proxyAgentSSE forwards a POST to the agent sidecar, proxies the SSE response back to the client,
+// and updates only the workflow status column based on terminal/pause events.
+func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, workflowID string) error {
+	httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodPost, agentURL, bytes.NewReader(body))
+	if err != nil {
+		h.log.Error("Failed to create agent request", zap.Error(err))
+		return tmf.SendError(c, 500, "Internal error")
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		h.log.Error("Agent request failed", zap.Error(err), zap.String("url", agentURL))
+		return tmf.SendError(c, 502, "Agent unavailable")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		h.log.Error("Agent returned error", zap.Int("status", resp.StatusCode), zap.String("body", string(respBody)))
+		return c.Status(resp.StatusCode).Send(respBody)
+	}
+
+	c.Set("Content-Type", "text/event-stream")
+	c.Set("Cache-Control", "no-cache")
+	c.Set("Connection", "keep-alive")
+	c.Set("X-Accel-Buffering", "no")
+
+	// Use Fiber's body stream writer to keep the response streaming.
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				if _, writeErr := w.Write([]byte("\n")); writeErr != nil {
+					h.log.Warn("client write failed", zap.Error(writeErr))
+					return
+				}
+				continue
+			}
+
+			if _, writeErr := w.Write([]byte(line + "\n")); writeErr != nil {
+				h.log.Warn("client write failed", zap.Error(writeErr))
+				return
+			}
+
+			if strings.HasPrefix(line, "data: ") {
+				eventJSON := strings.TrimPrefix(line, "data: ")
+				var event map[string]interface{}
+				if err := json.Unmarshal([]byte(eventJSON), &event); err == nil {
+					if eventType, ok := event["type"].(string); ok {
+						switch eventType {
+						case "paused":
+							h.updateWorkflowStatus(c.Context(), workflowID, StatusPaused)
+						case "done":
+							h.updateWorkflowStatus(c.Context(), workflowID, StatusCompleted)
+						case "error":
+							h.updateWorkflowStatus(c.Context(), workflowID, StatusError)
+						}
+					}
+				}
+			}
+
+			if flushErr := w.Flush(); flushErr != nil {
+				h.log.Warn("client flush failed", zap.Error(flushErr))
+				return
+			}
+		}
+
+		if scanErr := scanner.Err(); scanErr != nil && scanErr != io.EOF {
+			h.log.Warn("SSE stream scan failed", zap.Error(scanErr))
+		}
+	})
+
+	return nil
+}
+
+func (h *Handler) updateWorkflowStatus(ctx context.Context, workflowID, status string) {
+	_, err := h.pool.Exec(ctx,
+		`UPDATE agent_workflows SET status = $1, updated_at = NOW() WHERE id = $2`,
+		status, workflowID,
+	)
+	if err != nil {
+		h.log.Warn("Failed to update workflow status", zap.Error(err), zap.String("id", workflowID), zap.String("status", status))
+	}
+}
+
+// injectWorkflowID parses body as JSON, sets workflowId, and returns the re-encoded bytes.
+func injectWorkflowID(body []byte, workflowID string) ([]byte, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	payload["workflowId"] = workflowID
+	return json.Marshal(payload)
 }
