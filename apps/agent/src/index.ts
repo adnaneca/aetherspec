@@ -185,6 +185,7 @@ const server = http.createServer(async (req, res) => {
         projectId: parsed.projectId || 'unknown',
         docId: parsed.docId || 'unknown',
         stepId: Number(parsed.stepId) || 0,
+        sectionName: parsed.sectionName || '',
         sectionGuide: parsed.sectionGuide || '',
         dependencySections: parsed.dependencySections || [],
         inputDocuments: parsed.inputDocuments || [],

@@ -60,6 +60,7 @@ export interface WorkflowContext {
   projectId: string;
   docId: string;
   stepId: number;
+  sectionName?: string;
   sectionGuide: string;
   dependencySections: string[];
   inputDocuments: string[];
@@ -106,7 +107,7 @@ export class BRSWorkflow {
     this.state = {
       currentStep: 'relevance',
       sectionId: context.stepId,
-      sectionName: '',
+      sectionName: context.sectionName || '',
       answers: {
         applicable: null,
         discover: {},
@@ -632,8 +633,9 @@ export class BRSWorkflow {
   }
 
   private parseSuggestions(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
     try {
-      const parsed = JSON.parse(response);
+      const parsed = JSON.parse(clean);
       return parsed.suggestions || [];
     } catch {
       return [{ questionId: 'Q1', question: 'General suggestion', suggestedAnswer: response.trim(), confidence: 'medium' }];
@@ -653,8 +655,9 @@ export class BRSWorkflow {
   }
 
   private parseFindings(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
     try {
-      const parsed = JSON.parse(response);
+      const parsed = JSON.parse(clean);
       return parsed.findings || [];
     } catch {
       const findings: any[] = [];
@@ -670,11 +673,20 @@ export class BRSWorkflow {
   }
 
   private parseFixes(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
     try {
-      const parsed = JSON.parse(response);
+      const parsed = JSON.parse(clean);
       return parsed.fixes || [];
     } catch {
       return [];
     }
+  }
+
+  private extractJsonFromMarkdown(response: string): string {
+    const codeBlock = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlock && codeBlock[1]) {
+      return codeBlock[1].trim();
+    }
+    return response.trim();
   }
 }
