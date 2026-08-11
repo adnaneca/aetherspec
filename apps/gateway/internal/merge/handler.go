@@ -98,13 +98,18 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 		h.cfg.Postgres.DB, h.cfg.Postgres.SSLMode,
 	)
 
-	cmd := exec.CommandContext(c.Context(), "python3", h.cfg.Merge.ScriptPath,
+	args := strings.Fields(h.cfg.Merge.ScriptPath)
+	if len(args) == 0 {
+		return c.Status(500).JSON(fiber.Map{"error": "merge script path not configured"})
+	}
+	args = append(args,
 		"--project-id", projectID,
 		"--doc-id", docID,
 		"--db-url", dbURL,
 		"--merged-by", mergedBy,
 		"--output-name", "BRS-001.md",
 	)
+	cmd := exec.CommandContext(c.Context(), args[0], args[1:]...)
 	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("MINIO_ENDPOINT=%s", h.cfg.MinIO.Endpoint),
 		fmt.Sprintf("MINIO_ACCESS_KEY=%s", h.cfg.MinIO.AccessKey),

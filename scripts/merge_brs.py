@@ -22,6 +22,7 @@ Output:
 """
 
 import argparse
+import io
 import os
 import re
 import sys
@@ -270,7 +271,7 @@ def put_markdown(minio_client, bucket, key, content):
     minio_client.put_object(
         bucket,
         key,
-        iter([data]),
+        io.BytesIO(data),
         len(data),
         content_type="text/markdown",
     )

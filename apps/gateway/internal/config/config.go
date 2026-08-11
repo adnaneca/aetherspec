@@ -87,7 +87,7 @@ func Load() (*Config, error) {
 			GRPCURL: getEnv("AGENT_GRPC_URL", "localhost:50051"),
 		},
 		Merge: MergeConfig{
-			ScriptPath: getEnv("MERGE_SCRIPT_PATH", "/opt/aetherspec-v2/scripts/merge_brs.py"),
+			ScriptPath: getEnv("MERGE_SCRIPT_PATH", "/opt/aetherspec-v2/venv/bin/python3 /opt/aetherspec-v2/scripts/merge_brs.py"),
 		},
 		Postgres: PostgresConfig{
 			Host:     getEnv("POSTGRES_HOST", "localhost"),

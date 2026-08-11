@@ -35,7 +35,8 @@ pnpm install --frozen-lockfile
 
 echo "🐍 Installing Python scripts dependencies..."
 if [ -f scripts/requirements.txt ]; then
-  pip3 install -q -r scripts/requirements.txt
+  python3 -m venv /opt/aetherspec-v2/venv
+  /opt/aetherspec-v2/venv/bin/pip install -q -r scripts/requirements.txt
 fi
 
 echo "🔨 Building gateway..."
