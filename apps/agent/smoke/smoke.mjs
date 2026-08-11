@@ -13,7 +13,8 @@
 import { spawn } from 'node:child_process';
 import { setTimeout } from 'node:timers/promises';
 
-const AGENT_URL = process.env.AGENT_URL || 'http://localhost:3456';
+const AGENT_PORT = process.env.AGENT_PORT || '50051';
+const AGENT_URL = process.env.AGENT_URL || `http://localhost:${AGENT_PORT}`;
 const STARTUP_TIMEOUT_MS = 20_000;
 const TEST_TIMEOUT_MS = 60_000;
 
@@ -98,7 +99,11 @@ async function run() {
   const proc = spawn('node', ['dist/index.js'], {
     cwd: new URL('..', import.meta.url),
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, GATEWAY_URL: process.env.GATEWAY_URL || 'http://localhost:3000' },
+    env: {
+      ...process.env,
+      AGENT_PORT,
+      GATEWAY_URL: process.env.GATEWAY_URL || 'http://localhost:3000',
+    },
   });
   proc.stdout.on('data', (d) => process.stdout.write(d));
   proc.stderr.on('data', (d) => process.stderr.write(d));
