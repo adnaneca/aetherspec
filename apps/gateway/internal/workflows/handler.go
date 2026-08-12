@@ -310,10 +310,10 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 	// SetBodyStreamWriter runs asynchronously, so c.Context() is not valid
 	// inside the goroutine.
 	agentCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(agentCtx, http.MethodPost, agentURL, bytes.NewReader(body))
 	if err != nil {
+		cancel()
 		h.log.Error("Failed to create agent request", zap.Error(err))
 		return tmf.SendError(c, 500, "Internal error")
 	}
@@ -322,11 +322,13 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		cancel()
 		h.log.Error("Agent request failed", zap.Error(err), zap.String("url", agentURL))
 		return tmf.SendError(c, 502, "Agent unavailable")
 	}
 
 	if resp.StatusCode != 200 {
+		cancel()
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		h.log.Error("Agent returned error", zap.Int("status", resp.StatusCode), zap.String("body", string(respBody)))
@@ -340,8 +342,13 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 
 	// IMPORTANT: resp.Body must be closed inside the goroutine, NOT with defer,
 	// because SetBodyStreamWriter runs asynchronously after this handler returns.
+	// cancel() must also live inside the goroutine so the agent context stays
+	// alive until the stream ends.
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		defer resp.Body.Close()
+		defer func() {
+			resp.Body.Close()
+			cancel()
+		}()
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
