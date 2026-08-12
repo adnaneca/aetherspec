@@ -48,6 +48,9 @@ export function createSSECallbacks(res: ServerResponse): WorkflowCallbacks {
     onFindings: (findings: any[]) => {
       safeWrite(`data: ${JSON.stringify({ type: 'findings', findings })}\n\n`);
     },
+    onFindingsRaw: (findings: any[], agent: string) => {
+      safeWrite(`data: ${JSON.stringify({ type: 'findings_raw', findings, agent })}\n\n`);
+    },
     onPaused: async (step: WorkflowStep, waitingFor: string) => {
       safeWrite(`data: ${JSON.stringify({ type: 'paused', step, waitingFor })}\n\n`);
       safeEnd();

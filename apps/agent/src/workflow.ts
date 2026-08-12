@@ -8,13 +8,14 @@ import { updateWorkflowState, createWorkflow } from './workflow-store.js';
 
 export type WorkflowStep =
   | 'relevance'
-  | 'discover'
   | 'negotiate_answers'
+  | 'direct_writer'
   | 'expectations'
   | 'suggest'
   | 'generate'
   | 'validate'
   | 'negotiate_fixes'
+  | 'direct_validator'
   | 'fix'
   | 'review'
   | 'done';
@@ -26,8 +27,10 @@ export interface WorkflowState {
   answers: {
     applicable: boolean | null;
     discover: Record<string, string>;
+    discoverMode?: 'negotiated' | 'direct';
     expectations: string;
     structureChoice: string;
+    validationMode?: 'negotiated' | 'direct';
   };
   negotiatedAnswers: Array<{
     questionId: string;
@@ -37,6 +40,7 @@ export interface WorkflowState {
     modified?: string;
     final: string;
   }>;
+  pendingQuestions: string[];
   draft: string;
   revisionCount: number;
   findings: any[];
@@ -77,6 +81,7 @@ export interface WorkflowCallbacks {
   onFixes: (fixes: any[], agent: string) => void;
   onReview: (sectionTitle: string, summary: any) => void;
   onFindings: (findings: any[]) => void;
+  onFindingsRaw: (findings: any[], agent: string) => void;
   onPaused: (step: WorkflowStep, waitingFor: string) => Promise<void> | void;
   onDone: (tokensUsed: number) => void;
   onError: (error: string) => void;
@@ -111,10 +116,13 @@ export class BRSWorkflow {
       answers: {
         applicable: null,
         discover: {},
+        discoverMode: 'negotiated',
         expectations: '',
         structureChoice: '',
+        validationMode: 'negotiated',
       },
       negotiatedAnswers: [],
+      pendingQuestions: [],
       draft: '',
       revisionCount: 0,
       findings: [],
@@ -183,11 +191,11 @@ export class BRSWorkflow {
         case 'relevance':
           await this.handleRelevanceResponse();
           break;
-        case 'discover':
-          await this.handleDiscoverResponse();
-          break;
         case 'negotiate_answers':
           await this.handleNegotiateAnswersResponse();
+          break;
+        case 'direct_writer':
+          await this.handleDirectWriterResponse();
           break;
         case 'expectations':
           await this.handleExpectationsResponse();
@@ -198,6 +206,9 @@ export class BRSWorkflow {
         case 'negotiate_fixes':
           await this.handleNegotiateFixesResponse();
           break;
+        case 'direct_validator':
+          await this.handleDirectValidatorResponse();
+          break;
         case 'review':
           await this.handleReviewResponse();
           break;
@@ -206,6 +217,19 @@ export class BRSWorkflow {
       }
     } catch (err) {
       this.callbacks.onError((err as Error).message);
+    } finally {
+      // Always emit a terminal event so the client sees the workflow is no longer running.
+      // onError already calls safeEnd(), but if the switch did nothing we still need closure.
+      if (this.state.currentStep !== 'relevance' &&
+          this.state.currentStep !== 'negotiate_answers' &&
+          this.state.currentStep !== 'direct_writer' &&
+          this.state.currentStep !== 'expectations' &&
+          this.state.currentStep !== 'suggest' &&
+          this.state.currentStep !== 'negotiate_fixes' &&
+          this.state.currentStep !== 'direct_validator' &&
+          this.state.currentStep !== 'review') {
+        this.callbacks.onDone(0);
+      }
     }
   }
 
@@ -255,30 +279,22 @@ export class BRSWorkflow {
     }
 
     this.state.answers.applicable = true;
-    this.callbacks.onStatus('discover', 'brs-orchestrator', 'Starting discovery...');
-    await this.stepDiscover();
+    this.callbacks.onStatus('negotiate_answers', 'brs-orchestrator', 'Negotiating answers...');
+    await this.stepGenerateQuestions();
   }
 
-  // ── Step: Discover (Writer asks questions) ──
+  // ── Step: Generate Questions (internal) ──
 
-  private async stepDiscover() {
-    this.state.currentStep = 'discover';
-    this.callbacks.onStatus('discover', 'brs-writer', 'Asking clarifying questions...');
+  private async stepGenerateQuestions() {
+    this.state.currentStep = 'negotiate_answers';
+    this.callbacks.onStatus('negotiate_answers', 'brs-writer', 'Negotiating answers...');
     this.state.agentCalls.writer++;
 
-    const prompt = this.buildDiscoverPrompt();
+    const prompt = this.buildGenerateQuestionsPrompt();
     const response = await this.callAgent('writer', prompt, false);
     const questions = this.parseQuestions(response);
 
-    this.callbacks.onQuestion(questions, 'brs-writer');
-    await this.pause('discover', 'user_answers');
-  }
-
-  private async handleDiscoverResponse() {
-    const answers = this.context.userResponse || {};
-    this.state.answers.discover = answers;
-
-    this.callbacks.onStatus('negotiate_answers', 'brs-negotiator', 'Negotiating answers...');
+    this.state.pendingQuestions = questions;
     await this.stepNegotiateAnswers();
   }
 
@@ -297,8 +313,35 @@ export class BRSWorkflow {
   }
 
   private async handleNegotiateAnswersResponse() {
-    const reviewedAnswers = this.context.userResponse || [];
+    const userResponse = this.context.userResponse || [];
+
+    if (userResponse.action === 'direct_writer_access') {
+      this.state.answers.discoverMode = 'direct';
+      this.callbacks.onQuestion(this.state.pendingQuestions, 'brs-writer');
+      await this.pause('direct_writer', 'user_answers');
+      return;
+    }
+
+    const reviewedAnswers = Array.isArray(userResponse) ? userResponse : [];
     this.state.negotiatedAnswers = reviewedAnswers;
+
+    this.callbacks.onStatus('expectations', 'brs-orchestrator', 'Asking about expectations...');
+    await this.stepExpectations();
+  }
+
+  private async handleDirectWriterResponse() {
+    const answers = this.context.userResponse || {};
+    this.state.answers.discover = answers;
+    this.state.answers.discoverMode = 'direct';
+
+    this.state.negotiatedAnswers = Object.entries(answers).map(([questionId, final]) => ({
+      questionId,
+      question: this.state.pendingQuestions.find((_, i) => `Q${i + 1}` === questionId) || questionId,
+      suggested: final as string,
+      accepted: true,
+      modified: final as string,
+      final: final as string,
+    }));
 
     this.callbacks.onStatus('expectations', 'brs-orchestrator', 'Asking about expectations...');
     await this.stepExpectations();
@@ -403,13 +446,49 @@ export class BRSWorkflow {
   }
 
   private async handleNegotiateFixesResponse() {
-    const reviewedFixes = this.context.userResponse || [];
+    const userResponse = this.context.userResponse || [];
+
+    if (userResponse.action === 'direct_validator_access') {
+      this.state.answers.validationMode = 'direct';
+      this.callbacks.onFindingsRaw(this.state.findings, 'brs-validator');
+      await this.pause('direct_validator', 'user_review_findings');
+      return;
+    }
+
+    const reviewedFixes = Array.isArray(userResponse) ? userResponse : [];
     this.state.negotiatedFixes = reviewedFixes;
 
     const hasAcceptedFixes = reviewedFixes.some((f: any) => f.accepted);
 
     if (hasAcceptedFixes) {
       this.callbacks.onStatus('fix', 'brs-writer', 'Applying fixes...');
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus('review', 'brs-orchestrator', 'Presenting draft for review...');
+      await this.stepReview();
+    }
+  }
+
+  private async handleDirectValidatorResponse() {
+    const decisions = this.context.userResponse || [];
+    const acceptedFindings = Array.isArray(decisions)
+      ? this.state.findings.filter((_f: any, i: number) => decisions[i]?.accepted)
+      : [];
+
+    this.state.answers.validationMode = 'direct';
+    this.state.findings = acceptedFindings;
+
+    const hasBlocking = acceptedFindings.some((f: any) => f.type === 'BLOCKING');
+
+    if (hasBlocking) {
+      this.callbacks.onStatus('fix', 'brs-writer', 'Applying selected fixes...');
+      this.state.negotiatedFixes = acceptedFindings.map((f: any, i: number) => ({
+        findingId: f.id || `F${i + 1}`,
+        finding: f.message || 'Finding',
+        proposedFix: f.message || 'Please address this finding.',
+        autoFixable: false,
+        accepted: true,
+      }));
       await this.stepFix();
     } else {
       this.callbacks.onStatus('review', 'brs-orchestrator', 'Presenting draft for review...');
@@ -527,7 +606,7 @@ export class BRSWorkflow {
 
   // ── Prompt builders ──
 
-  private buildDiscoverPrompt(): string {
+  private buildGenerateQuestionsPrompt(): string {
     return [
       `You are generating Section ${this.state.sectionId} of a BRS document.`,
       `Section Guide:\n${this.context.sectionGuide}`,
@@ -537,7 +616,7 @@ export class BRSWorkflow {
       this.context.inputDocuments.length > 0
         ? `Input Documents:\n${this.context.inputDocuments.join('\n---\n')}`
         : '',
-      `Ask 3-5 clarifying questions to understand what content this section needs.`,
+      `Generate 3-5 clarifying questions as a numbered list. The orchestrator will pass your questions to the Negotiator, who will propose pre-filled answers for the human.`,
       `Return the questions as a numbered list.`,
     ]
       .filter(Boolean)
@@ -547,7 +626,7 @@ export class BRSWorkflow {
   private buildNegotiateAnswersPrompt(): string {
     return [
       `You are the Negotiator. The Writer asked these questions:`,
-      JSON.stringify(this.state.answers.discover, null, 2),
+      JSON.stringify(this.state.pendingQuestions, null, 2),
       this.context.inputDocuments.length > 0
         ? `Input Documents:\n${this.context.inputDocuments.join('\n---\n')}`
         : '',
