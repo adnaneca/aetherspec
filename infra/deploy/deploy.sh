@@ -25,9 +25,17 @@ cd ${SERVER_DIR}
 
 echo "📦 Checking out version: ${VERSION}"
 git fetch origin
-# Reset any build artifacts or local changes before force-checking out the target branch
-git checkout -B "${VERSION}" "origin/${VERSION}" -- || true
-git reset --hard "origin/${VERSION}"
+# Determine if VERSION is a tag or a branch and checkout appropriately.
+if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+  git checkout -B "deploy-${VERSION}" "${VERSION}" -- || true
+  git reset --hard "${VERSION}"
+elif git rev-parse -q --verify "refs/remotes/origin/${VERSION}" >/dev/null; then
+  git checkout -B "${VERSION}" "origin/${VERSION}" -- || true
+  git reset --hard "origin/${VERSION}"
+else
+  echo "❌ Version ${VERSION} is not a known branch or tag"
+  exit 1
+fi
 git clean -fd
 
 echo "📦 Installing dependencies..."
