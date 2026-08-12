@@ -173,6 +173,69 @@ export async function generateSection(req: GenerateSectionRequest): Promise<Read
   return authFetchStream(`${GATEWAY_URL}/api/agent/generate-section`, req);
 }
 
+// ── Interactive BRS Workflow ──
+
+export interface StartWorkflowRequest {
+  projectId: string;
+  docId: string;
+  stepId: number;
+  sectionName?: string;
+  sectionGuide?: string;
+  dependencySections?: string[];
+  inputDocuments?: string[];
+  qualityChecks?: string[];
+  agentId?: string;
+}
+
+export async function startWorkflow(req: StartWorkflowRequest): Promise<ReadableStream<Uint8Array>> {
+  return authFetchStream(`${GATEWAY_URL}/api/agent/workflow/start`, req);
+}
+
+export async function resumeWorkflow(
+  workflowId: string,
+  userResponse: unknown,
+  retries = 3,
+  delayMs = 1500,
+): Promise<ReadableStream<Uint8Array>> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await authFetchStream(`${GATEWAY_URL}/api/agent/workflow/${workflowId}/resume`, { userResponse });
+    } catch (err) {
+      lastError = err as Error;
+      const message = lastError.message || '';
+      const isNetworkError =
+        message.includes('network') ||
+        message.includes('ERR_NETWORK') ||
+        message.includes('failed to fetch') ||
+        message.includes('aborted');
+
+      if (!isNetworkError || attempt === retries - 1) {
+        throw lastError;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+
+  throw lastError || new Error(`resumeWorkflow failed after ${retries} attempts`);
+}
+
+export async function getWorkflow(workflowId: string): Promise<{
+  id: string;
+  projectId: string;
+  docId: string;
+  stepId: number;
+  agentId: string;
+  state: any;
+  status: string;
+}> {
+  const resp = await authFetch(`${GATEWAY_URL}/api/agent/workflow/${workflowId}`);
+  if (!resp.ok) throw new Error(`Failed to fetch workflow: ${resp.status}`);
+  return resp.json();
+}
+
 export async function createDocument(data: { projectId: string; docType: string; totalSteps?: number }): Promise<Document> {
   const resp = await authFetch(`${GATEWAY_URL}/api/document`, {
     method: 'POST',
