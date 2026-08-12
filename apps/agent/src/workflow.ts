@@ -656,7 +656,7 @@ export class BRSWorkflow {
         : projectBlock
           ? 'No uploaded input documents are available. Use the Project Context above.'
           : 'No uploaded input documents or project description are available. Ask only questions that can be answered from the section guide, and phrase them so the human can answer directly.',
-      `Generate 3-5 clarifying questions as a numbered list.`,
+      `Generate clarifying questions as a numbered list. Ask as many as needed based on the section guide — do not enforce a specific count.`,
       `Rules:`,
       `- Do NOT ask for documents that were not uploaded (e.g., charter, business case, PRD) unless they are explicitly listed in Input Documents.`,
       `- Prefer questions the human can answer from general knowledge of the initiative.`,

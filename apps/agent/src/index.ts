@@ -9,6 +9,7 @@ import { getBRSAgents, type BRSAgentId } from './agents.js';
 import { BRSWorkflow } from './workflow.js';
 import { createSSECallbacks } from './sse-emitter.js';
 import { getWorkflow } from './workflow-store.js';
+import { buildNegotiatorChatPrompt, parseNegotiatorChatResponse } from './negotiator-chat.js';
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
@@ -237,6 +238,88 @@ const server = http.createServer(async (req, res) => {
     const callbacks = createSSECallbacks(res);
     workflow.setCallbacks(callbacks);
     await workflow.resume(parsed.userResponse);
+    return;
+  }
+
+  // ── Negotiator chat side-channel (WP-08) ──
+  // POST /agents/:agentId/workflow/:workflowId/negotiator-chat
+  const negotiatorChatMatch = url.match(/^\/agents\/([^\/]+)\/workflow\/([^\/]+)\/negotiator-chat$/);
+  if (negotiatorChatMatch && method === 'POST') {
+    const workflowId = negotiatorChatMatch[2];
+
+    let body = '';
+    for await (const chunk of req) {
+      body += chunk;
+    }
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      return;
+    }
+
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      'connection': 'keep-alive',
+      'access-control-allow-origin': '*',
+    });
+
+    const workflow = activeWorkflows.get(workflowId);
+    const context = workflow?.getContext();
+    const inputDocuments = context?.inputDocuments ?? [];
+    const project = context?.project ?? {};
+
+    const brsAgents = getBRSAgents();
+    const negotiator = brsAgents['brs-negotiator'];
+    if (!negotiator) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: 'Negotiator agent not available' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const prompt = buildNegotiatorChatPrompt({
+      questionId: parsed.questionId,
+      question: parsed.question,
+      currentSuggestion: parsed.currentSuggestion,
+      humanMessage: parsed.humanMessage,
+      chatHistory: parsed.chatHistory || [],
+      inputDocuments,
+      project,
+    });
+
+    let fullResponse = '';
+    try {
+      await runAgentStream(
+        { agentId: 'brs-negotiator', message: prompt, history: [] },
+        {
+          onToken: (delta) => {
+            fullResponse += delta;
+          },
+          onDone: () => {
+            const parsedResponse = parseNegotiatorChatResponse(fullResponse);
+            res.write(`data: ${JSON.stringify({
+              type: 'negotiator_chat_response',
+              questionId: parsed.questionId,
+              response: parsedResponse.response,
+              updatedSuggestion: parsedResponse.updatedSuggestion,
+              shouldUpdateSuggestion: parsedResponse.shouldUpdateSuggestion,
+            })}\n\n`);
+            res.end();
+          },
+          onError: (error) => {
+            res.write(`data: ${JSON.stringify({ type: 'error', error })}\n\n`);
+            res.end();
+          },
+        },
+      );
+    } catch (err) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: (err as Error).message })}\n\n`);
+      res.end();
+    }
     return;
   }
 

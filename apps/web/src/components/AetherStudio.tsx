@@ -76,6 +76,7 @@ interface ChatMessage {
   suggestionCard?: {
     suggestions: WorkflowSuggestion[];
     agent: string;
+    workflowId?: string;
     submitted?: boolean;
   };
   optionCard?: {
@@ -330,6 +331,7 @@ export function AetherStudio() {
                   suggestedAnswer: a.suggested || a.modified || a.final || '',
                 })),
                 agent: 'brs-negotiator',
+                workflowId: parsed.workflowId,
               },
             }]);
           } else if (currentStep === 'direct_validator' && Array.isArray(wf.state?.findings) && wf.state.findings.length > 0) {
@@ -668,7 +670,7 @@ export function AetherStudio() {
             content: 'Negotiator proposes answers. Review each suggestion:',
             agent: event.agent,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            suggestionCard: { suggestions: event.suggestions || [], agent: event.agent },
+            suggestionCard: { suggestions: event.suggestions || [], agent: event.agent, workflowId: workflowIdRef.current || event.workflowId },
           }]);
           break;
 
@@ -873,7 +875,7 @@ export function AetherStudio() {
             content: 'Negotiator proposes answers. Review each suggestion:',
             agent: event.agent,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            suggestionCard: { suggestions: event.suggestions || [], agent: event.agent },
+            suggestionCard: { suggestions: event.suggestions || [], agent: event.agent, workflowId: workflowIdRef.current || event.workflowId },
           }]);
           break;
         case 'options':
@@ -1745,6 +1747,7 @@ export function AetherStudio() {
                   {msg.suggestionCard && !msg.suggestionCard.submitted && (
                     <SuggestionCard
                       suggestions={msg.suggestionCard.suggestions}
+                      workflowId={msg.suggestionCard.workflowId}
                       onAccept={(finalAnswers) => {
                         setChatMessages((prev) => prev.map((m) =>
                           m.id === msg.id ? { ...m, suggestionCard: { ...m.suggestionCard!, submitted: true } } : m,

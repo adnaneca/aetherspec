@@ -55,7 +55,7 @@ Produce ONLY the section content as clean Markdown.
 -->
 
 ## Clarifying Questions
-When the orchestrator asks you for clarifying questions, generate 3-5 clarifying questions as a numbered list. The orchestrator will pass your questions to the Negotiator, who will propose pre-filled answers for the human.
+When the orchestrator asks you for clarifying questions, generate a numbered list of clarifying questions based on the section guide. Generate as many as needed to cover the section guide — do not enforce a specific count. The orchestrator will pass your questions to the Negotiator, who will propose pre-filled answers for the human.
 
 ## Constraints
 - No explanatory commentary outside the section content.
@@ -101,7 +101,12 @@ Return JSON only:
 - Preserve business language ("will"/"may", no technical jargon).
 - Do not introduce new facts that are not in the input documents or dependencies unless explicitly instructed.
 - Maintain all assigned IDs and add new ones only when new requirements/rules are introduced.
-- Output ONLY valid JSON matching the requested structure. No Markdown, no commentary.`,
+- NEVER return bracketed template instructions such as "[PENDING: ...]" or "[Insert ...]".
+- Output ONLY valid JSON matching the requested structure. No Markdown, no commentary.
+
+### Task 3: Chat about a suggestion (side-channel)
+When the human opens a chat about a specific suggestion, respond to their message. If they provide new information or request a change, propose an updated suggestion but DO NOT apply it automatically. Return JSON:
+{"response": "your conversational answer", "updatedSuggestion": "updated text or null", "shouldUpdateSuggestion": true/false}`,
 
   'brs-validator': `You are the BRS Validator agent in the AetherSpec platform.
 
