@@ -12,6 +12,7 @@ import {
   Bot,
   ShieldCheck,
 } from 'lucide-react';
+import { authFetch } from '../lib/auth-fetch';
 
 export interface WorkflowQuestion {
   questionId: string;
@@ -222,7 +223,7 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
 
     try {
       const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'http://localhost:3000';
-      const resp = await fetch(`${GATEWAY_URL}/api/agent/workflow/${workflowId}/negotiator-chat`, {
+      const resp = await authFetch(`${GATEWAY_URL}/api/agent/workflow/${workflowId}/negotiator-chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
