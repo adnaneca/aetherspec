@@ -1830,6 +1830,7 @@ export function AetherStudio() {
 
           {/* Quick Action Pills */}
           <div className="p-2 border-t border-border bg-background flex flex-wrap gap-1 shrink-0">
+            {/* + Edge Cases — relevant for all doc types */}
             <button
               onClick={() => quickAction(t('studio.edgeCasesPrompt', 'Add edge cases and exception handling paths.'))}
               className="text-[10px] bg-card hover:bg-accent text-foreground border border-border px-2 py-1 rounded flex items-center gap-1"
@@ -1837,13 +1838,37 @@ export function AetherStudio() {
               <Wand2 className="size-2.5 text-primary" />
               {t('studio.edgeCases')}
             </button>
-            {(canAccessBRS || canAccessSRS) && (
+
+            {/* + Add Acceptance Criteria — relevant for BRS and SRS */}
+            {(docType === 'brs' || docType === 'srs') && (
               <button
-                onClick={() => quickAction(t('studio.gherkinPrompt', 'Format acceptance criteria strictly into Given/When/Then Gherkin style.'))}
+                onClick={() => quickAction(t('studio.acceptanceCriteriaPrompt', 'Add acceptance criteria to this section.'))}
+                className="text-[10px] bg-card hover:bg-accent text-foreground border border-border px-2 py-1 rounded flex items-center gap-1"
+              >
+                <Wand2 className="size-2.5 text-status-signature" />
+                {t('studio.acceptanceCriteria')}
+              </button>
+            )}
+
+            {/* + Gherkin — Test Cases only */}
+            {docType === 'testcase' && (
+              <button
+                onClick={() => quickAction(t('studio.gherkinPrompt', 'Format this test case strictly into Given/When/Then Gherkin style.'))}
                 className="text-[10px] bg-card hover:bg-accent text-foreground border border-border px-2 py-1 rounded flex items-center gap-1"
               >
                 <Wand2 className="size-2.5 text-status-signature" />
                 {t('studio.gherkin')}
+              </button>
+            )}
+
+            {/* + Format as Test Case — Test Cases only */}
+            {docType === 'testcase' && (
+              <button
+                onClick={() => quickAction(t('studio.formatAsTestCasePrompt', 'Format this content as a structured test case with preconditions, steps, expected results, and priority.'))}
+                className="text-[10px] bg-card hover:bg-accent text-foreground border border-border px-2 py-1 rounded flex items-center gap-1"
+              >
+                <Wand2 className="size-2.5 text-status-approved" />
+                {t('studio.formatAsTestCase')}
               </button>
             )}
           </div>
