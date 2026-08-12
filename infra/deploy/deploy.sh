@@ -25,6 +25,7 @@ cd ${SERVER_DIR}
 
 echo "📦 Checking out version: ${VERSION}"
 git fetch origin
+git fetch origin --tags
 # Determine if VERSION is a tag or a branch and checkout appropriately.
 if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
   git checkout -B "deploy-${VERSION}" "${VERSION}" -- || true
