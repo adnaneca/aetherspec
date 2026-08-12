@@ -61,9 +61,11 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	// Health (no auth)
 	health.Register(app)
 
-	// Public template routes (read-only reference content).
+	// Public API routes — intentionally registered BEFORE the authenticated /api group
+	// so they match first and skip JWT validation.
+	publicAPI := app.Group("/api")
 	templatesHandler := templates.NewHandler(minioClient, cfg, log)
-	templatesHandler.Register(app)
+	templatesHandler.Register(publicAPI)
 
 	// Internal admin config endpoint for the agent sidecar.
 	// Registered before the authenticated /api group so it only enforces localhost.
