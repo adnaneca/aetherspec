@@ -412,58 +412,94 @@ export function AetherStudio() {
     }
   }, [workflowId, workflowStep, activeDoc?.id, activeStep?.stepNumber]);
 
-  // Auto-save streaming draft to MinIO so content survives navigation/tab close.
+  const unsavedKey = activeDoc && activeStep
+    ? `aetherspec:draft:${activeDoc.id}:${activeStep.stepNumber}`
+    : null;
+
+  // Auto-save step content to MinIO whenever it changes (debounced).
+  // This covers streaming drafts, manual edits, and content produced by the workflow.
   const autoSaveTimeoutRef = useRef<number | null>(null);
+  const lastSavedContentRef = useRef<string>('');
   useEffect(() => {
-    if (!workflowActive || !activeDoc || !activeStep) return;
+    if (!activeDoc || !activeStep) return;
+    if (!stepContent.trim()) return;
+    if (stepContent === lastSavedContentRef.current) return;
+    // Also keep a local backup so content survives navigation/tab close even if the API call is in flight.
+    if (unsavedKey) {
+      localStorage.setItem(unsavedKey, stepContent);
+    }
     if (autoSaveTimeoutRef.current) {
       window.clearTimeout(autoSaveTimeoutRef.current);
     }
     autoSaveTimeoutRef.current = window.setTimeout(() => {
       if (!stepContent.trim()) return;
+      if (stepContent === lastSavedContentRef.current) return;
       patchStep(activeDoc.id, activeStep.stepNumber, {
         content: stepContent,
         status: 'IN_PROGRESS',
-      }).catch((err) => console.error('Auto-save failed:', err));
+      })
+        .then(() => {
+          lastSavedContentRef.current = stepContent;
+          if (unsavedKey) {
+            localStorage.removeItem(unsavedKey);
+          }
+        })
+        .catch((err) => console.error('Auto-save failed:', err));
     }, 1500);
     return () => {
       if (autoSaveTimeoutRef.current) {
         window.clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [stepContent, workflowActive, activeDoc?.id, activeStep?.stepNumber]);
+  }, [stepContent, activeDoc?.id, activeStep?.stepNumber]);
 
-  // Save unsaved draft before navigating away or closing the tab.
-  const stepContentRef = useRef(stepContent);
+  // Sync last-saved tracker when loading existing content so we don't re-save unchanged text.
   useEffect(() => {
-    stepContentRef.current = stepContent;
-  }, [stepContent]);
+    lastSavedContentRef.current = stepContent;
+  }, [activeDoc?.id, activeStep?.stepNumber]);
 
-  const saveCurrentStep = useCallback(async () => {
+  // Restore unsaved draft from localStorage if the API returned empty content.
+  useEffect(() => {
     if (!activeDoc || !activeStep) return;
-    const content = stepContentRef.current.trim();
-    if (!content) return;
-    try {
-      await patchStep(activeDoc.id, activeStep.stepNumber, {
-        content,
+    if (stepContent.trim()) return;
+    const key = `aetherspec:draft:${activeDoc.id}:${activeStep.stepNumber}`;
+    const draft = localStorage.getItem(key);
+    if (draft?.trim()) {
+      setStepContent(draft);
+      lastSavedContentRef.current = draft;
+      // Push it to MinIO so the next load doesn't need localStorage.
+      patchStep(activeDoc.id, activeStep.stepNumber, {
+        content: draft,
         status: 'IN_PROGRESS',
-      });
-    } catch (err) {
-      console.error('Save on navigate failed:', err);
+      })
+        .then(() => {
+          localStorage.removeItem(key);
+          lastSavedContentRef.current = draft;
+        })
+        .catch((err) => console.error('Restore draft save failed:', err));
     }
   }, [activeDoc?.id, activeStep?.stepNumber]);
 
+  // Flush pending auto-save synchronously before tab close / navigation.
+  const flushAutoSave = useCallback(() => {
+    if (autoSaveTimeoutRef.current) {
+      window.clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+    if (!activeDoc || !activeStep) return;
+    const content = stepContent.trim();
+    if (!content || content === lastSavedContentRef.current) return;
+    const key = `aetherspec:draft:${activeDoc.id}:${activeStep.stepNumber}`;
+    localStorage.setItem(key, content);
+  }, [activeDoc?.id, activeStep?.stepNumber, stepContent]);
+
   useEffect(() => {
-    const handler = () => {
-      void saveCurrentStep();
-    };
-    window.addEventListener('beforeunload', handler);
+    window.addEventListener('beforeunload', flushAutoSave);
     return () => {
-      window.removeEventListener('beforeunload', handler);
-      // Also save when the component unmounts or step changes.
-      void saveCurrentStep();
+      window.removeEventListener('beforeunload', flushAutoSave);
+      flushAutoSave();
     };
-  }, [saveCurrentStep]);
+  }, [flushAutoSave]);
 
   // ── Save step content ──
   const handleSave = async () => {
