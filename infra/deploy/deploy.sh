@@ -11,7 +11,7 @@ set -e
 SERVER_HOST="157.180.57.246"
 SERVER_USER="root"
 SERVER_DIR="/opt/aetherspec-v2"
-VERSION="${1:-main}"
+VERSION="${1:-feat/projects-frontend}"
 
 echo "🚀 Starting deployment to Hetzner..."
 echo "   Server: ${SERVER_USER}@${SERVER_HOST}"
@@ -25,10 +25,19 @@ cd ${SERVER_DIR}
 
 echo "📦 Checking out version: ${VERSION}"
 git fetch origin
-git checkout ${VERSION}
+# Reset any build artifacts or local changes before force-checking out the target branch
+git checkout -B "${VERSION}" "origin/${VERSION}" -- || true
+git reset --hard "origin/${VERSION}"
+git clean -fd
 
 echo "📦 Installing dependencies..."
 pnpm install --frozen-lockfile
+
+echo "🐍 Installing Python scripts dependencies..."
+if [ -f scripts/requirements.txt ]; then
+  python3 -m venv /opt/aetherspec-v2/venv
+  /opt/aetherspec-v2/venv/bin/pip install -q -r scripts/requirements.txt
+fi
 
 echo "🔨 Building gateway..."
 cd apps/gateway
@@ -48,6 +57,11 @@ cd ..
 
 echo "📁 Deploying web static files..."
 sudo cp -r web/dist/* /var/www/aetherspec/
+
+echo "🔄 Ensuring environment file..."
+if [ ! -f infra/deploy/env/gateway.env ] && [ -f infra/deploy/env/.env.prod.example ]; then
+  cp infra/deploy/env/.env.prod.example infra/deploy/env/gateway.env
+fi
 
 echo "🔄 Restarting services..."
 sudo systemctl daemon-reload

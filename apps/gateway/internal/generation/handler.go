@@ -1,0 +1,378 @@
+package generation
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
+	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
+	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
+)
+
+// Handler handles BRS section generation requests.
+type Handler struct {
+	pool        *pgxpool.Pool
+	minioClient *minio.Client
+	cfg         *config.Config
+	log         *zap.Logger
+}
+
+// NewHandler creates a generation handler.
+func NewHandler(pool *pgxpool.Pool, minioClient *minio.Client, cfg *config.Config, log *zap.Logger) *Handler {
+	return &Handler{pool: pool, minioClient: minioClient, cfg: cfg, log: log}
+}
+
+// Register adds generation routes to the Fiber app.
+func (h *Handler) Register(api fiber.Router) {
+	group := api.Group("/agent")
+	group.Post("/generate-section", h.generateSection)
+}
+
+// GenerateRequest is the body sent by the frontend.
+type GenerateRequest struct {
+	ProjectID string `json:"projectId"`
+	DocID     string `json:"docId"`
+	StepID    string `json:"stepId"`
+	AgentID   string `json:"agentId"`
+}
+
+// generateSection handles the BRS section generation SSE endpoint.
+func (h *Handler) generateSection(c *fiber.Ctx) error {
+	var req GenerateRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid JSON"})
+	}
+	if req.ProjectID == "" || req.DocID == "" || req.StepID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "projectId, docId, stepId are required"})
+	}
+	if req.AgentID == "" {
+		req.AgentID = "brs-agent"
+	}
+
+	h.log.Info("generate-section request",
+		zap.String("project", req.ProjectID),
+		zap.String("doc", req.DocID),
+		zap.String("step", req.StepID),
+		zap.String("agent", req.AgentID),
+	)
+
+	stepNum, err := strconv.Atoi(req.StepID)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "stepId must be an integer"})
+	}
+
+	// ── 1. Fetch step info from Postgres ──
+	var stepName, minioPath string
+	var revision int
+	err = h.pool.QueryRow(c.Context(),
+		`SELECT step_name, minio_path, revision FROM document_steps
+		 WHERE document_id = $1 AND step_number = $2`,
+		req.DocID, stepNum,
+	).Scan(&stepName, &minioPath, &revision)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "step not found"})
+	}
+
+	// ── 2. Load sections.yaml to resolve guide and quality checks ──
+	sectionGuide, sectionChecks, err := h.resolveSectionConfig(stepNum)
+	if err != nil {
+		h.log.Warn("section config resolution failed", zap.Error(err))
+		// Fallback: try direct prefix lookup for guide
+		sectionGuide, _ = h.fetchFromMinIOByPrefix(h.cfg.MinIO.TemplateBucket, fmt.Sprintf("section-guides/%02d-", stepNum))
+		sectionChecks = []string{}
+	}
+
+	// ── 3. Fetch dependency section contents from MinIO ──
+	dependencies, err := h.fetchDependencySections(c.Context(), req.DocID, stepNum)
+	if err != nil {
+		h.log.Warn("failed to fetch dependencies", zap.Error(err))
+		dependencies = []string{}
+	}
+
+	// ── 4. Fetch input documents from MinIO ──
+	inputDocs, err := h.fetchInputDocuments(c.Context(), req.ProjectID)
+	if err != nil {
+		h.log.Warn("failed to fetch input docs", zap.Error(err))
+		inputDocs = []string{}
+	}
+
+	// ── 5. Fetch quality checks from MinIO (section-specific) ──
+	qualityChecks, err := h.fetchQualityChecks(c.Context(), sectionChecks)
+	if err != nil {
+		h.log.Warn("failed to fetch quality checks", zap.Error(err))
+		qualityChecks = []string{}
+	}
+
+	// ── 6. Fetch existing draft content when regenerating ──
+	var existingDraft string
+	if revision > 0 {
+		existingDraft, _ = h.fetchStepContent(c.Context(), req.ProjectID, minioPath)
+	}
+
+	// ── 7. Assemble context for the Mastra agent ──
+	agentPayload := map[string]interface{}{
+		"sectionId":      req.StepID,
+		"sectionName":    stepName,
+		"sectionGuide":   sectionGuide,
+		"dependencies":   dependencies,
+		"inputDocs":      inputDocs,
+		"qualityChecks":  qualityChecks,
+		"existingDraft":  existingDraft,
+		"agentId":        req.AgentID,
+		"projectId":      req.ProjectID,
+		"docId":          req.DocID,
+		"minioPath":      minioPath,
+	}
+
+	payloadBytes, err := json.Marshal(agentPayload)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "failed to marshal agent payload"})
+	}
+
+	// ── 8. Forward to Mastra agent ──
+	agentURL := fmt.Sprintf("http://%s/agents/%s/generate", h.cfg.Agent.GRPCURL, req.AgentID)
+
+	httpReq, err := http.NewRequestWithContext(c.Context(), "POST", agentURL, strings.NewReader(string(payloadBytes)))
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "internal error"})
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		h.log.Error("agent request failed", zap.Error(err))
+		return c.Status(502).JSON(fiber.Map{"error": "agent unavailable"})
+	}
+
+	if resp.StatusCode != 200 {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return c.Status(resp.StatusCode).JSON(fiber.Map{"error": "agent error", "detail": string(body)})
+	}
+
+	// ── 9. Proxy SSE stream to browser ──
+	c.Set("Content-Type", "text/event-stream")
+	c.Set("Cache-Control", "no-cache")
+	c.Set("Connection", "keep-alive")
+	c.Set("X-Accel-Buffering", "no")
+
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		defer resp.Body.Close()
+		buf := make([]byte, 4096)
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				w.Write(buf[:n])
+				w.Flush()
+			}
+			if err != nil {
+				return
+			}
+		}
+	})
+
+	return nil
+}
+
+// resolveSectionConfig reads sections.yaml and returns the section guide markdown
+// content and the list of quality check IDs for the section.
+func (h *Handler) resolveSectionConfig(sectionNum int) (guide string, checks []string, err error) {
+	ctx := context.Background()
+	bucket := h.cfg.MinIO.TemplateBucket
+
+	obj, err := h.minioClient.GetObject(ctx, bucket, "sections.yaml", minio.GetObjectOptions{})
+	if err != nil {
+		return "", nil, err
+	}
+	defer obj.Close()
+
+	content, err := io.ReadAll(obj)
+	if err != nil {
+		return "", nil, err
+	}
+
+	var data struct {
+		Sections []struct {
+			ID            int      `yaml:"id"`
+			Name          string   `yaml:"name"`
+			Guide         string   `yaml:"guide"`
+			QualityChecks []string `yaml:"quality_checks"`
+		} `yaml:"sections"`
+	}
+	if err := yaml.Unmarshal(content, &data); err != nil {
+		return "", nil, err
+	}
+
+	for _, s := range data.Sections {
+		if s.ID == sectionNum {
+			guideContent := ""
+			if s.Guide != "" {
+				guideContent, _ = h.fetchObject(ctx, bucket, s.Guide)
+			}
+			return guideContent, s.QualityChecks, nil
+		}
+	}
+
+	return "", nil, fmt.Errorf("section %d not found in sections.yaml", sectionNum)
+}
+
+// fetchObject returns the content of a MinIO object as string.
+func (h *Handler) fetchObject(ctx context.Context, bucket, key string) (string, error) {
+	obj, err := h.minioClient.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return "", err
+	}
+	defer obj.Close()
+
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// fetchFromMinIOByPrefix returns the first object content matching a prefix.
+func (h *Handler) fetchFromMinIOByPrefix(bucket, prefix string) (string, error) {
+	ctx := context.Background()
+	objCh := h.minioClient.ListObjects(ctx, bucket, minio.ListObjectsOptions{
+		Prefix:    prefix,
+		Recursive: false,
+	})
+
+	var objectKey string
+	for obj := range objCh {
+		if obj.Err != nil {
+			continue
+		}
+		objectKey = obj.Key
+		break
+	}
+
+	if objectKey == "" {
+		return "", fmt.Errorf("no object found with prefix %s", prefix)
+	}
+
+	return h.fetchObject(ctx, bucket, objectKey)
+}
+
+// fetchDependencySections fetches all approved section contents for a document.
+func (h *Handler) fetchDependencySections(ctx context.Context, docID string, currentStepNum int) ([]string, error) {
+	rows, err := h.pool.Query(ctx,
+		`SELECT minio_path FROM document_steps
+		 WHERE document_id = $1 AND status = 'APPROVED' AND step_number < $2
+		 ORDER BY step_number`,
+		docID, currentStepNum)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contents []string
+	for rows.Next() {
+		var minioPath string
+		if err := rows.Scan(&minioPath); err != nil {
+			continue
+		}
+
+		bucket, key, ok := splitMinioPath(minioPath)
+		if !ok {
+			continue
+		}
+
+		content, err := h.fetchObject(ctx, bucket, key)
+		if err != nil {
+			h.log.Warn("failed to fetch dependency", zap.String("path", minioPath), zap.Error(err))
+			continue
+		}
+		contents = append(contents, content)
+	}
+
+	return contents, nil
+}
+
+// fetchInputDocuments fetches text files in the project's input/ folder.
+func (h *Handler) fetchInputDocuments(ctx context.Context, projectID string) ([]string, error) {
+	objCh := h.minioClient.ListObjects(ctx, projectID, minio.ListObjectsOptions{
+		Prefix:    "input/",
+		Recursive: true,
+	})
+
+	var contents []string
+	for obj := range objCh {
+		if obj.Err != nil {
+			continue
+		}
+		if strings.HasSuffix(obj.Key, ".keep") {
+			continue
+		}
+		if !isTextFile(obj.Key) {
+			continue
+		}
+
+		content, err := h.fetchObject(ctx, projectID, obj.Key)
+		if err != nil {
+			h.log.Warn("failed to fetch input doc", zap.String("key", obj.Key), zap.Error(err))
+			continue
+		}
+		contents = append(contents, fmt.Sprintf("--- File: %s ---\n%s", obj.Key, content))
+	}
+
+	return contents, nil
+}
+
+// fetchQualityChecks fetches only the requested quality check definitions.
+func (h *Handler) fetchQualityChecks(ctx context.Context, checkIDs []string) ([]string, error) {
+	bucket := h.cfg.MinIO.TemplateBucket
+	var contents []string
+	for _, id := range checkIDs {
+		key := "quality-checks/" + id + ".md"
+		content, err := h.fetchObject(ctx, bucket, key)
+		if err != nil {
+			h.log.Warn("failed to fetch quality check", zap.String("id", id), zap.Error(err))
+			continue
+		}
+		contents = append(contents, content)
+	}
+	return contents, nil
+}
+
+// fetchStepContent reads the current draft content for a step from MinIO.
+func (h *Handler) fetchStepContent(ctx context.Context, projectID, minioPath string) (string, error) {
+	bucket, key, ok := splitMinioPath(minioPath)
+	if !ok {
+		return "", fmt.Errorf("invalid minio_path: %s", minioPath)
+	}
+	return h.fetchObject(ctx, bucket, key)
+}
+
+// splitMinioPath splits a full minio_path into bucket and object key.
+// MinIO paths are stored as "{projectId}/{folder}/{file}".
+func splitMinioPath(minioPath string) (bucket, key string, ok bool) {
+	parts := strings.SplitN(minioPath, "/", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+// isTextFile returns true for markdown/text files.
+func isTextFile(key string) bool {
+	ext := strings.ToLower(path.Ext(key))
+	switch ext {
+	case ".md", ".txt", ".markdown", ".mdx":
+		return true
+	}
+	return false
+}
