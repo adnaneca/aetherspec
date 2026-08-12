@@ -61,6 +61,9 @@ func (h *Handler) Register(api fiber.Router) {
 	api.Post("/agent/workflow/start", h.StartAgentWorkflow)
 	api.Post("/agent/workflow/:id/resume", h.ResumeAgentWorkflow)
 	api.Get("/agent/workflow/:id", h.GetWorkflow)
+
+	// WP-08: side-channel negotiator chat
+	api.Post("/agent/workflow/:id/negotiator-chat", h.NegotiatorChat)
 }
 
 // workflowRow is the raw database row for a workflow.
@@ -375,6 +378,27 @@ func isTextAttachment(name string, mimeType *string) bool {
 	}
 	ext := strings.ToLower(filepath.Ext(name))
 	return ext == ".md" || ext == ".txt" || ext == ".json" || ext == ".markdown"
+}
+
+// NegotiatorChat proxies a side-channel chat message to the negotiator agent.
+// The workflow stays paused; this does not resume it.
+func (h *Handler) NegotiatorChat(c *fiber.Ctx) error {
+	workflowID := c.Params("id")
+	body := c.Body()
+	if len(body) == 0 {
+		return tmf.SendError(c, 400, "Request body is required")
+	}
+
+	var agentID string
+	err := h.pool.QueryRow(c.Context(),
+		`SELECT agent_id FROM agent_workflows WHERE id = $1`, workflowID,
+	).Scan(&agentID)
+	if err != nil {
+		return tmf.SendError(c, 404, "Workflow not found")
+	}
+
+	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/%s/negotiator-chat", h.cfg.Agent.GRPCURL, agentID, workflowID)
+	return h.proxyAgentSSE(c, agentURL, body, workflowID)
 }
 
 // ResumeAgentWorkflow resumes a paused workflow with user input.

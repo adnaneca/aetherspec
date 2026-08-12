@@ -128,6 +128,12 @@ export function QuestionCard({ agent, questions, onSubmit }: QuestionCardProps) 
   );
 }
 
+export interface NegotiatorChatMessage {
+  role: 'human' | 'negotiator';
+  content: string;
+  timestamp: string;
+}
+
 interface SuggestionItem {
   questionId: string;
   question: string;
@@ -135,10 +141,13 @@ interface SuggestionItem {
   confidence?: string;
   status: SuggestionStatus;
   finalAnswer: string;
+  chatHistory: NegotiatorChatMessage[];
+  proposedUpdate?: string | null;
 }
 
 interface SuggestionCardProps {
   suggestions: WorkflowSuggestion[];
+  workflowId?: string;
   onAccept: (finalAnswers: Array<{
     questionId: string;
     question: string;
@@ -148,16 +157,20 @@ interface SuggestionCardProps {
   onTalkToWriter?: () => Promise<void> | void;
 }
 
-export function SuggestionCard({ suggestions, onAccept, onTalkToWriter }: SuggestionCardProps) {
+export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWriter }: SuggestionCardProps) {
   const [items, setItems] = useState<SuggestionItem[]>(() =>
     suggestions.map((s) => ({
       ...s,
       status: 'pending',
       finalAnswer: s.suggestedAnswer,
+      chatHistory: [],
+      proposedUpdate: null,
     })),
   );
   const [submitted, setSubmitted] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
+  const [expandedChat, setExpandedChat] = useState<string | null>(null);
+  const [chatLoading, setChatLoading] = useState<Record<string, boolean>>({});
 
   const setStatus = (questionId: string, status: SuggestionItem['status']) => {
     if (submitted) return;
@@ -174,6 +187,119 @@ export function SuggestionCard({ suggestions, onAccept, onTalkToWriter }: Sugges
         return { ...i, status };
       }),
     );
+  };
+
+  const applyProposedUpdate = (questionId: string) => {
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.questionId !== questionId || !i.proposedUpdate) return i;
+        return {
+          ...i,
+          suggestedAnswer: i.proposedUpdate,
+          finalAnswer: i.proposedUpdate,
+          status: i.status === 'accepted' ? 'modified' : i.status,
+          proposedUpdate: null,
+        };
+      }),
+    );
+  };
+
+  const handleNegotiatorChat = async (questionId: string, message: string) => {
+    const item = items.find((i) => i.questionId === questionId);
+    if (!item || !workflowId) return;
+
+    const humanMsg: NegotiatorChatMessage = {
+      role: 'human',
+      content: message,
+      timestamp: new Date().toISOString(),
+    };
+    setItems((prev) =>
+      prev.map((i) =>
+        i.questionId === questionId ? { ...i, chatHistory: [...i.chatHistory, humanMsg] } : i,
+      ),
+    );
+    setChatLoading((prev) => ({ ...prev, [questionId]: true }));
+
+    try {
+      const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'http://localhost:3000';
+      const resp = await fetch(`${GATEWAY_URL}/api/agent/workflow/${workflowId}/negotiator-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId,
+          question: item.question,
+          currentSuggestion: item.suggestedAnswer,
+          humanMessage: message,
+          chatHistory: [...item.chatHistory, humanMsg],
+        }),
+      });
+      if (!resp.ok || !resp.body) throw new Error('Negotiator chat failed');
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let negotiatorResponse = '';
+      let updatedSuggestion: string | null = null;
+      let shouldUpdate = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(trimmed.slice(6));
+            if (event.type === 'negotiator_chat_response') {
+              negotiatorResponse = event.response || '';
+              if (event.shouldUpdateSuggestion && event.updatedSuggestion) {
+                updatedSuggestion = event.updatedSuggestion;
+                shouldUpdate = true;
+              }
+            } else if (event.type === 'error') {
+              throw new Error(event.error || 'Negotiator chat error');
+            }
+          } catch (e) {
+            if (import.meta.env.DEV) console.warn('Malformed chat SSE line', line, e);
+          }
+        }
+      }
+
+      const negotiatorMsg: NegotiatorChatMessage = {
+        role: 'negotiator',
+        content: negotiatorResponse || '(no response)',
+        timestamp: new Date().toISOString(),
+      };
+      setItems((prev) =>
+        prev.map((i) =>
+          i.questionId === questionId
+            ? {
+                ...i,
+                chatHistory: [...i.chatHistory, negotiatorMsg],
+                proposedUpdate: shouldUpdate ? updatedSuggestion : i.proposedUpdate,
+              }
+            : i,
+        ),
+      );
+    } catch (err) {
+      const errorMsg: NegotiatorChatMessage = {
+        role: 'negotiator',
+        content: `Chat failed: ${(err as Error).message}`,
+        timestamp: new Date().toISOString(),
+      };
+      setItems((prev) =>
+        prev.map((i) =>
+          i.questionId === questionId
+            ? { ...i, chatHistory: [...i.chatHistory, errorMsg] }
+            : i,
+        ),
+      );
+    } finally {
+      setChatLoading((prev) => ({ ...prev, [questionId]: false }));
+    }
   };
 
   const handleTextChange = (questionId: string, newText: string) => {
@@ -291,6 +417,16 @@ export function SuggestionCard({ suggestions, onAccept, onTalkToWriter }: Sugges
                 >
                   ✗ Reject
                 </button>
+                <button
+                  onClick={() => setExpandedChat(expandedChat === item.questionId ? null : item.questionId)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium border border-border hover:bg-accent ${
+                    expandedChat === item.questionId
+                      ? 'bg-primary/20 text-primary border-primary/30'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  💬 Ask Why
+                </button>
               </div>
             )}
 
@@ -302,6 +438,17 @@ export function SuggestionCard({ suggestions, onAccept, onTalkToWriter }: Sugges
               </div>
             )}
           </div>
+
+          {expandedChat === item.questionId && !submitted && (
+            <NegotiatorChatPanel
+              questionId={item.questionId}
+              chatHistory={item.chatHistory}
+              proposedUpdate={item.proposedUpdate}
+              loading={chatLoading[item.questionId] || false}
+              onSendMessage={(msg) => void handleNegotiatorChat(item.questionId, msg)}
+              onApplyUpdate={() => applyProposedUpdate(item.questionId)}
+            />
+          )}
         </div>
       ))}
 
@@ -400,6 +547,82 @@ export function OptionCard({ options, onSelect }: OptionCardProps) {
           )}
         </button>
       ))}
+    </div>
+  );
+}
+
+interface NegotiatorChatPanelProps {
+  questionId: string;
+  chatHistory: NegotiatorChatMessage[];
+  proposedUpdate?: string | null;
+  loading: boolean;
+  onSendMessage: (message: string) => void;
+  onApplyUpdate: () => void;
+}
+
+function NegotiatorChatPanel({
+  chatHistory,
+  proposedUpdate,
+  loading,
+  onSendMessage,
+  onApplyUpdate,
+}: NegotiatorChatPanelProps) {
+  const [input, setInput] = useState('');
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    const msg = input.trim();
+    setInput('');
+    onSendMessage(msg);
+  };
+
+  return (
+    <div className="mt-2 p-2.5 rounded-lg border border-border bg-background space-y-2">
+      <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+        Negotiator Chat
+      </div>
+
+      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+        {chatHistory.map((msg, i) => (
+          <div key={i} className={`text-xs ${msg.role === 'human' ? 'text-foreground' : 'text-muted-foreground'}`}>
+            <span className="font-semibold">{msg.role === 'human' ? 'You' : 'Negotiator'}:</span>{' '}
+            {msg.content}
+          </div>
+        ))}
+        {loading && <div className="text-xs text-muted-foreground">Negotiator is typing...</div>}
+      </div>
+
+      {proposedUpdate && (
+        <div className="p-2 rounded border border-status-review/30 bg-status-review/5 space-y-1.5">
+          <div className="text-[10px] font-mono text-status-review uppercase tracking-wider">Proposed update</div>
+          <div className="text-xs text-foreground">{proposedUpdate}</div>
+          <button
+            onClick={onApplyUpdate}
+            className="px-2 py-0.5 rounded text-[10px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            Apply This Update
+          </button>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          disabled={loading}
+          placeholder="Ask the negotiator about this suggestion..."
+          className="flex-1 bg-card border border-border rounded px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring disabled:opacity-50"
+        />
+        <button
+          onClick={handleSend}
+          disabled={loading || !input.trim()}
+          className="px-2 py-1 bg-primary text-primary-foreground rounded text-xs disabled:opacity-50"
+        >
+          Send
+        </button>
+      </div>
     </div>
   );
 }
