@@ -412,6 +412,59 @@ export function AetherStudio() {
     }
   }, [workflowId, workflowStep, activeDoc?.id, activeStep?.stepNumber]);
 
+  // Auto-save streaming draft to MinIO so content survives navigation/tab close.
+  const autoSaveTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!workflowActive || !activeDoc || !activeStep) return;
+    if (autoSaveTimeoutRef.current) {
+      window.clearTimeout(autoSaveTimeoutRef.current);
+    }
+    autoSaveTimeoutRef.current = window.setTimeout(() => {
+      if (!stepContent.trim()) return;
+      patchStep(activeDoc.id, activeStep.stepNumber, {
+        content: stepContent,
+        status: 'IN_PROGRESS',
+      }).catch((err) => console.error('Auto-save failed:', err));
+    }, 1500);
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        window.clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [stepContent, workflowActive, activeDoc?.id, activeStep?.stepNumber]);
+
+  // Save unsaved draft before navigating away or closing the tab.
+  const stepContentRef = useRef(stepContent);
+  useEffect(() => {
+    stepContentRef.current = stepContent;
+  }, [stepContent]);
+
+  const saveCurrentStep = useCallback(async () => {
+    if (!activeDoc || !activeStep) return;
+    const content = stepContentRef.current.trim();
+    if (!content) return;
+    try {
+      await patchStep(activeDoc.id, activeStep.stepNumber, {
+        content,
+        status: 'IN_PROGRESS',
+      });
+    } catch (err) {
+      console.error('Save on navigate failed:', err);
+    }
+  }, [activeDoc?.id, activeStep?.stepNumber]);
+
+  useEffect(() => {
+    const handler = () => {
+      void saveCurrentStep();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => {
+      window.removeEventListener('beforeunload', handler);
+      // Also save when the component unmounts or step changes.
+      void saveCurrentStep();
+    };
+  }, [saveCurrentStep]);
+
   // ── Save step content ──
   const handleSave = async () => {
     if (!activeDoc || !activeStep) return;
@@ -534,7 +587,7 @@ export function AetherStudio() {
   const handleStartWorkflow = useCallback(async () => {
     if (!activeDoc || !activeStep || !projectId) return;
     setGenerating(true);
-    setStepContent('');
+    // Preserve existing step content until the workflow actually produces new tokens.
     setChatMessages([]);
     setWorkflowActive(true);
     setWorkflowStep('relevance');
