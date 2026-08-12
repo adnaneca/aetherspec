@@ -8,6 +8,7 @@ import { updateWorkflowState, createWorkflow } from './workflow-store.js';
 
 export type WorkflowStep =
   | 'relevance'
+  | 'generate_questions'
   | 'negotiate_answers'
   | 'direct_writer'
   | 'expectations'
@@ -221,6 +222,7 @@ export class BRSWorkflow {
       // Always emit a terminal event so the client sees the workflow is no longer running.
       // onError already calls safeEnd(), but if the switch did nothing we still need closure.
       if (this.state.currentStep !== 'relevance' &&
+          this.state.currentStep !== 'generate_questions' &&
           this.state.currentStep !== 'negotiate_answers' &&
           this.state.currentStep !== 'direct_writer' &&
           this.state.currentStep !== 'expectations' &&
@@ -279,15 +281,15 @@ export class BRSWorkflow {
     }
 
     this.state.answers.applicable = true;
-    this.callbacks.onStatus('negotiate_answers', 'brs-orchestrator', 'Negotiating answers...');
+    this.callbacks.onStatus('generate_questions', 'brs-orchestrator', 'Starting discovery...');
     await this.stepGenerateQuestions();
   }
 
   // ── Step: Generate Questions (internal) ──
 
   private async stepGenerateQuestions() {
-    this.state.currentStep = 'negotiate_answers';
-    this.callbacks.onStatus('negotiate_answers', 'brs-writer', 'Negotiating answers...');
+    this.state.currentStep = 'generate_questions';
+    this.callbacks.onStatus('generate_questions', 'brs-writer', 'Generating questions...');
     this.state.agentCalls.writer++;
 
     const prompt = this.buildGenerateQuestionsPrompt();
@@ -295,6 +297,7 @@ export class BRSWorkflow {
     const questions = this.parseQuestions(response);
 
     this.state.pendingQuestions = questions;
+    this.callbacks.onStatus('negotiate_answers', 'brs-negotiator', 'Negotiating answers...');
     await this.stepNegotiateAnswers();
   }
 
@@ -446,7 +449,7 @@ export class BRSWorkflow {
   }
 
   private async handleNegotiateFixesResponse() {
-    const userResponse = this.context.userResponse || [];
+    const userResponse = this.context.userResponse || {};
 
     if (userResponse.action === 'direct_validator_access') {
       this.state.answers.validationMode = 'direct';
@@ -455,7 +458,7 @@ export class BRSWorkflow {
       return;
     }
 
-    const reviewedFixes = Array.isArray(userResponse) ? userResponse : [];
+    const reviewedFixes = Array.isArray(userResponse) ? userResponse : (userResponse.fixes || []);
     this.state.negotiatedFixes = reviewedFixes;
 
     const hasAcceptedFixes = reviewedFixes.some((f: any) => f.accepted);
@@ -470,7 +473,8 @@ export class BRSWorkflow {
   }
 
   private async handleDirectValidatorResponse() {
-    const decisions = this.context.userResponse || [];
+    const userResponse = this.context.userResponse || {};
+    const decisions = Array.isArray(userResponse) ? userResponse : (userResponse.fixes || []);
     const acceptedFindings = Array.isArray(decisions)
       ? this.state.findings.filter((_f: any, i: number) => decisions[i]?.accepted)
       : [];
