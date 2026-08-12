@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
 )
 
@@ -38,13 +40,14 @@ var validStatuses = map[string]bool{
 }
 
 type Handler struct {
-	pool *pgxpool.Pool
-	cfg  *config.Config
-	log  *zap.Logger
+	pool        *pgxpool.Pool
+	minioClient *minio.Client
+	cfg         *config.Config
+	log         *zap.Logger
 }
 
-func NewHandler(pool *pgxpool.Pool, cfg *config.Config, log *zap.Logger) *Handler {
-	return &Handler{pool: pool, cfg: cfg, log: log}
+func NewHandler(pool *pgxpool.Pool, minioClient *minio.Client, cfg *config.Config, log *zap.Logger) *Handler {
+	return &Handler{pool: pool, minioClient: minioClient, cfg: cfg, log: log}
 }
 
 func (h *Handler) Register(api fiber.Router) {
@@ -267,8 +270,73 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 		return tmf.SendError(c, 500, "Failed to prepare agent request")
 	}
 
+	// Load input document contents from MinIO so the agent has real context.
+	inputDocs, err := h.loadInputDocuments(c.Context(), req.ProjectID)
+	if err != nil {
+		h.log.Warn("Failed to load input documents", zap.Error(err), zap.String("project", req.ProjectID))
+	}
+	if len(inputDocs) > 0 {
+		forwardBody, err = injectInputDocuments(forwardBody, inputDocs)
+		if err != nil {
+			h.log.Error("Failed to inject input documents", zap.Error(err))
+			return tmf.SendError(c, 500, "Failed to prepare agent request")
+		}
+		h.log.Info("Injected input documents into workflow", zap.String("project", req.ProjectID), zap.Int("count", len(inputDocs)))
+	}
+
 	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/start", h.cfg.Agent.GRPCURL, req.AgentID)
 	return h.proxyAgentSSE(c, agentURL, forwardBody, workflowID)
+}
+
+// loadInputDocuments reads all text attachments in the project's input folder from MinIO.
+// Only markdown and plain text files are returned; other mime types are skipped.
+func (h *Handler) loadInputDocuments(ctx context.Context, projectID string) ([]string, error) {
+	rows, err := h.pool.Query(ctx,
+		`SELECT id, name, mime_type, minio_path FROM attachments
+		 WHERE project_id = $1 AND folder = 'input'
+		 ORDER BY created_date ASC`,
+		projectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var docs []string
+	for rows.Next() {
+		var id, name, minioPath string
+		var mimeType *string
+		if err := rows.Scan(&id, &name, &mimeType, &minioPath); err != nil {
+			continue
+		}
+		if !isTextAttachment(name, mimeType) {
+			continue
+		}
+		obj, err := h.minioClient.GetObject(ctx, projectID, minioPath, minio.GetObjectOptions{})
+		if err != nil {
+			h.log.Warn("Skipping input document", zap.String("id", id), zap.Error(err))
+			continue
+		}
+		content, err := io.ReadAll(obj)
+		obj.Close()
+		if err != nil {
+			h.log.Warn("Failed to read input document", zap.String("id", id), zap.Error(err))
+			continue
+		}
+		docs = append(docs, fmt.Sprintf("# Input Document: %s\n\n%s", name, string(content)))
+	}
+	return docs, rows.Err()
+}
+
+func isTextAttachment(name string, mimeType *string) bool {
+	if mimeType != nil {
+		m := strings.ToLower(*mimeType)
+		if strings.HasPrefix(m, "text/") || m == "application/json" || strings.Contains(m, "markdown") {
+			return true
+		}
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	return ext == ".md" || ext == ".txt" || ext == ".json" || ext == ".markdown"
 }
 
 // ResumeAgentWorkflow resumes a paused workflow with user input.
@@ -418,5 +486,15 @@ func injectWorkflowID(body []byte, workflowID string) ([]byte, error) {
 		return nil, err
 	}
 	payload["workflowId"] = workflowID
+	return json.Marshal(payload)
+}
+
+// injectInputDocuments merges loaded input document contents into the forwarded payload.
+func injectInputDocuments(body []byte, inputDocs []string) ([]byte, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	payload["inputDocuments"] = inputDocs
 	return json.Marshal(payload)
 }
