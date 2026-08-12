@@ -190,6 +190,7 @@ const server = http.createServer(async (req, res) => {
         dependencySections: parsed.dependencySections || [],
         inputDocuments: parsed.inputDocuments || [],
         qualityChecks: parsed.qualityChecks || [],
+        project: parsed.project,
       },
       callbacks,
     );
