@@ -284,8 +284,46 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 		h.log.Info("Injected input documents into workflow", zap.String("project", req.ProjectID), zap.Int("count", len(inputDocs)))
 	}
 
+	// Load project metadata so the agent can infer context when no input docs exist.
+	project, err := h.loadProject(c.Context(), req.ProjectID)
+	if err != nil {
+		h.log.Warn("Failed to load project metadata", zap.Error(err), zap.String("project", req.ProjectID))
+	}
+	if project != nil {
+		forwardBody, err = injectProjectMetadata(forwardBody, project)
+		if err != nil {
+			h.log.Error("Failed to inject project metadata", zap.Error(err))
+			return tmf.SendError(c, 500, "Failed to prepare agent request")
+		}
+		h.log.Info("Injected project metadata into workflow", zap.String("project", req.ProjectID))
+	}
+
 	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/start", h.cfg.Agent.GRPCURL, req.AgentID)
 	return h.proxyAgentSSE(c, agentURL, forwardBody, workflowID)
+}
+
+// loadProject fetches the project name, key, description, and target date from Postgres.
+func (h *Handler) loadProject(ctx context.Context, projectID string) (map[string]interface{}, error) {
+	var name, key, description string
+	var targetDate *time.Time
+	err := h.pool.QueryRow(ctx,
+		`SELECT name, key, description, target_date FROM projects WHERE id = $1`,
+		projectID,
+	).Scan(&name, &key, &description, &targetDate)
+	if err != nil {
+		return nil, err
+	}
+	project := map[string]interface{}{
+		"name": name,
+		"key":  key,
+	}
+	if description != "" {
+		project["description"] = description
+	}
+	if targetDate != nil {
+		project["targetDate"] = targetDate.Format("2006-01-02")
+	}
+	return project, nil
 }
 
 // loadInputDocuments reads all text attachments in the project's input folder from MinIO.
@@ -496,5 +534,15 @@ func injectInputDocuments(body []byte, inputDocs []string) ([]byte, error) {
 		return nil, err
 	}
 	payload["inputDocuments"] = inputDocs
+	return json.Marshal(payload)
+}
+
+// injectProjectMetadata merges project metadata into the forwarded payload.
+func injectProjectMetadata(body []byte, project map[string]interface{}) ([]byte, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	payload["project"] = project
 	return json.Marshal(payload)
 }

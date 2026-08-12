@@ -71,6 +71,12 @@ export interface WorkflowContext {
   dependencySections: string[];
   inputDocuments: string[];
   qualityChecks: string[];
+  project?: {
+    name: string;
+    key: string;
+    description?: string;
+    targetDate?: string;
+  };
   userResponse?: any;
 }
 
@@ -624,32 +630,61 @@ export class BRSWorkflow {
 
   // ── Prompt builders ──
 
+  private projectContextBlock(): string {
+    const p = this.context.project;
+    if (!p) return '';
+    const parts = [
+      `Project Name: ${p.name}`,
+      p.key ? `Project Key: ${p.key}` : '',
+      p.description ? `Project Description:\n${p.description}` : '',
+      p.targetDate ? `Target Date: ${p.targetDate}` : '',
+    ];
+    return parts.filter(Boolean).join('\n');
+  }
+
   private buildGenerateQuestionsPrompt(): string {
+    const projectBlock = this.projectContextBlock();
     return [
       `You are generating Section ${this.state.sectionId} of a BRS document.`,
       `Section Guide:\n${this.context.sectionGuide}`,
+      projectBlock ? `Project Context:\n${projectBlock}` : '',
       this.context.dependencySections.length > 0
         ? `Previously Approved Sections:\n${this.context.dependencySections.join('\n---\n')}`
         : '',
       this.context.inputDocuments.length > 0
         ? `Input Documents:\n${this.context.inputDocuments.join('\n---\n')}`
-        : '',
-      `Generate 3-5 clarifying questions as a numbered list. The orchestrator will pass your questions to the Negotiator, who will propose pre-filled answers for the human.`,
-      `Return the questions as a numbered list.`,
+        : projectBlock
+          ? 'No uploaded input documents are available. Use the Project Context above.'
+          : 'No uploaded input documents or project description are available. Ask only questions that can be answered from the section guide, and phrase them so the human can answer directly.',
+      `Generate 3-5 clarifying questions as a numbered list.`,
+      `Rules:`,
+      `- Do NOT ask for documents that were not uploaded (e.g., charter, business case, PRD) unless they are explicitly listed in Input Documents.`,
+      `- Prefer questions the human can answer from general knowledge of the initiative.`,
+      `- Return the questions as a numbered list.`,
     ]
       .filter(Boolean)
       .join('\n\n---\n\n');
   }
 
   private buildNegotiateAnswersPrompt(): string {
+    const projectBlock = this.projectContextBlock();
     return [
       `You are the Negotiator. The Writer asked these questions:`,
       JSON.stringify(this.state.pendingQuestions, null, 2),
+      projectBlock ? `Project Context:\n${projectBlock}` : '',
       this.context.inputDocuments.length > 0
         ? `Input Documents:\n${this.context.inputDocuments.join('\n---\n')}`
-        : '',
-      `Propose answers for each question based on the problem statement and context.`,
-      `Return JSON: {"suggestions": [{"questionId": "Q1", "question": "...", "suggestedAnswer": "...", "confidence": "high|medium|low"}]}.`,
+        : projectBlock
+          ? 'No uploaded input documents are available. Infer answers from the Project Context above.'
+          : 'No uploaded input documents or project description are available. Each answer must be a concise, plausible example or an honest statement that the user needs to supply the detail.',
+      `Propose answers for each question.`,
+      `Rules:`,
+      `- If the answer is clearly supported by an input document or project description, set confidence to "high" and answer factually.`,
+      `- If the answer can be reasonably inferred from context, set confidence to "medium".`,
+      `- If the answer cannot be inferred, set confidence to "low" and provide a concise example answer or a one-sentence description of what the user should supply.`,
+      `- NEVER return bracketed template instructions such as "[PENDING: ...]" or "[Insert ...]".`,
+      `- NEVER repeat the question text as the answer.`,
+      `- Return JSON: {"suggestions": [{"questionId": "Q1", "question": "...", "suggestedAnswer": "...", "confidence": "high|medium|low"}]}.`,
     ]
       .filter(Boolean)
       .join('\n\n');
