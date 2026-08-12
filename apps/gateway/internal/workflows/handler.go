@@ -305,7 +305,14 @@ func (h *Handler) ResumeAgentWorkflow(c *fiber.Ctx) error {
 // proxyAgentSSE forwards a POST to the agent sidecar, proxies the SSE response back to the client,
 // and updates only the workflow status column based on terminal/pause events.
 func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, workflowID string) error {
-	httpReq, err := http.NewRequestWithContext(c.Context(), http.MethodPost, agentURL, bytes.NewReader(body))
+	// Use a detached context so the outgoing agent request survives Fiber's
+	// request-scoped context cancellation after the handler returns.
+	// SetBodyStreamWriter runs asynchronously, so c.Context() is not valid
+	// inside the goroutine.
+	agentCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(agentCtx, http.MethodPost, agentURL, bytes.NewReader(body))
 	if err != nil {
 		h.log.Error("Failed to create agent request", zap.Error(err))
 		return tmf.SendError(c, 500, "Internal error")
@@ -318,10 +325,10 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 		h.log.Error("Agent request failed", zap.Error(err), zap.String("url", agentURL))
 		return tmf.SendError(c, 502, "Agent unavailable")
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		h.log.Error("Agent returned error", zap.Int("status", resp.StatusCode), zap.String("body", string(respBody)))
 		return c.Status(resp.StatusCode).Send(respBody)
 	}
@@ -331,8 +338,10 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 	c.Set("Connection", "keep-alive")
 	c.Set("X-Accel-Buffering", "no")
 
-	// Use Fiber's body stream writer to keep the response streaming.
+	// IMPORTANT: resp.Body must be closed inside the goroutine, NOT with defer,
+	// because SetBodyStreamWriter runs asynchronously after this handler returns.
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		defer resp.Body.Close()
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
@@ -358,11 +367,11 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 					if eventType, ok := event["type"].(string); ok {
 						switch eventType {
 						case "paused":
-							h.updateWorkflowStatus(c.Context(), workflowID, StatusPaused)
+							h.updateWorkflowStatus(context.Background(), workflowID, StatusPaused)
 						case "done":
-							h.updateWorkflowStatus(c.Context(), workflowID, StatusCompleted)
+							h.updateWorkflowStatus(context.Background(), workflowID, StatusCompleted)
 						case "error":
-							h.updateWorkflowStatus(c.Context(), workflowID, StatusError)
+							h.updateWorkflowStatus(context.Background(), workflowID, StatusError)
 						}
 					}
 				}
@@ -377,6 +386,9 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 		if scanErr := scanner.Err(); scanErr != nil && scanErr != io.EOF {
 			h.log.Warn("SSE stream scan failed", zap.Error(scanErr))
 		}
+
+		// Graceful termination: flush any remaining buffered bytes.
+		_ = w.Flush()
 	})
 
 	return nil
