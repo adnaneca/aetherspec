@@ -8,12 +8,15 @@ export function useRoles() {
     roles,
     hasRole: (role: string) => roles.includes(role),
     isAdmin: roles.includes('ROLE_REALM_ADMIN'),
-    canApproveBRS: roles.includes('BRS_APPROVER') || roles.includes('ROLE_BA_LEAD') || roles.includes('ROLE_REALM_ADMIN'),
-    canApproveSRS: roles.includes('SRS_APPROVER') || roles.includes('ROLE_SOLUTION_ARCHITECT') || roles.includes('ROLE_REALM_ADMIN'),
+    canAccessBRS: roles.includes('ROLE_BA_LEAD') || roles.includes('ROLE_ANALYST') || roles.includes('BRS_APPROVER') || roles.includes('BRS_EXECUTIVE_APPROVER') || roles.includes('ROLE_REALM_ADMIN'),
+    canAccessSRS: roles.includes('ROLE_SOLUTION_ARCHITECT') || roles.includes('SRS_APPROVER') || roles.includes('TECH_GOVERNANCE') || roles.includes('ROLE_DEV_LEAD') || roles.includes('SRS_TECHNICAL_APPROVER') || roles.includes('ROLE_REALM_ADMIN'),
+    canAccessTC: roles.includes('ROLE_QA_LEAD') || roles.includes('TESTCASE_APPROVER') || roles.includes('ROLE_REALM_ADMIN'),
+    canApproveBRS: roles.includes('BRS_APPROVER') || roles.includes('ROLE_BA_LEAD') || roles.includes('BRS_EXECUTIVE_APPROVER') || roles.includes('ROLE_REALM_ADMIN'),
+    canApproveSRS: roles.includes('SRS_APPROVER') || roles.includes('ROLE_SOLUTION_ARCHITECT') || roles.includes('ROLE_DEV_LEAD') || roles.includes('SRS_TECHNICAL_APPROVER') || roles.includes('ROLE_REALM_ADMIN'),
     canApproveTestCase: roles.includes('TESTCASE_APPROVER') || roles.includes('ROLE_QA_LEAD') || roles.includes('ROLE_REALM_ADMIN'),
     canApproveDoc: (docType: string) => {
-      if (docType === 'brs') return roles.includes('BRS_APPROVER') || roles.includes('ROLE_BA_LEAD') || roles.includes('ROLE_REALM_ADMIN');
-      if (docType === 'srs') return roles.includes('SRS_APPROVER') || roles.includes('ROLE_SOLUTION_ARCHITECT') || roles.includes('ROLE_REALM_ADMIN');
+      if (docType === 'brs') return roles.includes('BRS_APPROVER') || roles.includes('ROLE_BA_LEAD') || roles.includes('BRS_EXECUTIVE_APPROVER') || roles.includes('ROLE_REALM_ADMIN');
+      if (docType === 'srs') return roles.includes('SRS_APPROVER') || roles.includes('ROLE_SOLUTION_ARCHITECT') || roles.includes('ROLE_DEV_LEAD') || roles.includes('SRS_TECHNICAL_APPROVER') || roles.includes('ROLE_REALM_ADMIN');
       if (docType === 'testcase') return roles.includes('TESTCASE_APPROVER') || roles.includes('ROLE_QA_LEAD') || roles.includes('ROLE_REALM_ADMIN');
       return false;
     },

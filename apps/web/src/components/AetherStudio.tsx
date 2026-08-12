@@ -141,7 +141,21 @@ export function AetherStudio() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { project: projectId, doc: docType, step: stepId } = useSearch({ from: '/studio' });
-  const { canApproveDoc, canMergeBRS } = useRoles();
+  const {
+    canApproveDoc,
+    canMergeBRS,
+    canAccessBRS,
+    canAccessSRS,
+    canAccessTC,
+  } = useRoles();
+
+  const docAccess: Record<string, boolean> = {
+    brs: canAccessBRS,
+    srs: canAccessSRS,
+    testcase: canAccessTC,
+  };
+  const accessibleDocTypes = ['brs', 'srs', 'testcase'].filter((dt) => docAccess[dt]);
+  const firstAccessibleDocType = accessibleDocTypes[0] || 'brs';
 
   // Data state
   const [project, setProject] = useState<SDLCProject | null>(null);
@@ -158,7 +172,7 @@ export function AetherStudio() {
 
   // UI state
   const [viewMode, setViewMode] = useState<'source' | 'split' | 'preview'>('preview');
-  const [activeAgent, setActiveAgent] = useState<string>(agentForDocType(docType || 'brs'));
+  const [activeAgent, setActiveAgent] = useState<string>(agentForDocType(docType || firstAccessibleDocType));
   const [generating, setGenerating] = useState(false);
 
   // Input documents state
@@ -180,6 +194,22 @@ export function AetherStudio() {
   const [workflowActive, setWorkflowActive] = useState(false);
   const [workflowStatus, setWorkflowStatus] = useState<{ step: string; message: string; agent?: string } | null>(null);
 
+  // ── URL guard: redirect away from a doc type the user cannot access ──
+  useEffect(() => {
+    if (!docType) return;
+    const allowed =
+      (docType === 'brs' && canAccessBRS) ||
+      (docType === 'srs' && canAccessSRS) ||
+      (docType === 'testcase' && canAccessTC);
+    if (allowed) return;
+    if (accessibleDocTypes.length === 0) return;
+    void navigate({
+      to: '/studio',
+      search: { project: projectId, doc: firstAccessibleDocType, step: 1 },
+      replace: true,
+    });
+  }, [docType, projectId, firstAccessibleDocType, accessibleDocTypes.length, canAccessBRS, canAccessSRS, canAccessTC]);
+
   // ── Load project + documents ──
   const loadAttachments = useCallback(() => {
     if (!projectId) return;
@@ -200,7 +230,8 @@ export function AetherStudio() {
         setProject(proj);
         setDocuments(docs);
 
-        const matchedDoc = docs.find((d) => d.docType === docType) ?? docs[0] ?? null;
+        const visibleDocs = docs.filter((d) => docAccess[d.docType]);
+        const matchedDoc = visibleDocs.find((d) => d.docType === docType) ?? visibleDocs[0] ?? null;
         setActiveDoc(matchedDoc);
 
         if (matchedDoc) {
@@ -582,6 +613,7 @@ export function AetherStudio() {
   // ── Switch document type ──
   const handleSwitchDocType = (newDocType: string) => {
     if (generating || workflowActive) return;
+    if (!docAccess[newDocType]) return;
     const doc = documents.find((d) => d.docType === newDocType);
     if (doc) {
       setActiveAgent(agentForDocType(newDocType));
@@ -1305,22 +1337,24 @@ export function AetherStudio() {
 
           {/* Doc Type Switcher */}
           <div className="flex items-center gap-1 bg-background p-0.5 rounded border border-border ml-2">
-            {documents.map((doc) => (
-              <button
-                key={doc.id}
-                onClick={() => handleSwitchDocType(doc.docType)}
-                disabled={workflowActive || generating}
-                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors disabled:opacity-50 ${
-                  doc.docType === docType
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {doc.docType === 'brs' ? `BRS (${doc.totalSteps})` :
-                 doc.docType === 'srs' ? `SRS/SDD (${doc.totalSteps})` :
-                 `Test Cases (${doc.totalSteps})`}
-              </button>
-            ))}
+            {documents
+              .filter((doc) => docAccess[doc.docType])
+              .map((doc) => (
+                <button
+                  key={doc.id}
+                  onClick={() => handleSwitchDocType(doc.docType)}
+                  disabled={workflowActive || generating}
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+                    doc.docType === docType
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {doc.docType === 'brs' ? `BRS (${doc.totalSteps})` :
+                   doc.docType === 'srs' ? `SRS/SDD (${doc.totalSteps})` :
+                   `Test Cases (${doc.totalSteps})`}
+                </button>
+              ))}
           </div>
         </div>
 
@@ -1416,18 +1450,20 @@ export function AetherStudio() {
 
           <div className="p-2 border-b border-border space-y-1 text-xs font-mono">
             <div className="text-muted-foreground text-[10px] font-semibold uppercase px-2 py-1">{t('studio.generatedSpecs')}</div>
-            {documents.map((doc) => (
-              <div
-                key={doc.id}
-                onClick={() => !workflowActive && !generating && handleSwitchDocType(doc.docType)}
-                className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer ${
-                  doc.docType === docType ? 'bg-primary/20 text-foreground font-semibold' : 'text-foreground hover:bg-accent'
-                }`}
-              >
-                <FileText className={`size-3.5 ${doc.docType === 'brs' ? 'text-status-review' : doc.docType === 'srs' ? 'text-status-signature' : 'text-status-draft'}`} />
-                <span>{fileNameForDocType(doc.docType)}</span>
-              </div>
-            ))}
+            {documents
+              .filter((doc) => docAccess[doc.docType])
+              .map((doc) => (
+                <div
+                  key={doc.id}
+                  onClick={() => !workflowActive && !generating && handleSwitchDocType(doc.docType)}
+                  className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer ${
+                    doc.docType === docType ? 'bg-primary/20 text-foreground font-semibold' : 'text-foreground hover:bg-accent'
+                  }`}
+                >
+                  <FileText className={`size-3.5 ${doc.docType === 'brs' ? 'text-status-review' : doc.docType === 'srs' ? 'text-status-signature' : 'text-status-draft'}`} />
+                  <span>{fileNameForDocType(doc.docType)}</span>
+                </div>
+              ))}
           </div>
 
           {/* Input Documents */}
@@ -1655,9 +1691,6 @@ export function AetherStudio() {
                 <Bot className="size-4 text-primary" />
                 <span>{t('studio.agentChat')}</span>
               </div>
-              <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
-                {t('studio.copilotMode')}
-              </span>
               {workflowActive && (
                 <span className="text-[10px] font-mono text-status-signature bg-status-signature/10 px-1.5 py-0.5 rounded border border-status-signature/30 flex items-center gap-1">
                   <Loader2 className="size-3 animate-spin" />
@@ -1673,9 +1706,9 @@ export function AetherStudio() {
               disabled={isStreaming}
               className="bg-card border border-border rounded p-1.5 text-[10px] text-foreground font-mono outline-none disabled:opacity-50"
             >
-              <option value="brs-agent">brs-agent (BRS)</option>
-              <option value="srd-agent">srd-agent (SRS/SDD)</option>
-              <option value="testcase-agent">testcase-agent (Test Cases)</option>
+              {canAccessBRS && <option value="brs-agent">brs-agent (BRS)</option>}
+              {canAccessSRS && <option value="srd-agent">srd-agent (SRS/SDD)</option>}
+              {canAccessTC && <option value="testcase-agent">testcase-agent (Test Cases)</option>}
             </select>
           </div>
 
@@ -1804,13 +1837,15 @@ export function AetherStudio() {
               <Wand2 className="size-2.5 text-primary" />
               {t('studio.edgeCases')}
             </button>
-            <button
-              onClick={() => quickAction(t('studio.gherkinPrompt', 'Format acceptance criteria strictly into Given/When/Then Gherkin style.'))}
-              className="text-[10px] bg-card hover:bg-accent text-foreground border border-border px-2 py-1 rounded flex items-center gap-1"
-            >
-              <Wand2 className="size-2.5 text-status-signature" />
-              {t('studio.gherkin')}
-            </button>
+            {(canAccessBRS || canAccessSRS) && (
+              <button
+                onClick={() => quickAction(t('studio.gherkinPrompt', 'Format acceptance criteria strictly into Given/When/Then Gherkin style.'))}
+                className="text-[10px] bg-card hover:bg-accent text-foreground border border-border px-2 py-1 rounded flex items-center gap-1"
+              >
+                <Wand2 className="size-2.5 text-status-signature" />
+                {t('studio.gherkin')}
+              </button>
+            )}
           </div>
 
           {/* Chat Input Bar */}

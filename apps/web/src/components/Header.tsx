@@ -17,6 +17,13 @@ import { useKeycloak } from '../lib/keycloak';
 import { useRoles, getRoleLabel } from '../lib/use-roles';
 import { useTranslation } from 'react-i18next';
 
+const accessibleDocType = (roles: string[]) => {
+  if (roles.includes('ROLE_BA_LEAD') || roles.includes('ROLE_ANALYST') || roles.includes('BRS_APPROVER') || roles.includes('BRS_EXECUTIVE_APPROVER')) return 'brs';
+  if (roles.includes('ROLE_SOLUTION_ARCHITECT') || roles.includes('SRS_APPROVER') || roles.includes('TECH_GOVERNANCE') || roles.includes('ROLE_DEV_LEAD') || roles.includes('SRS_TECHNICAL_APPROVER')) return 'srs';
+  if (roles.includes('ROLE_QA_LEAD') || roles.includes('TESTCASE_APPROVER')) return 'testcase';
+  return 'brs';
+};
+
 interface HeaderProps {
   currentTab: string;
   activePersona: Persona;
@@ -54,9 +61,6 @@ export function Header({
             <Hexagon className="size-4 fill-current" />
           </div>
           <span className="text-sm font-semibold tracking-tight text-foreground">AetherSpec</span>
-          <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            Admin
-          </span>
         </div>
 
         <div className="h-4 w-px bg-border" />
@@ -122,7 +126,7 @@ export function Header({
               to: '/studio',
               search: {
                 project: projectId,
-                doc: 'brs',
+                doc: accessibleDocType(user?.roles || []),
                 step: 1,
               },
             });

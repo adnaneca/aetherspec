@@ -40,6 +40,10 @@ logs/
 # Test coverage
 coverage/
 
+# Playwright
+e2e/.auth/
+test-results/
+
 # Turbo
 .turbo/
 
