@@ -39,6 +39,7 @@ export interface WorkflowState {
     suggested: string;
     accepted: boolean;
     modified?: string;
+    rejected?: boolean;
     final: string;
   }>;
   pendingQuestions: string[];
@@ -102,7 +103,6 @@ export class BRSWorkflow {
   private state: WorkflowState;
   private context: WorkflowContext;
   private callbacks: WorkflowCallbacks;
-  private maxRevisions = 3;
 
   constructor(agents: AgentMap, context: WorkflowContext, callbacks: WorkflowCallbacks) {
     this.agents = agents;
@@ -316,7 +316,7 @@ export class BRSWorkflow {
   }
 
   private async handleNegotiateAnswersResponse() {
-    const userResponse = this.context.userResponse || [];
+    const userResponse = this.context.userResponse || {};
 
     if (userResponse.action === 'direct_writer_access') {
       this.state.answers.discoverMode = 'direct';
@@ -325,8 +325,21 @@ export class BRSWorkflow {
       return;
     }
 
-    const reviewedAnswers = Array.isArray(userResponse) ? userResponse : [];
-    this.state.negotiatedAnswers = reviewedAnswers;
+    const reviewedAnswers = Array.isArray(userResponse.suggestions)
+      ? userResponse.suggestions
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedAnswers = reviewedAnswers.map((a: any) => ({
+      questionId: a.questionId,
+      question: a.question,
+      suggested: a.status === 'rejected' ? '' : a.answer,
+      accepted: a.status === 'accepted',
+      modified: a.status === 'modified' ? a.answer : '',
+      rejected: a.status === 'rejected',
+      final: a.answer,
+    }));
 
     this.callbacks.onStatus('expectations', 'brs-orchestrator', 'Asking about expectations...');
     await this.stepExpectations();
@@ -458,12 +471,23 @@ export class BRSWorkflow {
       return;
     }
 
-    const reviewedFixes = Array.isArray(userResponse) ? userResponse : (userResponse.fixes || []);
-    this.state.negotiatedFixes = reviewedFixes;
+    const reviewedFixes = Array.isArray(userResponse.fixes)
+      ? userResponse.fixes
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
 
-    const hasAcceptedFixes = reviewedFixes.some((f: any) => f.accepted);
+    this.state.negotiatedFixes = reviewedFixes.map((f: any) => ({
+      findingId: f.findingId,
+      finding: f.finding,
+      proposedFix: f.proposedFix,
+      autoFixable: !!f.autoFixable,
+      accepted: f.status !== 'skipped' && (f.accepted || f.status === 'accepted' || f.status === 'modified'),
+    }));
 
-    if (hasAcceptedFixes) {
+    const acceptedFixes = this.state.negotiatedFixes.filter((f) => f.accepted);
+
+    if (acceptedFixes.length > 0) {
       this.callbacks.onStatus('fix', 'brs-writer', 'Applying fixes...');
       await this.stepFix();
     } else {
@@ -482,17 +506,18 @@ export class BRSWorkflow {
     this.state.answers.validationMode = 'direct';
     this.state.findings = acceptedFindings;
 
-    const hasBlocking = acceptedFindings.some((f: any) => f.type === 'BLOCKING');
+    this.state.negotiatedFixes = acceptedFindings.map((f: any, i: number) => ({
+      findingId: f.id || `F${i + 1}`,
+      finding: f.message || 'Finding',
+      proposedFix: f.message || 'Please address this finding.',
+      autoFixable: false,
+      accepted: true,
+    }));
 
-    if (hasBlocking) {
+    const hasAcceptedFixes = this.state.negotiatedFixes.length > 0;
+
+    if (hasAcceptedFixes) {
       this.callbacks.onStatus('fix', 'brs-writer', 'Applying selected fixes...');
-      this.state.negotiatedFixes = acceptedFindings.map((f: any, i: number) => ({
-        findingId: f.id || `F${i + 1}`,
-        finding: f.message || 'Finding',
-        proposedFix: f.message || 'Please address this finding.',
-        autoFixable: false,
-        accepted: true,
-      }));
       await this.stepFix();
     } else {
       this.callbacks.onStatus('review', 'brs-orchestrator', 'Presenting draft for review...');
@@ -545,21 +570,10 @@ export class BRSWorkflow {
     } else if (action === 'revise' || action === 'no') {
       this.state.revisionCount++;
 
-      if (this.state.revisionCount >= this.maxRevisions) {
-        await this.persist('paused');
-        this.callbacks.onStatus(
-          'review',
-          'brs-orchestrator',
-          `Maximum revisions (${this.maxRevisions}) reached. Please accept current version or skip section.`,
-        );
-        await this.pause('review', 'user_approval');
-        return;
-      }
-
       this.callbacks.onStatus(
         'generate',
         'brs-writer',
-        `Revising (revision ${this.state.revisionCount}/${this.maxRevisions})...`,
+        `Revising (revision ${this.state.revisionCount})...`,
       );
       await this.stepGenerate();
     } else {

@@ -76,6 +76,7 @@ interface ChatMessage {
   suggestionCard?: {
     suggestions: WorkflowSuggestion[];
     agent: string;
+    submitted?: boolean;
   };
   optionCard?: {
     options: Array<{
@@ -90,6 +91,7 @@ interface ChatMessage {
   fixesCard?: {
     fixes: WorkflowFix[];
     agent: string;
+    submitted?: boolean;
   };
   findingsCard?: {
     findings: WorkflowFinding[];
@@ -326,7 +328,6 @@ export function AetherStudio() {
                   questionId: a.questionId || 'Q1',
                   question: a.question || a.questionId || 'Question',
                   suggestedAnswer: a.suggested || a.modified || a.final || '',
-                  accepted: !!a.accepted,
                 })),
                 agent: 'brs-negotiator',
               },
@@ -361,9 +362,10 @@ export function AetherStudio() {
                 fixes: wf.state.negotiatedFixes.map((f: any) => ({
                   findingId: f.findingId || 'F1',
                   finding: f.finding || 'Finding',
+                  findingType: f.type || f.findingType,
+                  rule: f.rule,
                   proposedFix: f.proposedFix || '',
                   autoFixable: !!f.autoFixable,
-                  accepted: !!f.accepted,
                 })),
                 agent: 'brs-negotiator',
               },
@@ -574,7 +576,7 @@ export function AetherStudio() {
           setChatMessages((prev) => [...prev, {
             id: `suggestions-${Date.now()}`,
             sender: 'assistant',
-            content: 'Negotiator proposes answers...',
+            content: 'Negotiator proposes answers. Review each suggestion:',
             agent: event.agent,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             suggestionCard: { suggestions: event.suggestions || [], agent: event.agent },
@@ -596,7 +598,7 @@ export function AetherStudio() {
           setChatMessages((prev) => [...prev, {
             id: `fixes-${Date.now()}`,
             sender: 'assistant',
-            content: 'Proposing fixes for findings...',
+            content: 'Negotiator proposes fixes. Review each fix:',
             agent: event.agent,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             fixesCard: { fixes: event.fixes || [], agent: event.agent },
@@ -779,7 +781,7 @@ export function AetherStudio() {
           setChatMessages((prev) => [...prev, {
             id: `suggestions-${Date.now()}`,
             sender: 'assistant',
-            content: 'Negotiator proposes answers...',
+            content: 'Negotiator proposes answers. Review each suggestion:',
             agent: event.agent,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             suggestionCard: { suggestions: event.suggestions || [], agent: event.agent },
@@ -799,7 +801,7 @@ export function AetherStudio() {
           setChatMessages((prev) => [...prev, {
             id: `fixes-${Date.now()}`,
             sender: 'assistant',
-            content: 'Proposing fixes for findings...',
+            content: 'Negotiator proposes fixes. Review each fix:',
             agent: event.agent,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             fixesCard: { fixes: event.fixes || [], agent: event.agent },
@@ -944,28 +946,27 @@ export function AetherStudio() {
     await handleResumeWorkflow(normalized);
   };
 
-  const handleSuggestionAccept = async (answers: WorkflowSuggestion[]) => {
-    const accepted = answers.filter((a) => a.accepted);
-
-    if (accepted.length === 0) {
-      setChatMessages((prev) => [...prev, {
-        id: `warning-${Date.now()}`,
-        sender: 'system',
-        content: "You rejected all suggestions. Click 'Talk to Writer' to provide your own answers, or accept at least one suggestion to continue.",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      }]);
-      return;
-    }
-
-    const payload = accepted.map((a) => ({
+  const handleSuggestionAccept = async (finalAnswers: Array<{
+    questionId: string;
+    question: string;
+    answer: string;
+    status: 'accepted' | 'modified' | 'rejected';
+  }> | Array<{
+    questionId: string;
+    question: string;
+    answer: string;
+    status: import('./workflow-cards').SuggestionStatus;
+  }>) => {
+    const payload = finalAnswers.map((a) => ({
       questionId: a.questionId,
       question: a.question,
-      suggested: a.suggestedAnswer,
-      accepted: true,
-      modified: a.suggestedAnswer,
-      final: a.suggestedAnswer,
+      suggested: a.status === 'rejected' ? '' : a.answer,
+      accepted: a.status === 'accepted',
+      modified: a.status === 'modified' ? a.answer : '',
+      rejected: a.status === 'rejected',
+      final: a.answer,
     }));
-    await handleResumeWorkflow(payload);
+    await handleResumeWorkflow({ suggestions: payload });
   };
 
   const handleTalkToWriter = useCallback(async () => {
@@ -992,17 +993,27 @@ export function AetherStudio() {
     await handleResumeWorkflow(optionId);
   };
 
-  const handleFixesApply = async (fixes: WorkflowFix[]) => {
-    const payload = fixes
-      .filter((f) => f.accepted)
+  const handleFixesApply = async (finalFixes: Array<{
+    findingId: string;
+    finding: string;
+    fix: string;
+    status: 'accepted' | 'modified' | 'skipped';
+  }> | Array<{
+    findingId: string;
+    finding: string;
+    fix: string;
+    status: import('./workflow-cards').FixStatus;
+  }>) => {
+    const payload = finalFixes
+      .filter((f) => f.status !== 'skipped')
       .map((f) => ({
         findingId: f.findingId,
         finding: f.finding,
-        proposedFix: f.proposedFix,
-        autoFixable: !!f.autoFixable,
+        proposedFix: f.fix,
+        autoFixable: true,
         accepted: true,
       }));
-    await handleResumeWorkflow(payload.length > 0 ? payload : []);
+    await handleResumeWorkflow({ fixes: payload.length > 0 ? payload : [] });
   };
 
   const handleReviewApprove = async () => {
@@ -1642,10 +1653,15 @@ export function AetherStudio() {
                       onSubmit={handleQuestionSubmit}
                     />
                   )}
-                  {msg.suggestionCard && (
+                  {msg.suggestionCard && !msg.suggestionCard.submitted && (
                     <SuggestionCard
                       suggestions={msg.suggestionCard.suggestions}
-                      onAccept={handleSuggestionAccept}
+                      onAccept={(finalAnswers) => {
+                        setChatMessages((prev) => prev.map((m) =>
+                          m.id === msg.id ? { ...m, suggestionCard: { ...m.suggestionCard!, submitted: true } } : m,
+                        ));
+                        void handleSuggestionAccept(finalAnswers);
+                      }}
                       onTalkToWriter={handleTalkToWriter}
                     />
                   )}
@@ -1661,10 +1677,15 @@ export function AetherStudio() {
                       onSelect={handleOptionSelect}
                     />
                   )}
-                  {msg.fixesCard && (
+                  {msg.fixesCard && !msg.fixesCard.submitted && (
                     <FixesCard
                       fixes={msg.fixesCard.fixes}
-                      onApply={handleFixesApply}
+                      onApply={(finalFixes) => {
+                        setChatMessages((prev) => prev.map((m) =>
+                          m.id === msg.id ? { ...m, fixesCard: { ...m.fixesCard!, submitted: true } } : m,
+                        ));
+                        void handleFixesApply(finalFixes);
+                      }}
                       onTalkToValidator={handleTalkToValidator}
                     />
                   )}
