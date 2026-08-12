@@ -13,13 +13,25 @@ import {
   mergeDocument,
   getAttachments,
   downloadAttachment,
-  generateSection,
+  startWorkflow,
+  resumeWorkflow,
+  getWorkflow,
   type Attachment,
-  type ValidationFinding,
 } from '../lib/api';
 import { streamChat } from '../lib/chat-stream';
 import { MermaidRenderer } from './MermaidRenderer';
 import { DocumentUpload } from './DocumentUpload';
+import {
+  QuestionCard,
+  SuggestionCard,
+  OptionCard,
+  FixesCard,
+  FindingsCard,
+  ReviewCard,
+  type WorkflowSuggestion,
+  type WorkflowFix,
+  type WorkflowFinding,
+} from './workflow-cards';
 import type { SDLCProject, Document, DocumentStep } from '../types';
 import {
   Folder,
@@ -39,7 +51,6 @@ import {
   ChevronRight,
   Download,
   Sparkles,
-  RefreshCw,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useRoles } from '../lib/use-roles';
@@ -55,13 +66,45 @@ interface ChatMessage {
   timestamp: string;
   thoughts?: string;
   skillCalled?: string;
-  sectionCard?: {
-    stepId: number;
-    title: string;
-    draftSnippet: string;
-    hasFindings: boolean;
-    findings: ValidationFinding[];
-    status: string;
+  agent?: string;
+  step?: string;
+  // ── Interactive card data ──
+  questionCard?: {
+    questions: string[];
+    agent: string;
+  };
+  suggestionCard?: {
+    suggestions: WorkflowSuggestion[];
+    agent: string;
+  };
+  optionCard?: {
+    options: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      pros?: string[];
+      cons?: string[];
+    }>;
+    agent: string;
+  };
+  fixesCard?: {
+    fixes: WorkflowFix[];
+    agent: string;
+  };
+  findingsCard?: {
+    findings: WorkflowFinding[];
+    agent: string;
+    directMode?: boolean;
+  };
+  reviewCard?: {
+    sectionTitle: string;
+    summary: {
+      sectionId: number;
+      sectionName: string;
+      draftLength: number;
+      findingsCount: number;
+      revisionCount: number;
+    };
   };
 }
 
@@ -127,6 +170,12 @@ export function AetherStudio() {
   const [isStreaming, setIsStreaming] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+
+  // Interactive workflow state
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [workflowStep, setWorkflowStep] = useState<string>('idle');
+  const [workflowActive, setWorkflowActive] = useState(false);
+  const [workflowStatus, setWorkflowStatus] = useState<{ step: string; message: string; agent?: string } | null>(null);
 
   // ── Load project + documents ──
   const loadAttachments = useCallback(() => {
@@ -195,6 +244,171 @@ export function AetherStudio() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  // ── Restore active workflow on mount ──
+  useEffect(() => {
+    const currentDoc = activeDoc;
+    const currentStepObj = activeStep;
+    const checkActiveWorkflow = async () => {
+      try {
+        const stored = localStorage.getItem('aetherspec:activeWorkflow');
+        if (!stored) return;
+        const parsed = JSON.parse(stored);
+        if (!parsed.workflowId || parsed.docId !== currentDoc?.id || parsed.stepId !== currentStepObj?.stepNumber) {
+          return;
+        }
+        const wf = await getWorkflow(parsed.workflowId);
+        if (wf.status === 'paused' || wf.status === 'active' || wf.status === 'error') {
+          setWorkflowId(parsed.workflowId);
+          const currentStep = wf.state?.currentStep || 'idle';
+          setWorkflowStep(currentStep);
+          setWorkflowActive(false);
+          setChatMessages((prev) => [...prev, {
+            id: `restore-${Date.now()}`,
+            sender: 'system',
+            content: `Workflow restored (${currentStep}). Continue from the last step.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }]);
+
+          if (!currentStepObj) return;
+
+          // Re-hydrate the pending interactive card from persisted workflow state.
+          const sectionTitle = wf.state?.sectionName || currentStepObj.stepName;
+          if (currentStep === 'relevance') {
+            setChatMessages((prev) => [...prev, {
+              id: `restore-question-${Date.now()}`,
+              sender: 'assistant',
+              content: 'Checking section relevance...',
+              agent: 'brs-orchestrator',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              questionCard: {
+                questions: [`Section ${currentStepObj.stepNumber} is "${sectionTitle}". Is this section applicable to your BRS? (YES/NO)`],
+                agent: 'brs-orchestrator',
+              },
+            }]);
+          } else if (currentStep === 'expectations') {
+            setChatMessages((prev) => [...prev, {
+              id: `restore-expectations-${Date.now()}`,
+              sender: 'assistant',
+              content: 'Asking about expectations...',
+              agent: 'brs-orchestrator',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              questionCard: {
+                questions: [
+                  'What are your specific expectations for this section?',
+                  'Any must-have content?',
+                  'Any specific constraints or preferences?',
+                ],
+                agent: 'brs-orchestrator',
+              },
+            }]);
+          } else if (currentStep === 'direct_writer' && Array.isArray(wf.state?.pendingQuestions) && wf.state.pendingQuestions.length > 0) {
+            setChatMessages((prev) => [...prev, {
+              id: `restore-direct-writer-${Date.now()}`,
+              sender: 'assistant',
+              content: 'Writer asks clarifying questions...',
+              agent: 'brs-writer',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              questionCard: {
+                questions: wf.state.pendingQuestions,
+                agent: 'brs-writer',
+              },
+            }]);
+          } else if (currentStep === 'negotiate_answers' && Array.isArray(wf.state?.negotiatedAnswers) && wf.state.negotiatedAnswers.length > 0) {
+            setChatMessages((prev) => [...prev, {
+              id: `restore-suggestions-${Date.now()}`,
+              sender: 'assistant',
+              content: 'Negotiator proposes answers...',
+              agent: 'brs-negotiator',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              suggestionCard: {
+                suggestions: wf.state.negotiatedAnswers.map((a: any) => ({
+                  questionId: a.questionId || 'Q1',
+                  question: a.question || a.questionId || 'Question',
+                  suggestedAnswer: a.suggested || a.modified || a.final || '',
+                  accepted: !!a.accepted,
+                })),
+                agent: 'brs-negotiator',
+              },
+            }]);
+          } else if (currentStep === 'direct_validator' && Array.isArray(wf.state?.findings) && wf.state.findings.length > 0) {
+            setChatMessages((prev) => [...prev, {
+              id: `restore-direct-validator-${Date.now()}`,
+              sender: 'assistant',
+              content: 'Validator findings — direct access...',
+              agent: 'brs-validator',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              findingsCard: {
+                findings: wf.state.findings.map((f: any, i: number) => ({
+                  findingId: f.id || `F${i + 1}`,
+                  finding: f.message || 'Finding',
+                  type: f.type || 'FINDING',
+                  rule: f.rule || 'unknown',
+                  accepted: true,
+                })),
+                agent: 'brs-validator',
+                directMode: true,
+              },
+            }]);
+          } else if (currentStep === 'negotiate_fixes' && Array.isArray(wf.state?.negotiatedFixes) && wf.state.negotiatedFixes.length > 0) {
+            setChatMessages((prev) => [...prev, {
+              id: `restore-fixes-${Date.now()}`,
+              sender: 'assistant',
+              content: 'Proposing fixes for findings...',
+              agent: 'brs-negotiator',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              fixesCard: {
+                fixes: wf.state.negotiatedFixes.map((f: any) => ({
+                  findingId: f.findingId || 'F1',
+                  finding: f.finding || 'Finding',
+                  proposedFix: f.proposedFix || '',
+                  autoFixable: !!f.autoFixable,
+                  accepted: !!f.accepted,
+                })),
+                agent: 'brs-negotiator',
+              },
+            }]);
+          } else if (currentStep === 'review') {
+            setChatMessages((prev) => [...prev, {
+              id: `restore-review-${Date.now()}`,
+              sender: 'assistant',
+              content: 'Draft ready for review.',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              reviewCard: {
+                sectionTitle: `Section ${currentStepObj.stepNumber}: ${sectionTitle}`,
+                summary: {
+                  sectionId: currentStepObj.stepNumber,
+                  sectionName: sectionTitle,
+                  draftLength: typeof wf.state?.draft === 'string' ? wf.state.draft.length : 0,
+                  findingsCount: Array.isArray(wf.state?.findings) ? wf.state.findings.length : 0,
+                  revisionCount: typeof wf.state?.revisionCount === 'number' ? wf.state.revisionCount : 0,
+                },
+              },
+            }]);
+          }
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) console.warn('Failed to restore workflow', err);
+      }
+    };
+    if (activeDoc && activeStep) {
+      void checkActiveWorkflow();
+    }
+  }, [activeDoc?.id, activeStep?.stepNumber]);
+
+  // Persist workflow state to localStorage
+  useEffect(() => {
+    if (workflowId && activeDoc && activeStep) {
+      localStorage.setItem('aetherspec:activeWorkflow', JSON.stringify({
+        workflowId,
+        docId: activeDoc.id,
+        stepId: activeStep.stepNumber,
+        step: workflowStep,
+      }));
+    } else if (!workflowId) {
+      localStorage.removeItem('aetherspec:activeWorkflow');
+    }
+  }, [workflowId, workflowStep, activeDoc?.id, activeStep?.stepNumber]);
 
   // ── Save step content ──
   const handleSave = async () => {
@@ -274,7 +488,7 @@ export function AetherStudio() {
 
   // ── Switch document type ──
   const handleSwitchDocType = (newDocType: string) => {
-    if (generating) return;
+    if (generating || workflowActive) return;
     const doc = documents.find((d) => d.docType === newDocType);
     if (doc) {
       setActiveAgent(agentForDocType(newDocType));
@@ -288,7 +502,7 @@ export function AetherStudio() {
 
   // ── Click a step in the sidebar ──
   const handleStepClick = (stepNum: number) => {
-    if (generating) return;
+    if (generating || workflowActive) return;
     setActiveInputDoc(null);
     void navigate({
       to: '/studio',
@@ -314,24 +528,168 @@ export function AetherStudio() {
     setActiveInputDoc(null);
   };
 
-  // ── Generate section with SSE streaming ──
-  const handleGenerate = useCallback(async () => {
+  // ── Start interactive BRS workflow ──
+  const handleStartWorkflow = useCallback(async () => {
     if (!activeDoc || !activeStep || !projectId) return;
     setGenerating(true);
     setStepContent('');
+    setChatMessages([]);
+    setWorkflowActive(true);
+    setWorkflowStep('relevance');
+    setWorkflowStatus({ step: 'relevance', message: 'Starting BRS workflow...' });
+    setWorkflowId(null);
 
     const currentStepNumber = activeStep.stepNumber;
     const currentDocId = activeDoc.id;
     let generatedContent = '';
 
-    try {
-      const stream = await generateSection({
-        projectId,
-        docId: currentDocId,
-        stepId: String(currentStepNumber),
-        agentId: activeAgent,
-      });
+    const processEvent = async (event: any) => {
+      switch (event.type) {
+        case 'workflow':
+          setWorkflowId(event.workflowId);
+          break;
 
+        case 'status':
+          setWorkflowStep(event.step);
+          setWorkflowStatus({ step: event.step, message: event.message, agent: event.agent });
+          break;
+
+        case 'token':
+          generatedContent += event.delta;
+          setStepContent(generatedContent);
+          break;
+
+        case 'question':
+          setChatMessages((prev) => [...prev, {
+            id: `question-${Date.now()}`,
+            sender: 'assistant',
+            content: event.questions?.[0] || 'Asking clarifying questions...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            questionCard: { questions: event.questions || [], agent: event.agent },
+          }]);
+          break;
+
+        case 'suggestions':
+          setChatMessages((prev) => [...prev, {
+            id: `suggestions-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Negotiator proposes answers...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            suggestionCard: { suggestions: event.suggestions || [], agent: event.agent },
+          }]);
+          break;
+
+        case 'options':
+          setChatMessages((prev) => [...prev, {
+            id: `options-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Suggesting structure options...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            optionCard: { options: event.options || [], agent: event.agent },
+          }]);
+          break;
+
+        case 'fixes':
+          setChatMessages((prev) => [...prev, {
+            id: `fixes-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Proposing fixes for findings...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            fixesCard: { fixes: event.fixes || [], agent: event.agent },
+          }]);
+          break;
+
+        case 'findings_raw':
+          setChatMessages((prev) => [...prev, {
+            id: `findings-raw-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Validator findings — direct access...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            findingsCard: { findings: event.findings || [], agent: event.agent, directMode: true },
+          }]);
+          break;
+
+        case 'findings':
+          setChatMessages((prev) => [...prev, {
+            id: `findings-${Date.now()}`,
+            sender: 'assistant',
+            content: `${(event.findings || []).length > 0
+              ? `Validation complete. ${event.findings.length} finding${event.findings.length === 1 ? '' : 's'}.`
+              : 'Validation complete. No findings.'}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }]);
+          break;
+
+        case 'review':
+          setChatMessages((prev) => [...prev, {
+            id: `review-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Draft ready for review.',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            reviewCard: {
+              sectionTitle: event.sectionTitle,
+              summary: event.summary,
+            },
+          }]);
+          break;
+
+        case 'paused':
+          setWorkflowStep(event.step);
+          setWorkflowActive(false);
+          break;
+
+        case 'done':
+          setWorkflowStep('done');
+          setWorkflowActive(false);
+          setWorkflowStatus(null);
+          try {
+            if (event.workflowId || workflowIdRef.current) {
+              const wf = await getWorkflow(event.workflowId || workflowIdRef.current!);
+              if (wf.state?.draft) {
+                await patchStep(currentDocId, currentStepNumber, {
+                  content: wf.state.draft,
+                  status: 'IN_PROGRESS',
+                });
+                setStepContent(wf.state.draft);
+                setChatMessages((prev) => [...prev, {
+                  id: `saved-${Date.now()}`,
+                  sender: 'system',
+                  content: 'Draft saved to MinIO.',
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                }]);
+                setSteps((prev) => prev.map((s) =>
+                  s.stepNumber === currentStepNumber
+                    ? { ...s, status: 'IN_PROGRESS', version: s.version + 1 }
+                    : s,
+                ));
+              }
+            }
+          } catch (err) {
+            console.error('Failed to save final draft', err);
+          }
+          setWorkflowId(null);
+          break;
+
+        case 'error':
+          setChatMessages((prev) => [...prev, {
+            id: `error-${Date.now()}`,
+            sender: 'assistant',
+            content: `Error: ${event.error}`,
+            error: true,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }]);
+          setWorkflowActive(false);
+          setWorkflowStatus(null);
+          break;
+      }
+    };
+
+    const readStream = async (stream: ReadableStream<Uint8Array>) => {
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -349,74 +707,203 @@ export function AetherStudio() {
           if (!trimmed.startsWith('data: ')) continue;
           try {
             const event = JSON.parse(trimmed.slice(6));
+            await processEvent(event);
+          } catch (e) {
+            if (import.meta.env.DEV) console.warn('Malformed SSE line', line, e);
+          }
+        }
+      }
+    };
 
-            if (event.type === 'status') {
+    try {
+      const stream = await startWorkflow({
+        projectId,
+        docId: currentDocId,
+        stepId: currentStepNumber,
+        sectionName: activeStep.stepName,
+        sectionGuide: activeStep.description || '',
+        dependencySections: [],
+        inputDocuments: [],
+        qualityChecks: [],
+        agentId: 'brs-orchestrator',
+      });
+      await readStream(stream);
+    } catch (err) {
+      setChatMessages((prev) => [...prev, {
+        id: `error-${Date.now()}`,
+        sender: 'assistant',
+        content: `Workflow failed: ${(err as Error).message}`,
+        error: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+      setWorkflowActive(false);
+    } finally {
+      setGenerating(false);
+    }
+  }, [activeDoc, activeStep, projectId, t]);
+
+  // Ref to access latest workflowId inside async callbacks
+  const workflowIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    workflowIdRef.current = workflowId;
+  }, [workflowId]);
+
+  // ── Resume workflow with user response ──
+  const handleResumeWorkflow = useCallback(async (userResponse: unknown) => {
+    if (!workflowIdRef.current) return;
+    setWorkflowActive(true);
+    setGenerating(true);
+    let generatedContent = stepContent;
+
+    const processEvent = async (event: any) => {
+      switch (event.type) {
+        case 'status':
+          setWorkflowStep(event.step);
+          setWorkflowStatus({ step: event.step, message: event.message, agent: event.agent });
+          break;
+        case 'token':
+          generatedContent += event.delta;
+          setStepContent(generatedContent);
+          break;
+        case 'question':
+          setChatMessages((prev) => [...prev, {
+            id: `question-${Date.now()}`,
+            sender: 'assistant',
+            content: event.questions?.[0] || 'Asking clarifying questions...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            questionCard: { questions: event.questions || [], agent: event.agent },
+          }]);
+          break;
+        case 'suggestions':
+          setChatMessages((prev) => [...prev, {
+            id: `suggestions-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Negotiator proposes answers...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            suggestionCard: { suggestions: event.suggestions || [], agent: event.agent },
+          }]);
+          break;
+        case 'options':
+          setChatMessages((prev) => [...prev, {
+            id: `options-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Suggesting structure options...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            optionCard: { options: event.options || [], agent: event.agent },
+          }]);
+          break;
+        case 'fixes':
+          setChatMessages((prev) => [...prev, {
+            id: `fixes-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Proposing fixes for findings...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            fixesCard: { fixes: event.fixes || [], agent: event.agent },
+          }]);
+          break;
+        case 'findings_raw':
+          setChatMessages((prev) => [...prev, {
+            id: `findings-raw-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Validator findings — direct access...',
+            agent: event.agent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            findingsCard: { findings: event.findings || [], agent: event.agent, directMode: true },
+          }]);
+          break;
+        case 'findings':
+          setChatMessages((prev) => [...prev, {
+            id: `findings-${Date.now()}`,
+            sender: 'assistant',
+            content: `${(event.findings || []).length > 0
+              ? `Validation complete. ${event.findings.length} finding${event.findings.length === 1 ? '' : 's'}.`
+              : 'Validation complete. No findings.'}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }]);
+          break;
+        case 'review':
+          setChatMessages((prev) => [...prev, {
+            id: `review-${Date.now()}`,
+            sender: 'assistant',
+            content: 'Draft ready for review.',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            reviewCard: {
+              sectionTitle: event.sectionTitle,
+              summary: event.summary,
+            },
+          }]);
+          break;
+        case 'paused':
+          setWorkflowStep(event.step);
+          setWorkflowActive(false);
+          break;
+        case 'done':
+          setWorkflowStep('done');
+          setWorkflowActive(false);
+          setWorkflowStatus(null);
+          try {
+            const wf = await getWorkflow(workflowIdRef.current!);
+            if (wf.state?.draft) {
+              await patchStep(activeDoc!.id, activeStep!.stepNumber, {
+                content: wf.state.draft,
+                status: 'IN_PROGRESS',
+              });
+              setStepContent(wf.state.draft);
               setChatMessages((prev) => [...prev, {
-                id: `status-${Date.now()}`,
+                id: `saved-${Date.now()}`,
                 sender: 'system',
-                content: event.message,
+                content: 'Draft saved to MinIO.',
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                skillCalled: event.step === 'generating'
-                  ? t('studio.draftingSection')
-                  : event.step === 'validating'
-                  ? t('studio.checkingQuality')
-                  : undefined,
-                thoughts: event.step === 'generating'
-                  ? t('studio.generatingThoughts')
-                  : event.step === 'validating'
-                  ? t('studio.validatingThoughts')
-                  : undefined,
               }]);
-            } else if (event.type === 'token') {
-              generatedContent += event.delta;
-              setStepContent(generatedContent);
-            } else if (event.type === 'findings') {
-              const findings: ValidationFinding[] = event.findings || [];
-              const hasFindings = findings.length > 0;
-              const draftSnippet = generatedContent.match(/^##\s+.+$/m)?.[0]
-                || generatedContent.split('\n').filter(Boolean)[0]
-                || 'Section draft';
-              setChatMessages((prev) => [...prev, {
-                id: `findings-${Date.now()}`,
-                sender: 'assistant',
-                content: `Section draft complete. ${findings.length} validation findings.`,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                sectionCard: {
-                  stepId: currentStepNumber,
-                  title: activeStep.stepName,
-                  draftSnippet,
-                  hasFindings,
-                  findings,
-                  status: findings.some((f) => f.type === 'BLOCKING') ? 'HAS_FINDINGS' : 'REVIEW',
-                },
-              }]);
-            } else if (event.type === 'done') {
-              if (generatedContent) {
-                await patchStep(currentDocId, currentStepNumber, {
-                  content: generatedContent,
-                  status: 'IN_PROGRESS',
-                });
-                setChatMessages((prev) => [...prev, {
-                  id: `saved-${Date.now()}`,
-                  sender: 'system',
-                  content: 'Draft saved to MinIO.',
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                }]);
-              }
               setSteps((prev) => prev.map((s) =>
-                s.stepNumber === currentStepNumber
+                s.stepNumber === activeStep!.stepNumber
                   ? { ...s, status: 'IN_PROGRESS', version: s.version + 1 }
                   : s,
               ));
-            } else if (event.type === 'error') {
-              setChatMessages((prev) => [...prev, {
-                id: `error-${Date.now()}`,
-                sender: 'assistant',
-                content: `Error: ${event.error}`,
-                error: true,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              }]);
             }
+          } catch (err) {
+            console.error('Failed to save final draft', err);
+          }
+          setWorkflowId(null);
+          break;
+        case 'error':
+          setChatMessages((prev) => [...prev, {
+            id: `error-${Date.now()}`,
+            sender: 'assistant',
+            content: `Error: ${event.error}`,
+            error: true,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }]);
+          setWorkflowActive(false);
+          setWorkflowStatus(null);
+          break;
+      }
+    };
+
+    try {
+      const stream = await resumeWorkflow(workflowIdRef.current, userResponse);
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(trimmed.slice(6));
+            await processEvent(event);
           } catch (e) {
             if (import.meta.env.DEV) console.warn('Malformed SSE line', line, e);
           }
@@ -426,14 +913,105 @@ export function AetherStudio() {
       setChatMessages((prev) => [...prev, {
         id: `error-${Date.now()}`,
         sender: 'assistant',
-        content: `Generation failed: ${(err as Error).message}`,
+        content: `Resume failed: ${(err as Error).message}`,
         error: true,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
+      setWorkflowActive(false);
+      setWorkflowStatus(null);
     } finally {
       setGenerating(false);
     }
-  }, [activeDoc, activeStep, activeAgent, projectId]);
+  }, [activeDoc, activeStep, stepContent]);
+
+  // ── Card submit handlers ──
+  const handleQuestionSubmit = async (answers: Record<string, string>) => {
+    // Normalize empty answers.
+    const normalized: Record<string, string> = {};
+    Object.entries(answers).forEach(([k, v]) => {
+      normalized[k] = v.trim() || '(no answer)';
+    });
+
+    // The agent sidecar expects expectations as a single string, not a Record.
+    if (workflowStep === 'expectations') {
+      const expectationsText = Object.entries(normalized)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('\n');
+      await handleResumeWorkflow(expectationsText);
+      return;
+    }
+
+    await handleResumeWorkflow(normalized);
+  };
+
+  const handleSuggestionAccept = async (answers: WorkflowSuggestion[]) => {
+    const accepted = answers.filter((a) => a.accepted);
+
+    if (accepted.length === 0) {
+      setChatMessages((prev) => [...prev, {
+        id: `warning-${Date.now()}`,
+        sender: 'system',
+        content: "You rejected all suggestions. Click 'Talk to Writer' to provide your own answers, or accept at least one suggestion to continue.",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+      return;
+    }
+
+    const payload = accepted.map((a) => ({
+      questionId: a.questionId,
+      question: a.question,
+      suggested: a.suggestedAnswer,
+      accepted: true,
+      modified: a.suggestedAnswer,
+      final: a.suggestedAnswer,
+    }));
+    await handleResumeWorkflow(payload);
+  };
+
+  const handleTalkToWriter = useCallback(async () => {
+    await handleResumeWorkflow({ action: 'direct_writer_access' });
+  }, [handleResumeWorkflow]);
+
+  const handleTalkToValidator = useCallback(async () => {
+    await handleResumeWorkflow({ action: 'direct_validator_access' });
+  }, [handleResumeWorkflow]);
+
+  const handleFindingsSubmit = async (findings: WorkflowFinding[]) => {
+    const accepted = findings.filter((f) => f.accepted);
+    const payload = accepted.map((f, i) => ({
+      findingId: f.findingId || `F${i + 1}`,
+      finding: f.finding,
+      type: f.type,
+      rule: f.rule,
+      accepted: true,
+    }));
+    await handleResumeWorkflow(payload);
+  };
+
+  const handleOptionSelect = async (optionId: string) => {
+    await handleResumeWorkflow(optionId);
+  };
+
+  const handleFixesApply = async (fixes: WorkflowFix[]) => {
+    const payload = fixes
+      .filter((f) => f.accepted)
+      .map((f) => ({
+        findingId: f.findingId,
+        finding: f.finding,
+        proposedFix: f.proposedFix,
+        autoFixable: !!f.autoFixable,
+        accepted: true,
+      }));
+    await handleResumeWorkflow(payload.length > 0 ? payload : []);
+  };
+
+  const handleReviewApprove = async () => {
+    await handleResumeWorkflow({ action: 'approve' });
+  };
+
+  const handleReviewRevise = async (feedback: string) => {
+    await handleResumeWorkflow({ action: 'revise', feedback });
+  };
 
   // ── Agent chat: send message ──
   const handleSendMessage = useCallback(async () => {
@@ -629,7 +1207,7 @@ export function AetherStudio() {
               <button
                 key={doc.id}
                 onClick={() => handleSwitchDocType(doc.docType)}
-                disabled={generating}
+                disabled={workflowActive || generating}
                 className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors disabled:opacity-50 ${
                   doc.docType === docType
                     ? 'bg-primary text-primary-foreground'
@@ -685,8 +1263,8 @@ export function AetherStudio() {
             {saving ? t('studio.saving') : t('studio.save')}
           </button>
           <button
-            onClick={handleGenerate}
-            disabled={generating || !activeStep || activeStep.status === 'APPROVED'}
+            onClick={handleStartWorkflow}
+            disabled={workflowActive || generating || !activeStep || activeStep.status === 'APPROVED'}
             className="flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 px-2.5 py-0.5 rounded font-semibold text-[11px] transition-colors disabled:opacity-50"
           >
                 {generating ? (
@@ -739,7 +1317,7 @@ export function AetherStudio() {
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                onClick={() => handleSwitchDocType(doc.docType)}
+                onClick={() => !workflowActive && !generating && handleSwitchDocType(doc.docType)}
                 className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer ${
                   doc.docType === docType ? 'bg-primary/20 text-foreground font-semibold' : 'text-foreground hover:bg-accent'
                 }`}
@@ -795,11 +1373,11 @@ export function AetherStudio() {
             {steps.map((step) => {
               const isActive = step.stepNumber === activeStepNum;
               return (
-                <button
-                  key={step.stepNumber}
-                  onClick={() => handleStepClick(step.stepNumber)}
-                  disabled={generating}
-                  className={`w-full text-left p-2 rounded-lg text-xs transition-all flex items-start gap-2 disabled:opacity-50 ${
+                  <button
+                    key={step.stepNumber}
+                    onClick={() => handleStepClick(step.stepNumber)}
+                    disabled={workflowActive || generating}
+                    className={`w-full text-left p-2 rounded-lg text-xs transition-all flex items-start gap-2 disabled:opacity-50 ${
                     isActive
                       ? 'bg-primary/20 border border-primary/40 text-foreground font-medium'
                       : 'hover:bg-accent text-foreground border border-transparent'
@@ -978,6 +1556,12 @@ export function AetherStudio() {
               <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded border border-border">
                 {t('studio.copilotMode')}
               </span>
+              {workflowActive && (
+                <span className="text-[10px] font-mono text-status-signature bg-status-signature/10 px-1.5 py-0.5 rounded border border-status-signature/30 flex items-center gap-1">
+                  <Loader2 className="size-3 animate-spin" />
+                  {workflowStep}
+                </span>
+              )}
             </div>
 
             {/* Agent Selector */}
@@ -995,6 +1579,14 @@ export function AetherStudio() {
 
           {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+            {workflowStatus && (
+              <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground bg-muted/50 border border-border rounded p-2">
+                <Loader2 className="size-3 animate-spin text-status-signature" />
+                <span className="text-foreground font-semibold">{workflowStatus.step}</span>
+                <span className="flex-1 truncate">{workflowStatus.message}</span>
+                {workflowStatus.agent && <span className="text-[9px] shrink-0">@{workflowStatus.agent}</span>}
+              </div>
+            )}
             {chatMessages.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 <Bot className="size-8 mx-auto mb-2 opacity-30" />
@@ -1042,75 +1634,47 @@ export function AetherStudio() {
                     <span className="inline-block w-2 h-4 ml-1 bg-primary/60 animate-pulse-dot align-text-bottom" />
                   )}
 
-                  {/* Section HITL Card */}
-                  {msg.sectionCard && (
-                    <div className="mt-3 p-3 rounded-lg bg-background border border-border space-y-2">
-                      {/* Card Header */}
-                      <div className="flex items-center justify-between font-mono text-[10px]">
-                        <span className="font-bold text-foreground">{msg.sectionCard.title}</span>
-                        <span className={`px-1.5 py-0.5 rounded ${
-                          msg.sectionCard.status === 'HAS_FINDINGS'
-                            ? 'text-status-review bg-status-review/10 border border-status-review/30'
-                            : 'text-status-approved bg-status-approved/10 border border-status-approved/30'
-                        }`}>
-                          {msg.sectionCard.hasFindings
-                            ? t('studio.hitlFindingCounts', {
-                                blocking: msg.sectionCard.findings.filter((f) => f.type === 'BLOCKING').length,
-                                warning: msg.sectionCard.findings.filter((f) => f.type === 'WARNING').length,
-                              })
-                            : t('studio.readyToApprove')}
-                        </span>
-                      </div>
-
-                      {/* Draft Summary */}
-                      <p className="text-[11px] text-muted-foreground">{msg.sectionCard.draftSnippet}</p>
-
-                      {/* Findings List */}
-                      {msg.sectionCard.findings.length > 0 && (
-                        <div className="space-y-1">
-                          {msg.sectionCard.findings.map((f, i) => (
-                            <div key={i} className={`flex items-start gap-2 p-1.5 rounded text-[11px] ${
-                              f.type === 'BLOCKING'
-                                ? 'bg-destructive/10 border border-destructive/30 text-destructive'
-                                : f.type === 'WARNING'
-                                ? 'bg-status-review/10 border border-status-review/30 text-status-review'
-                                : 'bg-muted/30 border border-border text-muted-foreground'
-                            }`}>
-                              <span className="font-mono text-[9px] font-bold shrink-0 mt-0.5">
-                                {f.type === 'BLOCKING' ? '⛔' : f.type === 'WARNING' ? '⚠' : 'ℹ'}
-                              </span>
-                              <span className="flex-1">{f.message}</span>
-                              <span className="font-mono text-[9px] text-muted-foreground shrink-0">{f.rule}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* HITL Action Buttons */}
-                      <div className="grid grid-cols-2 gap-1.5 pt-1">
-                        {canApproveDoc(docType || 'brs') && (
-                          <button
-                            onClick={handleApprove}
-                            disabled={approving}
-                            className="bg-status-approved/20 hover:bg-status-approved/30 text-status-approved border border-status-approved/30 font-semibold p-1.5 rounded text-[11px] flex items-center justify-center gap-1 disabled:opacity-50"
-                          >
-                            <CheckCircle2 className="size-3" />
-                            Approve
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setChatInput('Please revise: ');
-                            chatInputRef.current?.focus();
-                          }}
-                          title="Type your feedback and press Enter to send"
-                          className={`bg-muted hover:bg-accent text-foreground border border-border font-semibold p-1.5 rounded text-[11px] flex items-center justify-center gap-1 ${canApproveDoc(docType || 'brs') ? '' : 'col-span-2'}`}
-                        >
-                          <RefreshCw className="size-3" />
-                          Request Revision
-                        </button>
-                      </div>
-                    </div>
+                  {/* Interactive workflow cards */}
+                  {msg.questionCard && (
+                    <QuestionCard
+                      agent={msg.questionCard.agent}
+                      questions={msg.questionCard.questions}
+                      onSubmit={handleQuestionSubmit}
+                    />
+                  )}
+                  {msg.suggestionCard && (
+                    <SuggestionCard
+                      suggestions={msg.suggestionCard.suggestions}
+                      onAccept={handleSuggestionAccept}
+                      onTalkToWriter={handleTalkToWriter}
+                    />
+                  )}
+                  {msg.findingsCard && (
+                    <FindingsCard
+                      findings={msg.findingsCard.findings}
+                      onSubmit={handleFindingsSubmit}
+                    />
+                  )}
+                  {msg.optionCard && (
+                    <OptionCard
+                      options={msg.optionCard.options}
+                      onSelect={handleOptionSelect}
+                    />
+                  )}
+                  {msg.fixesCard && (
+                    <FixesCard
+                      fixes={msg.fixesCard.fixes}
+                      onApply={handleFixesApply}
+                      onTalkToValidator={handleTalkToValidator}
+                    />
+                  )}
+                  {msg.reviewCard && (
+                    <ReviewCard
+                      sectionTitle={msg.reviewCard.sectionTitle}
+                      summary={msg.reviewCard.summary}
+                      onApprove={handleReviewApprove}
+                      onRevise={handleReviewRevise}
+                    />
                   )}
                 </div>
               </div>

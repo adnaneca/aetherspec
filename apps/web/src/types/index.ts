@@ -101,6 +101,7 @@ export interface DocumentStep {
   documentId?: string;
   stepNumber: number;
   stepName: string;
+  description?: string;
   status: string;
   version: number;
   revisionCount: number;
