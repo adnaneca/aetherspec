@@ -17,7 +17,9 @@ export function useRoles() {
     canApproveDoc: (docType: string) => {
       if (docType === 'brs') return roles.includes('BRS_APPROVER') || roles.includes('ROLE_BA_LEAD') || roles.includes('BRS_EXECUTIVE_APPROVER') || roles.includes('ROLE_REALM_ADMIN');
       if (docType === 'srs') return roles.includes('SRS_APPROVER') || roles.includes('ROLE_SOLUTION_ARCHITECT') || roles.includes('ROLE_DEV_LEAD') || roles.includes('SRS_TECHNICAL_APPROVER') || roles.includes('ROLE_REALM_ADMIN');
+      if (docType === 'srs-fe') return roles.includes('SRS_APPROVER') || roles.includes('ROLE_SOLUTION_ARCHITECT') || roles.includes('ROLE_DEV_LEAD') || roles.includes('SRS_TECHNICAL_APPROVER') || roles.includes('ROLE_REALM_ADMIN');
       if (docType === 'testcase') return roles.includes('TESTCASE_APPROVER') || roles.includes('ROLE_QA_LEAD') || roles.includes('ROLE_REALM_ADMIN');
+      if (docType === 'tc-fe') return roles.includes('TESTCASE_APPROVER') || roles.includes('ROLE_QA_LEAD') || roles.includes('ROLE_REALM_ADMIN');
       return false;
     },
     canMergeBRS: roles.includes('ROLE_BA_LEAD') || roles.includes('ROLE_REALM_ADMIN'),

@@ -27,7 +27,7 @@ func NewHandler(pool *pgxpool.Pool, minioClient *minio.Client, cfg *config.Confi
 
 func (h *Handler) Register(r fiber.Router) {
 	api := r.Group("/document")
-	api.Post("/:docId/merge", middleware.RequireAnyRole("ROLE_BA_LEAD", "ROLE_REALM_ADMIN", "ROLE_QA_LEAD"), h.mergeDocument)
+	api.Post("/:docId/merge", middleware.RequireAnyRole("ROLE_BA_LEAD", "ROLE_REALM_ADMIN", "ROLE_QA_LEAD", "ROLE_SOLUTION_ARCHITECT", "ROLE_DEV_LEAD"), h.mergeDocument)
 }
 
 type stepInfo struct {
@@ -122,6 +122,19 @@ func (h *Handler) mergeDocument(c *fiber.Ctx) error {
 			"srs-be/appendices/B-approval.md",
 			"srs-be/appendices/C-history.md",
 			"srs-be/appendices/D-revisions.md",
+		}
+	case "srs-fe":
+		scriptPath = strings.Replace(scriptPath, "merge_brs.py", "merge_srs_fe.py", 1)
+		if scriptPath == h.cfg.Merge.ScriptPath {
+			scriptPath = "/opt/aetherspec-v2/scripts/merge_srs_fe.py"
+		}
+		outputName = "SRS-FE-001.md"
+		mainPath = "output/SRS-FE-001.md"
+		appendixKeys = []string{
+			"srs-fe/appendices/A-rtm.md",
+			"srs-fe/appendices/B-approval.md",
+			"srs-fe/appendices/C-history.md",
+			"srs-fe/appendices/D-revisions.md",
 		}
 	case "testcase":
 		scriptPath = strings.Replace(scriptPath, "merge_brs.py", "merge_testcases.py", 1)

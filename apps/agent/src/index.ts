@@ -6,14 +6,14 @@ import { buildMastra } from './mastra.js';
 import { fetchAdminConfig, getCachedAdminConfig } from './admin-config.js';
 import { runAgentStream, type ChatMessage, AGENT_INSTRUCTIONS, buildGenerationPrompt, selfValidate, stripValidationArtifacts } from './agent-runner.js';
 import { getAgentsForWorkflow, type BRSAgentId } from './agents.js';
-import { BRSWorkflow, SRDWorkflow, TCWorkflow } from './workflow.js';
+import { BRSWorkflow, SRDWorkflow, SRSFEWorkflow, TCWorkflow } from './workflow.js';
 import { createSSECallbacks } from './sse-emitter.js';
 import { getWorkflow } from './workflow-store.js';
 import { buildNegotiatorChatPrompt, parseNegotiatorChatResponse } from './negotiator-chat.js';
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
-const activeWorkflows = new Map<string, BRSWorkflow | SRDWorkflow | TCWorkflow>();
+const activeWorkflows = new Map<string, BRSWorkflow | SRDWorkflow | SRSFEWorkflow | TCWorkflow>();
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3000';
 
@@ -24,10 +24,12 @@ fetchAdminConfig(GATEWAY_URL)
     adminConfigReady = true;
     const brsAgents = getAgentsForWorkflow('brs-orchestrator');
     const srdAgents = getAgentsForWorkflow('srd-orchestrator');
+    const srsfeAgents = getAgentsForWorkflow('srs-fe-orchestrator');
     const tcAgents = getAgentsForWorkflow('tc-orchestrator');
     logger.info('admin config loaded — workflow agents registered', {
       brsCount: Object.keys(brsAgents).length,
       srdCount: Object.keys(srdAgents).length,
+      srsfeCount: Object.keys(srsfeAgents).length,
       tcCount: Object.keys(tcAgents).length,
     });
   })
@@ -90,8 +92,9 @@ const server = http.createServer(async (req, res) => {
   if (url === '/agents' && method === 'GET') {
     const brsAgents = getAgentsForWorkflow('brs-orchestrator');
     const srdAgents = getAgentsForWorkflow('srd-orchestrator');
+    const srsfeAgents = getAgentsForWorkflow('srs-fe-orchestrator');
     const tcAgents = getAgentsForWorkflow('tc-orchestrator');
-    const allAgents = { ...brsAgents, ...srdAgents, ...tcAgents };
+    const allAgents = { ...brsAgents, ...srdAgents, ...srsfeAgents, ...tcAgents };
     const entries = Object.entries(allAgents).map(([id, agent]) => ({
       id,
       name: agent.name,
@@ -176,7 +179,9 @@ const server = http.createServer(async (req, res) => {
 
     const agents = getAgentsForWorkflow(orchestratorId);
     let expectedIds: string[];
-    if (orchestratorId.startsWith('srd-')) {
+    if (orchestratorId.startsWith('srs-fe-')) {
+      expectedIds = ['srs-fe-orchestrator', 'srs-fe-writer', 'srs-fe-negotiator', 'srs-fe-validator'];
+    } else if (orchestratorId.startsWith('srd-')) {
       expectedIds = ['srd-orchestrator', 'srd-writer', 'srd-negotiator', 'srd-validator'];
     } else if (orchestratorId.startsWith('tc-')) {
       expectedIds = ['tc-orchestrator', 'tc-writer', 'tc-negotiator', 'tc-validator'];
@@ -205,8 +210,19 @@ const server = http.createServer(async (req, res) => {
       project: parsed.project,
     };
 
-    let workflow: BRSWorkflow | SRDWorkflow | TCWorkflow;
-    if (orchestratorId.startsWith('srd-')) {
+    let workflow: BRSWorkflow | SRDWorkflow | SRSFEWorkflow | TCWorkflow;
+    if (orchestratorId.startsWith('srs-fe-')) {
+      workflow = new SRSFEWorkflow(
+        {
+          orchestrator: agents['srs-fe-orchestrator']!,
+          writer: agents['srs-fe-writer']!,
+          negotiator: agents['srs-fe-negotiator']!,
+          validator: agents['srs-fe-validator']!,
+        },
+        context,
+        callbacks,
+      );
+    } else if (orchestratorId.startsWith('srd-')) {
       workflow = new SRDWorkflow(
         {
           orchestrator: agents['srd-orchestrator']!,
@@ -323,6 +339,8 @@ const server = http.createServer(async (req, res) => {
     let workflowAgentId: string;
     if (workflow instanceof TCWorkflow) {
       workflowAgentId = 'tc-negotiator';
+    } else if (workflow instanceof SRSFEWorkflow) {
+      workflowAgentId = 'srs-fe-negotiator';
     } else if (workflow instanceof SRDWorkflow) {
       workflowAgentId = 'srd-negotiator';
     } else {

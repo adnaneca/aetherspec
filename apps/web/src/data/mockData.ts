@@ -62,7 +62,9 @@ export const MOCK_PROJECTS: SDLCProject[] = [
     pipeline: {
       brs: { status: 'IN_PROGRESS', currentStep: 3, totalSteps: 11 },
       srs: { status: 'NOT_STARTED', currentStep: 1, totalSteps: 11 },
+      'srs-fe': { status: 'NOT_STARTED', currentStep: 1, totalSteps: 11 },
       testcase: { status: 'NOT_STARTED', currentStep: 1, totalSteps: 3 },
+      'tc-fe': { status: 'NOT_STARTED', currentStep: 1, totalSteps: 3 },
     },
   },
   {
@@ -75,7 +77,9 @@ export const MOCK_PROJECTS: SDLCProject[] = [
     pipeline: {
       brs: { status: 'SIGNED_OFF', currentStep: 11, totalSteps: 11 },
       srs: { status: 'IN_PROGRESS', currentStep: 4, totalSteps: 11 },
+      'srs-fe': { status: 'NOT_STARTED', currentStep: 1, totalSteps: 11 },
       testcase: { status: 'NOT_STARTED', currentStep: 1, totalSteps: 3 },
+      'tc-fe': { status: 'NOT_STARTED', currentStep: 1, totalSteps: 3 },
     },
   },
 ];

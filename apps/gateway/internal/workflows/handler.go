@@ -363,6 +363,49 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 		}
 	}
 
+	// Inject approved upstream BRS and SRS-BE sections when starting an SRS-FE workflow.
+	// SRS-FE has DUAL upstream: BRS (for BR-xxx traceability) + SRS-BE (for API contracts in Section 5).
+	if req.DocType == "srs-fe" {
+		brsIDs, srsIDs, err := h.resolveUpstreamBRSAndSRSBEForSRSFE(c.Context(), req.StepID)
+		if err != nil {
+			h.log.Warn("Failed to resolve upstream BRS/SRS-BE IDs for SRS-FE", zap.Error(err), zap.String("project", req.ProjectID))
+		}
+		var upstreamSections []string
+		if len(brsIDs) > 0 {
+			brsSections, err := h.fetchUpstreamBRS(c.Context(), req.ProjectID, brsIDs)
+			if err != nil {
+				h.log.Warn("Failed to load upstream BRS sections for SRS-FE", zap.Error(err), zap.String("project", req.ProjectID))
+			} else {
+				for i, section := range brsSections {
+					brsSections[i] = "--- Upstream BRS Section ---\n" + section
+				}
+				upstreamSections = append(upstreamSections, brsSections...)
+			}
+		}
+		if len(srsIDs) > 0 {
+			srsSections, err := h.fetchUpstreamSections(c.Context(), req.ProjectID, "srs", srsIDs)
+			if err != nil {
+				h.log.Warn("Failed to load upstream SRS-BE sections for SRS-FE", zap.Error(err), zap.String("project", req.ProjectID))
+			} else {
+				for i, section := range srsSections {
+					srsSections[i] = "--- Upstream SRS-BE Section (API Contracts) ---\n" + section
+				}
+				upstreamSections = append(upstreamSections, srsSections...)
+			}
+		}
+		if len(upstreamSections) > 0 {
+			forwardBody, err = injectUpstreamSections(forwardBody, upstreamSections)
+			if err != nil {
+				h.log.Error("Failed to inject upstream sections into SRS-FE workflow", zap.Error(err))
+				return tmf.SendError(c, 500, "Failed to prepare agent request")
+			}
+			h.log.Info("Injected upstream BRS+SRS-BE sections into SRS-FE workflow",
+				zap.String("project", req.ProjectID),
+				zap.Int("brsCount", len(brsIDs)),
+				zap.Int("srsCount", len(srsIDs)))
+		}
+	}
+
 	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/start", h.cfg.Agent.GRPCURL, req.AgentID)
 	return h.proxyAgentSSE(c, agentURL, forwardBody, workflowID)
 }
@@ -674,8 +717,14 @@ func injectProjectMetadata(body []byte, project map[string]interface{}) ([]byte,
 
 // docTypeFromAgentID infers the document type from the agent identifier.
 func docTypeFromAgentID(agentID string) string {
+	if strings.HasPrefix(agentID, "srs-fe-") {
+		return "srs-fe"
+	}
 	if strings.HasPrefix(agentID, "srd-") {
 		return "srs"
+	}
+	if strings.HasPrefix(agentID, "tc-fe-") {
+		return "tc-fe"
 	}
 	if strings.HasPrefix(agentID, "tc-") {
 		return "testcase"
@@ -698,6 +747,44 @@ func (h *Handler) resolveUpstreamBRSIDs(ctx context.Context, srdStepNum int) ([]
 func (h *Handler) resolveUpstreamBRSAndSRSIDs(ctx context.Context, tcStepNum int) ([]int, []int, error) {
 	srsIDs, brsIDs, _, err := h.resolveUpstreamForPrefix(ctx, "testcase/", tcStepNum)
 	return brsIDs, srsIDs, err
+}
+
+// resolveUpstreamBRSAndSRSBEForSRSFE reads the SRS-FE sections.yaml and returns
+// the upstream BRS and SRS-BE section IDs for the given SRS-FE step.
+// SRS-FE uses a nested upstream format: upstream: {brs: [5], srs_be: [5]}
+func (h *Handler) resolveUpstreamBRSAndSRSBEForSRSFE(ctx context.Context, srsfeStepNum int) (brsIDs []int, srsIDs []int, err error) {
+	bucket := h.cfg.MinIO.TemplateBucket
+	obj, err := h.minioClient.GetObject(ctx, bucket, "srs-fe/sections.yaml", minio.GetObjectOptions{})
+	if err != nil {
+		return nil, nil, err
+	}
+	defer obj.Close()
+
+	content, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var data struct {
+		Sections []struct {
+			ID       int `yaml:"id"`
+			Upstream struct {
+				BRS   []int `yaml:"brs"`
+				SRSBE []int `yaml:"srs_be"`
+			} `yaml:"upstream"`
+		} `yaml:"sections"`
+	}
+	if err := yaml.Unmarshal(content, &data); err != nil {
+		return nil, nil, err
+	}
+
+	for _, s := range data.Sections {
+		if s.ID == srsfeStepNum {
+			return s.Upstream.BRS, s.Upstream.SRSBE, nil
+		}
+	}
+
+	return nil, nil, fmt.Errorf("section %d not found in srs-fe/sections.yaml", srsfeStepNum)
 }
 
 // resolveUpstreamForPrefix reads sections.yaml under the given prefix and returns

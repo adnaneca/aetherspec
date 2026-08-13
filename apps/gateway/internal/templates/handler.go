@@ -32,6 +32,8 @@ func docTypePrefix(docType string) string {
 	switch docType {
 	case "srs":
 		return "srs-be/"
+	case "srs-fe":
+		return "srs-fe/"
 	case "testcase":
 		return "testcase/"
 	case "brs":
@@ -196,6 +198,8 @@ func (h *Handler) getTemplate(c *fiber.Ctx) error {
 	switch prefix {
 	case "srs-be/":
 		templateName = "srs-be.md"
+	case "srs-fe/":
+		templateName = "srs-fe.md"
 	case "testcase/":
 		templateName = "testcase.md"
 	}

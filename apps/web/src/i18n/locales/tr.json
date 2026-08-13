@@ -187,8 +187,12 @@
     "brsAgentDesc": "İş Gereksinim Spesifikasyonları üretir",
     "srdAgent": "srd-agent",
     "srdAgentDesc": "SRS/SDD & Uygulama Backlog'u üretir",
+    "srsFeAgent": "srs-fe-agent",
+    "srsFeAgentDesc": "Frontend SRS üretir",
     "testcaseAgent": "testcase-agent",
     "testcaseAgentDesc": "Test Cases & İzlenebilirlik üretir",
+    "tcFeAgent": "tc-fe-agent",
+    "tcFeAgentDesc": "Frontend Test Cases & İzlenebilirlik üretir",
     "apiKeys": "LLM Sağlayıcı API Anahtar Yönetimi",
     "ollamaEndpoint": "Ollama Cloud Uç Noktası",
     "ollamaApiKey": "Ollama Cloud API Anahtarı",
@@ -230,7 +234,9 @@
     "general": "general (varsayılan)",
     "brsAgent": "brs-agent (BRD üretimi)",
     "srdAgent": "srd-agent (SRD üretimi)",
-    "testcaseAgent": "testcase-agent (Test Cases)"
+    "srsFeAgent": "srs-fe-agent (SRS-FE üretimi)",
+    "testcaseAgent": "testcase-agent (Test Cases)",
+    "tcFeAgent": "tc-fe-agent (TC-FE üretimi)"
   },
   "status": {
     "NOT_STARTED": "Başlamadı",

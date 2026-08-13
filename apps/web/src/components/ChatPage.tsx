@@ -142,7 +142,9 @@ export function ChatPage() {
             <option value="general">{t('chat.general')}</option>
             <option value="brs-agent">{t('chat.brsAgent')}</option>
             <option value="srd-agent">{t('chat.srdAgent')}</option>
+            <option value="srs-fe-agent">{t('chat.srsFeAgent')}</option>
             <option value="testcase-agent">{t('chat.testcaseAgent')}</option>
+            <option value="tc-fe-agent">{t('chat.tcFeAgent')}</option>
           </select>
 
           <button

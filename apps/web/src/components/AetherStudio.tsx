@@ -118,12 +118,16 @@ interface ChatMessage {
 const chatAgentForDocType = (dt: string) => {
   if (dt === 'brs') return 'brs-agent';
   if (dt === 'srs') return 'srd-agent';
+  if (dt === 'srs-fe') return 'srs-fe-agent';
+  if (dt === 'tc-fe') return 'tc-fe-agent';
   return 'testcase-agent';
 };
 
 const workflowOrchestratorForDocType = (dt: string) => {
   if (dt === 'brs') return 'brs-orchestrator';
   if (dt === 'srs') return 'srd-orchestrator';
+  if (dt === 'srs-fe') return 'srs-fe-orchestrator';
+  if (dt === 'tc-fe') return 'tc-fe-orchestrator';
   if (dt === 'testcase') return 'tc-orchestrator';
   return 'brs-orchestrator';
 };
@@ -133,6 +137,8 @@ const workflowOrchestratorForDocType = (dt: string) => {
 const fileNameForDocType = (dt: string) => {
   if (dt === 'brs') return 'BRS-001.md';
   if (dt === 'srs') return 'SRD-SDD-001.md';
+  if (dt === 'srs-fe') return 'SRS-FE-001.md';
+  if (dt === 'tc-fe') return 'TC-FE-001.md';
   return 'TC-001.md';
 };
 
@@ -161,9 +167,11 @@ export function AetherStudio() {
   const docAccess: Record<string, boolean> = {
     brs: canAccessBRS,
     srs: canAccessSRS,
+    'srs-fe': canAccessSRS,
     testcase: canAccessTC,
+    'tc-fe': canAccessTC,
   };
-  const accessibleDocTypes = ['brs', 'srs', 'testcase'].filter((dt) => docAccess[dt]);
+  const accessibleDocTypes = ['brs', 'srs', 'srs-fe', 'testcase', 'tc-fe'].filter((dt) => docAccess[dt]);
   const firstAccessibleDocType = accessibleDocTypes[0] || 'brs';
 
   // Data state
@@ -1394,6 +1402,8 @@ export function AetherStudio() {
                 >
                   {doc.docType === 'brs' ? `BRS (${doc.totalSteps})` :
                    doc.docType === 'srs' ? `SRS/SDD (${doc.totalSteps})` :
+                   doc.docType === 'srs-fe' ? `SRS-FE (${doc.totalSteps})` :
+                   doc.docType === 'tc-fe' ? `TC-FE (${doc.totalSteps})` :
                    `Test Cases (${doc.totalSteps})`}
                 </button>
               ))}
@@ -1512,7 +1522,7 @@ export function AetherStudio() {
                     doc.docType === docType ? 'bg-primary/20 text-foreground font-semibold' : 'text-foreground hover:bg-accent'
                   }`}
                 >
-                  <FileText className={`size-3.5 ${doc.docType === 'brs' ? 'text-status-review' : doc.docType === 'srs' ? 'text-status-signature' : 'text-status-draft'}`} />
+                  <FileText className={`size-3.5 ${doc.docType === 'brs' ? 'text-status-review' : doc.docType === 'srs' || doc.docType === 'srs-fe' ? 'text-status-signature' : 'text-status-draft'}`} />
                   <span>{fileNameForDocType(doc.docType)}</span>
                 </div>
               ))}
@@ -1760,7 +1770,9 @@ export function AetherStudio() {
             >
               {canAccessBRS && <option value="brs-agent">brs-agent (BRS)</option>}
               {canAccessSRS && <option value="srd-agent">srd-agent (SRS/SDD)</option>}
+              {canAccessSRS && <option value="srs-fe-agent">srs-fe-agent (SRS-FE)</option>}
               {canAccessTC && <option value="testcase-agent">testcase-agent (Test Cases)</option>}
+              {canAccessTC && <option value="tc-fe-agent">tc-fe-agent (TC-FE)</option>}
             </select>
           </div>
 

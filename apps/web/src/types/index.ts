@@ -19,7 +19,7 @@ export interface Persona {
   department: string;
 }
 
-export type DocType = 'brs' | 'srs' | 'testcase';
+export type DocType = 'brs' | 'srs' | 'srs-fe' | 'testcase' | 'tc-fe';
 export type DocStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'AWAITING_SIGNATURE' | 'SIGNED_OFF';
 
 export interface AdminProvider {
@@ -70,7 +70,9 @@ export interface SDLCProject {
   pipeline: {
     brs: PipelinePhase;
     srs: PipelinePhase;
+    'srs-fe': PipelinePhase;
     testcase: PipelinePhase;
+    'tc-fe': PipelinePhase;
   };
   href?: string;
   revision?: number;

@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { getCachedAdminConfig, type AdminSettings, type AgentConfig } from './admin-config.js';
 import { logger } from './logger.js';
-import { BRS_AGENT_INSTRUCTIONS, SRD_AGENT_INSTRUCTIONS, TC_AGENT_INSTRUCTIONS } from './instructions.js';
+import { BRS_AGENT_INSTRUCTIONS, SRD_AGENT_INSTRUCTIONS, SRS_FE_AGENT_INSTRUCTIONS, TC_AGENT_INSTRUCTIONS } from './instructions.js';
 
 /** Agent IDs that participate in the interactive BRS workflow. */
 export const BRS_AGENT_IDS = [
@@ -30,6 +30,15 @@ export const TC_AGENT_IDS = [
 ] as const;
 export type TCAgentId = (typeof TC_AGENT_IDS)[number];
 
+/** Agent IDs that participate in the interactive SRS-FE workflow. */
+export const SRS_FE_AGENT_IDS = [
+  'srs-fe-orchestrator',
+  'srs-fe-writer',
+  'srs-fe-negotiator',
+  'srs-fe-validator',
+] as const;
+export type SRSFEAgentId = (typeof SRS_FE_AGENT_IDS)[number];
+
 const DEFAULT_FALLBACK_MODEL = 'ollama/glm-5.2';
 
 function stripProviderPrefix(model: string): string {
@@ -56,7 +65,7 @@ function resolveProvider(config: AdminSettings) {
   };
 }
 
-function resolveAgentConfig(agentId: BRSAgentId | SRDAgentId | TCAgentId, config: AdminSettings): AgentConfig {
+function resolveAgentConfig(agentId: BRSAgentId | SRDAgentId | TCAgentId | SRSFEAgentId, config: AdminSettings): AgentConfig {
   const agentOverride = config.agents?.[agentId];
   const provider = resolveProvider(config);
   const defaultModel = config.agentModels?.[agentId] || DEFAULT_FALLBACK_MODEL;
@@ -86,7 +95,7 @@ function clearAgentCacheForId(agentId: string) {
   }
 }
 
-type AnyWorkflowAgentId = BRSAgentId | SRDAgentId | TCAgentId;
+type AnyWorkflowAgentId = BRSAgentId | SRDAgentId | TCAgentId | SRSFEAgentId;
 
 function createAgent(agentId: AnyWorkflowAgentId, config: AdminSettings): Agent | null {
   const { baseURL, apiKey, model } = resolveAgentConfig(agentId, config);
@@ -110,7 +119,8 @@ function createAgent(agentId: AnyWorkflowAgentId, config: AdminSettings): Agent 
   const instructions =
     BRS_AGENT_INSTRUCTIONS[agentId as BRSAgentId] ??
     SRD_AGENT_INSTRUCTIONS[agentId as SRDAgentId] ??
-    TC_AGENT_INSTRUCTIONS[agentId as TCAgentId];
+    TC_AGENT_INSTRUCTIONS[agentId as TCAgentId] ??
+    SRS_FE_AGENT_INSTRUCTIONS[agentId as SRSFEAgentId];
   if (!instructions) {
     logger.error('no instructions for workflow agent', { agentId });
     return null;
@@ -187,6 +197,18 @@ export function getOrCreateTCAgent(agentId: TCAgentId): Agent | null {
 }
 
 /**
+ * Creates or returns a cached Mastra Agent for the interactive SRS-FE workflow.
+ */
+export function getOrCreateSRSFEAgent(agentId: SRSFEAgentId): Agent | null {
+  const config = getCachedAdminConfig();
+  if (!config) {
+    logger.error('admin config not loaded; cannot create SRS-FE agent', { agentId });
+    return null;
+  }
+  return createAgent(agentId, config);
+}
+
+/**
  * Returns all configured SRD agents, skipping any that cannot be created.
  */
 export function getSRDAgents(): Record<string, Agent> {
@@ -215,9 +237,26 @@ export function getTCAgents(): Record<string, Agent> {
 }
 
 /**
+ * Returns all configured SRS-FE agents, skipping any that cannot be created.
+ */
+export function getSRSFEAgents(): Record<string, Agent> {
+  const agents: Record<string, Agent> = {};
+  for (const id of SRS_FE_AGENT_IDS) {
+    const agent = getOrCreateSRSFEAgent(id);
+    if (agent) {
+      agents[id] = agent;
+    }
+  }
+  return agents;
+}
+
+/**
  * Returns the agent set for a workflow based on the orchestrator agent ID.
  */
 export function getAgentsForWorkflow(orchestratorId: string): Record<string, Agent> {
+  if (orchestratorId.startsWith('srs-fe-')) {
+    return getSRSFEAgents();
+  }
   if (orchestratorId.startsWith('srd-')) {
     return getSRDAgents();
   }
@@ -231,6 +270,9 @@ export function getAgentsForWorkflow(orchestratorId: string): Record<string, Age
  * Returns the orchestrator agent ID for a document type.
  */
 export function getOrchestratorForDocType(docType: string): string {
+  if (docType === 'srs-fe') {
+    return 'srs-fe-orchestrator';
+  }
   if (docType === 'srs' || docType === 'srs-be') {
     return 'srd-orchestrator';
   }
