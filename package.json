@@ -1,6 +1,6 @@
 {
   "name": "aetherspec",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "AetherSpec — Enterprise AI SDLC Workbench (monorepo)",
   "license": "UNLICENSED",

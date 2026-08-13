@@ -102,7 +102,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
       name: 'aetherspec-agent',
-      version: '0.3.0',
+      version: '0.3.1',
       status: 'foundation',
       adminConfigReady,
     }));
