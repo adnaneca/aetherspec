@@ -14,9 +14,9 @@ AetherSpec is a structured requirements authoring platform. It turns high-level 
 
 ## Version
 
-Current release: **v0.3.0**
+Current release: **v0.4.0**
 
-See the [v0.3.0 release notes](https://github.com/adnaneca/aetherspec/releases/tag/v0.3.0).
+See the [v0.4.0 release notes](https://github.com/adnaneca/aetherspec/releases/tag/v0.4.0).
 
 ## Monorepo structure
 
@@ -54,7 +54,7 @@ go run ./cmd
 See [`infra/deploy/README.md`](./infra/deploy/README.md).
 
 ```bash
-./infra/deploy/deploy.sh v0.3.0
+./infra/deploy/deploy.sh v0.4.0
 ```
 
 ## Links

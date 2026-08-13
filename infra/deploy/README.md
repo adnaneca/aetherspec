@@ -4,11 +4,11 @@ This directory contains deployment scripts and configuration for production depl
 
 ## Current version
 
-The latest deployed version is **v0.3.0**. Always deploy from a version tag rather than a branch head unless you are testing a feature branch.
+The latest deployed version is **v0.4.0**. Always deploy from a version tag rather than a branch head unless you are testing a feature branch.
 
 ```bash
 # Deploy latest stable release
-./deploy.sh v0.3.0
+./deploy.sh v0.4.0
 ```
 
 ## Quick Start
@@ -40,7 +40,7 @@ Required credentials:
 
 ```bash
 # Deploy latest stable release
-./deploy.sh v0.3.0
+./deploy.sh v0.4.0
 
 # Deploy specific version tag
 ./deploy.sh v0.0.1
@@ -73,7 +73,7 @@ ssh root@157.180.57.246 "systemctl status aetherspec-gateway aetherspec-agent"
 Expected gateway root response:
 
 ```json
-{"name":"aetherspec-gateway","status":"foundation","version":"0.3.0"}
+{"name":"aetherspec-gateway","status":"foundation","version":"0.4.0"}
 ```
 
 ## MinIO configuration for new document types
@@ -100,7 +100,7 @@ ssh root@157.180.57.246
 # On server
 cd /opt/aetherspec-v2
 git fetch --tags
-git checkout v0.3.0
+git checkout v0.4.0
 pnpm install --frozen-lockfile
 
 # Build
