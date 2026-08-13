@@ -90,7 +90,8 @@ const server = http.createServer(async (req, res) => {
   if (url === '/agents' && method === 'GET') {
     const brsAgents = getAgentsForWorkflow('brs-orchestrator');
     const srdAgents = getAgentsForWorkflow('srd-orchestrator');
-    const allAgents = { ...brsAgents, ...srdAgents };
+    const tcAgents = getAgentsForWorkflow('tc-orchestrator');
+    const allAgents = { ...brsAgents, ...srdAgents, ...tcAgents };
     const entries = Object.entries(allAgents).map(([id, agent]) => ({
       id,
       name: agent.name,
