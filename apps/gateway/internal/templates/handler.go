@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/gofiber/fiber/v2"
@@ -29,8 +30,10 @@ func NewHandler(minioClient *minio.Client, cfg *config.Config, log *zap.Logger) 
 // the legacy BRS configuration.
 func docTypePrefix(docType string) string {
 	switch docType {
-	case "srs", "srs-be":
+	case "srs":
 		return "srs-be/"
+	case "testcase":
+		return "testcase/"
 	case "brs":
 		return ""
 	default:
@@ -104,6 +107,10 @@ func (h *Handler) sectionGuideKey(ctx context.Context, bucket, prefix, sectionID
 	for _, s := range sections.Sections {
 		if fmt.Sprintf("%02d", s.ID) == sectionID || fmt.Sprintf("%d", s.ID) == sectionID {
 			if s.Guide != "" {
+				// Relative guide paths are resolved against the docType prefix.
+				if !strings.HasPrefix(s.Guide, prefix) {
+					return prefix + s.Guide, nil
+				}
 				return s.Guide, nil
 			}
 			break
@@ -186,8 +193,11 @@ func (h *Handler) getTemplate(c *fiber.Ctx) error {
 	prefix := docTypePrefix(c.Params("docType"))
 
 	templateName := "brs.md"
-	if prefix == "srs-be/" {
+	switch prefix {
+	case "srs-be/":
 		templateName = "srs-be.md"
+	case "testcase/":
+		templateName = "testcase.md"
 	}
 
 	obj, err := h.minioClient.GetObject(ctx, bucket, prefix+templateName, minio.GetObjectOptions{})
