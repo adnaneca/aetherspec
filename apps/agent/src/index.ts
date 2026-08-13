@@ -6,14 +6,14 @@ import { buildMastra } from './mastra.js';
 import { fetchAdminConfig, getCachedAdminConfig } from './admin-config.js';
 import { runAgentStream, type ChatMessage, AGENT_INSTRUCTIONS, buildGenerationPrompt, selfValidate, stripValidationArtifacts } from './agent-runner.js';
 import { getAgentsForWorkflow, type BRSAgentId } from './agents.js';
-import { BRSWorkflow, SRDWorkflow } from './workflow.js';
+import { BRSWorkflow, SRDWorkflow, TCWorkflow } from './workflow.js';
 import { createSSECallbacks } from './sse-emitter.js';
 import { getWorkflow } from './workflow-store.js';
 import { buildNegotiatorChatPrompt, parseNegotiatorChatResponse } from './negotiator-chat.js';
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
-const activeWorkflows = new Map<string, BRSWorkflow | SRDWorkflow>();
+const activeWorkflows = new Map<string, BRSWorkflow | SRDWorkflow | TCWorkflow>();
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3000';
 
@@ -172,9 +172,14 @@ const server = http.createServer(async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: 'workflow', workflowId, status: 'started' })}\n\n`);
 
     const agents = getAgentsForWorkflow(orchestratorId);
-    const expectedIds = orchestratorId.startsWith('srd-')
-      ? ['srd-orchestrator', 'srd-writer', 'srd-negotiator', 'srd-validator']
-      : ['brs-orchestrator', 'brs-writer', 'brs-negotiator', 'brs-validator'];
+    let expectedIds: string[];
+    if (orchestratorId.startsWith('srd-')) {
+      expectedIds = ['srd-orchestrator', 'srd-writer', 'srd-negotiator', 'srd-validator'];
+    } else if (orchestratorId.startsWith('tc-')) {
+      expectedIds = ['tc-orchestrator', 'tc-writer', 'tc-negotiator', 'tc-validator'];
+    } else {
+      expectedIds = ['brs-orchestrator', 'brs-writer', 'brs-negotiator', 'brs-validator'];
+    }
     const missing = expectedIds.filter((id) => !agents[id]);
     if (missing.length > 0) {
       res.write(`data: ${JSON.stringify({ type: 'error', error: `Workflow agents not available: ${missing.join(', ')}. Check admin config.` })}\n\n`);
@@ -197,7 +202,7 @@ const server = http.createServer(async (req, res) => {
       project: parsed.project,
     };
 
-    let workflow: BRSWorkflow | SRDWorkflow;
+    let workflow: BRSWorkflow | SRDWorkflow | TCWorkflow;
     if (orchestratorId.startsWith('srd-')) {
       workflow = new SRDWorkflow(
         {
@@ -205,6 +210,17 @@ const server = http.createServer(async (req, res) => {
           writer: agents['srd-writer']!,
           negotiator: agents['srd-negotiator']!,
           validator: agents['srd-validator']!,
+        },
+        context,
+        callbacks,
+      );
+    } else if (orchestratorId.startsWith('tc-')) {
+      workflow = new TCWorkflow(
+        {
+          orchestrator: agents['tc-orchestrator']!,
+          writer: agents['tc-writer']!,
+          negotiator: agents['tc-negotiator']!,
+          validator: agents['tc-validator']!,
         },
         context,
         callbacks,
@@ -301,7 +317,14 @@ const server = http.createServer(async (req, res) => {
     const inputDocuments = context?.inputDocuments ?? [];
     const project = context?.project ?? {};
 
-    const workflowAgentId = workflow instanceof SRDWorkflow ? 'srd-negotiator' : 'brs-negotiator';
+    let workflowAgentId: string;
+    if (workflow instanceof TCWorkflow) {
+      workflowAgentId = 'tc-negotiator';
+    } else if (workflow instanceof SRDWorkflow) {
+      workflowAgentId = 'srd-negotiator';
+    } else {
+      workflowAgentId = 'brs-negotiator';
+    }
     const agents = getAgentsForWorkflow(workflowAgentId);
     const negotiator = agents[workflowAgentId];
     if (!negotiator) {

@@ -330,6 +330,39 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 		}
 	}
 
+	// Inject approved upstream BRS and SRS-BE sections when starting a TC workflow.
+	if req.DocType == "testcase" {
+		brsIDs, srsIDs, err := h.resolveUpstreamBRSAndSRSIDs(c.Context(), req.StepID)
+		if err != nil {
+			h.log.Warn("Failed to resolve upstream BRS/SRS IDs for TC", zap.Error(err), zap.String("project", req.ProjectID))
+		}
+		var upstreamSections []string
+		if len(brsIDs) > 0 {
+			brsSections, err := h.fetchUpstreamBRS(c.Context(), req.ProjectID, brsIDs)
+			if err != nil {
+				h.log.Warn("Failed to load upstream BRS sections for TC", zap.Error(err), zap.String("project", req.ProjectID))
+			} else {
+				upstreamSections = append(upstreamSections, brsSections...)
+			}
+		}
+		if len(srsIDs) > 0 {
+			srsSections, err := h.fetchUpstreamSections(c.Context(), req.ProjectID, "srs", srsIDs)
+			if err != nil {
+				h.log.Warn("Failed to load upstream SRS sections for TC", zap.Error(err), zap.String("project", req.ProjectID))
+			} else {
+				upstreamSections = append(upstreamSections, srsSections...)
+			}
+		}
+		if len(upstreamSections) > 0 {
+			forwardBody, err = injectUpstreamSections(forwardBody, upstreamSections)
+			if err != nil {
+				h.log.Error("Failed to inject upstream sections into TC workflow", zap.Error(err))
+				return tmf.SendError(c, 500, "Failed to prepare agent request")
+			}
+			h.log.Info("Injected upstream BRS/SRS sections into TC workflow", zap.String("project", req.ProjectID), zap.Int("count", len(upstreamSections)))
+		}
+	}
+
 	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/start", h.cfg.Agent.GRPCURL, req.AgentID)
 	return h.proxyAgentSSE(c, agentURL, forwardBody, workflowID)
 }
@@ -644,6 +677,9 @@ func docTypeFromAgentID(agentID string) string {
 	if strings.HasPrefix(agentID, "srd-") {
 		return "srs"
 	}
+	if strings.HasPrefix(agentID, "tc-") {
+		return "testcase"
+	}
 	if strings.HasPrefix(agentID, "brs-") {
 		return "brs"
 	}
@@ -653,45 +689,67 @@ func docTypeFromAgentID(agentID string) string {
 // resolveUpstreamBRSIDs reads the SRD sections.yaml and returns the upstream
 // BRS section IDs mapped for the given SRD step.
 func (h *Handler) resolveUpstreamBRSIDs(ctx context.Context, srdStepNum int) ([]int, error) {
+	_, brsIDs, _, err := h.resolveUpstreamForPrefix(ctx, "srs-be/", srdStepNum)
+	return brsIDs, err
+}
+
+// resolveUpstreamBRSAndSRSIDs reads the TC sections.yaml and returns the upstream
+// BRS and SRS-BE section IDs mapped for the given TC step.
+func (h *Handler) resolveUpstreamBRSAndSRSIDs(ctx context.Context, tcStepNum int) ([]int, []int, error) {
+	srsIDs, brsIDs, _, err := h.resolveUpstreamForPrefix(ctx, "testcase/", tcStepNum)
+	return brsIDs, srsIDs, err
+}
+
+// resolveUpstreamForPrefix reads sections.yaml under the given prefix and returns
+// the upstream_srs, upstream_brs, and upstream IDs for the requested step.
+func (h *Handler) resolveUpstreamForPrefix(ctx context.Context, prefix string, stepNum int) (srsIDs []int, brsIDs []int, upstreamIDs []int, err error) {
 	bucket := h.cfg.MinIO.TemplateBucket
-	obj, err := h.minioClient.GetObject(ctx, bucket, "srs-be/sections.yaml", minio.GetObjectOptions{})
+	obj, err := h.minioClient.GetObject(ctx, bucket, prefix+"sections.yaml", minio.GetObjectOptions{})
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	defer obj.Close()
 
 	content, err := io.ReadAll(obj)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	var data struct {
 		Sections []struct {
-			ID       int   `yaml:"id"`
-			Upstream []int `yaml:"upstream"`
+			ID          int   `yaml:"id"`
+			Upstream    []int `yaml:"upstream"`
+			UpstreamBRS []int `yaml:"upstream_brs"`
+			UpstreamSRS []int `yaml:"upstream_srs"`
 		} `yaml:"sections"`
 	}
 	if err := yaml.Unmarshal(content, &data); err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	for _, s := range data.Sections {
-		if s.ID == srdStepNum {
-			return s.Upstream, nil
+		if s.ID == stepNum {
+			return s.UpstreamSRS, s.UpstreamBRS, s.Upstream, nil
 		}
 	}
 
-	return nil, fmt.Errorf("SRD section %d not found in sections.yaml", srdStepNum)
+	return nil, nil, nil, fmt.Errorf("section %d not found in %ssections.yaml", stepNum, prefix)
 }
 
 // fetchUpstreamBRS returns approved BRS section contents from the same project
 // for the requested upstream section IDs.
 func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, upstreamIDs []int) ([]string, error) {
-	var brsDocID string
+	return h.fetchUpstreamSections(ctx, projectID, "brs", upstreamIDs)
+}
+
+// fetchUpstreamSections returns approved section contents for the given upstream
+// document type and section IDs in the same project.
+func (h *Handler) fetchUpstreamSections(ctx context.Context, projectID, upstreamDocType string, upstreamIDs []int) ([]string, error) {
+	var upstreamDocID string
 	err := h.pool.QueryRow(ctx,
-		`SELECT id FROM documents WHERE project_id = $1 AND doc_type = 'brs' LIMIT 1`,
-		projectID,
-	).Scan(&brsDocID)
+		`SELECT id FROM documents WHERE project_id = $1 AND doc_type = $2 LIMIT 1`,
+		projectID, upstreamDocType,
+	).Scan(&upstreamDocID)
 	if err != nil {
 		return nil, err
 	}
@@ -705,7 +763,7 @@ func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, upstre
 		`SELECT minio_path, step_number FROM document_steps
 		 WHERE document_id = $1 AND status = 'SIGNED_OFF'
 		 ORDER BY step_number`,
-		brsDocID)
+		upstreamDocID)
 	if err != nil {
 		return nil, err
 	}
@@ -729,7 +787,7 @@ func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, upstre
 
 		content, err := h.loadMinioObject(ctx, bucket, key)
 		if err != nil {
-			h.log.Warn("failed to fetch upstream BRS section", zap.String("path", minioPath), zap.Error(err))
+			h.log.Warn("failed to fetch upstream section", zap.String("docType", upstreamDocType), zap.String("path", minioPath), zap.Error(err))
 			continue
 		}
 		contents = append(contents, content)

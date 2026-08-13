@@ -124,6 +124,7 @@ const chatAgentForDocType = (dt: string) => {
 const workflowOrchestratorForDocType = (dt: string) => {
   if (dt === 'brs') return 'brs-orchestrator';
   if (dt === 'srs') return 'srd-orchestrator';
+  if (dt === 'testcase') return 'tc-orchestrator';
   return 'brs-orchestrator';
 };
 

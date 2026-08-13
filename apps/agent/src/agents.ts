@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { getCachedAdminConfig, type AdminSettings, type AgentConfig } from './admin-config.js';
 import { logger } from './logger.js';
-import { BRS_AGENT_INSTRUCTIONS, SRD_AGENT_INSTRUCTIONS } from './instructions.js';
+import { BRS_AGENT_INSTRUCTIONS, SRD_AGENT_INSTRUCTIONS, TC_AGENT_INSTRUCTIONS } from './instructions.js';
 
 /** Agent IDs that participate in the interactive BRS workflow. */
 export const BRS_AGENT_IDS = [
@@ -20,6 +20,15 @@ export const SRD_AGENT_IDS = [
   'srd-validator',
 ] as const;
 export type SRDAgentId = (typeof SRD_AGENT_IDS)[number];
+
+/** Agent IDs that participate in the interactive TC workflow. */
+export const TC_AGENT_IDS = [
+  'tc-orchestrator',
+  'tc-writer',
+  'tc-negotiator',
+  'tc-validator',
+] as const;
+export type TCAgentId = (typeof TC_AGENT_IDS)[number];
 
 const DEFAULT_FALLBACK_MODEL = 'ollama/glm-5.2';
 
@@ -47,7 +56,7 @@ function resolveProvider(config: AdminSettings) {
   };
 }
 
-function resolveAgentConfig(agentId: BRSAgentId | SRDAgentId, config: AdminSettings): AgentConfig {
+function resolveAgentConfig(agentId: BRSAgentId | SRDAgentId | TCAgentId, config: AdminSettings): AgentConfig {
   const agentOverride = config.agents?.[agentId];
   const provider = resolveProvider(config);
   const defaultModel = config.agentModels?.[agentId] || DEFAULT_FALLBACK_MODEL;
@@ -77,7 +86,7 @@ function clearAgentCacheForId(agentId: string) {
   }
 }
 
-type AnyWorkflowAgentId = BRSAgentId | SRDAgentId;
+type AnyWorkflowAgentId = BRSAgentId | SRDAgentId | TCAgentId;
 
 function createAgent(agentId: AnyWorkflowAgentId, config: AdminSettings): Agent | null {
   const { baseURL, apiKey, model } = resolveAgentConfig(agentId, config);
@@ -98,7 +107,10 @@ function createAgent(agentId: AnyWorkflowAgentId, config: AdminSettings): Agent 
 
   clearAgentCacheForId(agentId);
 
-  const instructions = BRS_AGENT_INSTRUCTIONS[agentId as BRSAgentId] ?? SRD_AGENT_INSTRUCTIONS[agentId as SRDAgentId];
+  const instructions =
+    BRS_AGENT_INSTRUCTIONS[agentId as BRSAgentId] ??
+    SRD_AGENT_INSTRUCTIONS[agentId as SRDAgentId] ??
+    TC_AGENT_INSTRUCTIONS[agentId as TCAgentId];
   if (!instructions) {
     logger.error('no instructions for workflow agent', { agentId });
     return null;
@@ -163,6 +175,18 @@ export function getBRSAgents(): Record<string, Agent> {
 }
 
 /**
+ * Creates or returns a cached Mastra Agent for the interactive TC workflow.
+ */
+export function getOrCreateTCAgent(agentId: TCAgentId): Agent | null {
+  const config = getCachedAdminConfig();
+  if (!config) {
+    logger.error('admin config not loaded; cannot create TC agent', { agentId });
+    return null;
+  }
+  return createAgent(agentId, config);
+}
+
+/**
  * Returns all configured SRD agents, skipping any that cannot be created.
  */
 export function getSRDAgents(): Record<string, Agent> {
@@ -177,11 +201,28 @@ export function getSRDAgents(): Record<string, Agent> {
 }
 
 /**
+ * Returns all configured TC agents, skipping any that cannot be created.
+ */
+export function getTCAgents(): Record<string, Agent> {
+  const agents: Record<string, Agent> = {};
+  for (const id of TC_AGENT_IDS) {
+    const agent = getOrCreateTCAgent(id);
+    if (agent) {
+      agents[id] = agent;
+    }
+  }
+  return agents;
+}
+
+/**
  * Returns the agent set for a workflow based on the orchestrator agent ID.
  */
 export function getAgentsForWorkflow(orchestratorId: string): Record<string, Agent> {
   if (orchestratorId.startsWith('srd-')) {
     return getSRDAgents();
+  }
+  if (orchestratorId.startsWith('tc-')) {
+    return getTCAgents();
   }
   return getBRSAgents();
 }
@@ -192,6 +233,9 @@ export function getAgentsForWorkflow(orchestratorId: string): Record<string, Age
 export function getOrchestratorForDocType(docType: string): string {
   if (docType === 'srs' || docType === 'srs-be') {
     return 'srd-orchestrator';
+  }
+  if (docType === 'testcase') {
+    return 'tc-orchestrator';
   }
   return 'brs-orchestrator';
 }

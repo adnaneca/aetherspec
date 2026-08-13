@@ -536,7 +536,7 @@ func (h *Handler) seedSteps(ctx context.Context, docID, projectID, docType strin
 		"Security & Compliance", "Appendices",
 	}
 	testcaseSections := []string{
-		"Test Strategy", "Test Scenarios", "Test Cases",
+		"Executive Summary & Coverage", "Module Test Cases with Gherkin", "Requirements Traceability Matrix",
 	}
 
 	var sections []string
