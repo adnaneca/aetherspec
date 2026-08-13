@@ -6,6 +6,7 @@ import (
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/admin"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/agent"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/attachments"
+	"github.com/adnaneca/aetherspec/apps/gateway/internal/backlog"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/documents"
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/generation"
@@ -96,6 +97,10 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	// Merge (BRS assembly)
 	mergeHandler := merge.NewHandler(pool, minioClient, cfg, log)
 	mergeHandler.Register(api)
+
+	// Backlog (deterministic extraction from SRS-BE)
+	backlogHandler := backlog.NewHandler(pool, minioClient, cfg, log)
+	backlogHandler.Register(api)
 
 	// Workflow state (interactive Mastra workflow pause/resume)
 	workflowsHandler := workflows.NewHandler(pool, minioClient, cfg, log)

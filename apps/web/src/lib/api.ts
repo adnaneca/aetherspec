@@ -146,6 +146,14 @@ export async function mergeDocument(docId: string): Promise<{ status: string; se
   return resp.json();
 }
 
+export async function generateBacklog(docId: string): Promise<{ status: string; docId: string; projectId: string; path: string; summary: Record<string, unknown>; output: string }> {
+  const resp = await authFetch(`${GATEWAY_URL}/api/document/${docId}/generate-backlog`, {
+    method: 'POST',
+  });
+  if (!resp.ok) throw new Error(`Backlog generation failed: ${resp.status}`);
+  return resp.json();
+}
+
 export async function approveStep(docId: string, stepId: number): Promise<{ status: string; nextStep: number }> {
   const resp = await authFetch(`${GATEWAY_URL}/api/document/${docId}/step/${stepId}/approve`, {
     method: 'POST',

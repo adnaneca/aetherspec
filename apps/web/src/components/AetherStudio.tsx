@@ -16,6 +16,7 @@ import {
   startWorkflow,
   resumeWorkflow,
   getWorkflow,
+  generateBacklog,
   type Attachment,
 } from '../lib/api';
 import { streamChat } from '../lib/chat-stream';
@@ -51,6 +52,7 @@ import {
   ChevronRight,
   Download,
   Sparkles,
+  ListTree,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useRoles } from '../lib/use-roles';
@@ -175,6 +177,7 @@ export function AetherStudio() {
   const [approving, setApproving] = useState(false);
   const [merging, setMerging] = useState(false);
   const [, setMergeResult] = useState<{ sections: number; ids: number; files: Record<string, string> } | null>(null);
+  const [generatingBacklog, setGeneratingBacklog] = useState(false);
 
   // UI state
   const [viewMode, setViewMode] = useState<'source' | 'split' | 'preview'>('preview');
@@ -613,6 +616,37 @@ export function AetherStudio() {
       }]);
     } finally {
       setMerging(false);
+    }
+  };
+
+  // ── Generate backlog from approved SRS-BE ──
+  const handleGenerateBacklog = async () => {
+    if (!activeDoc) return;
+    setGeneratingBacklog(true);
+    try {
+      const result = await generateBacklog(activeDoc.id);
+      const summary = result.summary as { total?: number; categories?: Record<string, number>; priorities?: Record<string, number> } | undefined;
+      const total = summary?.total ?? 0;
+      const categoryBreakdown = summary?.categories
+        ? Object.entries(summary.categories).map(([cat, count]) => `${cat}: ${count}`).join(', ')
+        : '';
+      setChatMessages((prev) => [...prev, {
+        id: `backlog-${Date.now()}`,
+        sender: 'system',
+        content: `Backlog generated: ${total} items (${categoryBreakdown}). Path: ${result.path}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+      setActiveDoc((prev) => prev ? { ...prev, status: 'APPROVED' } : prev);
+    } catch (err) {
+      console.error('Backlog generation failed:', err);
+      setChatMessages((prev) => [...prev, {
+        id: `backlog-error-${Date.now()}`,
+        sender: 'system',
+        content: `Backlog generation failed: ${(err as Error).message}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    } finally {
+      setGeneratingBacklog(false);
     }
   };
 
@@ -1440,6 +1474,16 @@ export function AetherStudio() {
             >
               {merging ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
               {merging ? t('studio.merging') : t('studio.completeBRS')}
+            </button>
+          )}
+          {docType === 'srs' && canAccessSRS && activeDoc?.status === 'APPROVED' && (
+            <button
+              onClick={handleGenerateBacklog}
+              disabled={generatingBacklog}
+              className="flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 px-2.5 py-0.5 rounded font-semibold text-[11px] transition-colors disabled:opacity-50"
+            >
+              {generatingBacklog ? <Loader2 className="size-3 animate-spin" /> : <ListTree className="size-3" />}
+              {generatingBacklog ? t('studio.generatingBacklog') : t('studio.generateBacklog')}
             </button>
           )}
         </div>
