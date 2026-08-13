@@ -18,6 +18,7 @@ Output:
 """
 
 import argparse
+import io
 import json
 import os
 import re
@@ -293,11 +294,12 @@ def main():
     )
 
     backlog_path = f"backlog/{args.output_name}"
+    data_bytes = backlog_content.encode("utf-8")
     minio_client.put_object(
         args.project_id,
         backlog_path,
-        backlog_content.encode("utf-8"),
-        len(backlog_content.encode("utf-8")),
+        io.BytesIO(data_bytes),
+        len(data_bytes),
         content_type="text/markdown",
     )
 
