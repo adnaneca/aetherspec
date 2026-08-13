@@ -199,7 +199,7 @@ export function Header({
           </div>
         )}
 
-        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5">
+        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5" data-testid="user-avatar">
           <div className="flex size-5 items-center justify-center rounded-full bg-primary/15 font-mono text-[11px] font-semibold text-primary">
             {user?.firstName?.[0] || user?.username?.[0] || 'U'}
             {user?.lastName?.[0] || ''}
@@ -229,6 +229,7 @@ export function Header({
         {canManageAdmin && (
           <Link
             to="/admin-settings"
+            data-testid="admin-settings-link"
             className={`p-2 rounded-md border transition-colors ${
               isActive('admin-settings')
                 ? 'bg-primary text-primary-foreground border-primary'

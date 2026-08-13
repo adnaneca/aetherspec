@@ -482,7 +482,30 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
+		// Keep the browser/proxy connection alive during long silent LLM inference.
+		heartbeat := time.NewTicker(15 * time.Second)
+		defer heartbeat.Stop()
+		lastFlush := time.Now()
+
 		for scanner.Scan() {
+			select {
+			case <-heartbeat.C:
+				// If the agent has been silent for >15s, emit a heartbeat comment so
+				// idle-connection timeouts (browser, proxy, load balancer) don't drop us.
+				if time.Since(lastFlush) >= 15*time.Second {
+					if _, writeErr := w.Write([]byte(":heartbeat\n\n")); writeErr != nil {
+						h.log.Warn("client heartbeat write failed", zap.Error(writeErr))
+						return
+					}
+					if flushErr := w.Flush(); flushErr != nil {
+						h.log.Warn("client heartbeat flush failed", zap.Error(flushErr))
+						return
+					}
+					lastFlush = time.Now()
+				}
+			default:
+			}
+
 			line := scanner.Text()
 			if line == "" {
 				if _, writeErr := w.Write([]byte("\n")); writeErr != nil {
@@ -496,6 +519,7 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 				h.log.Warn("client write failed", zap.Error(writeErr))
 				return
 			}
+			lastFlush = time.Now()
 
 			if strings.HasPrefix(line, "data: ") {
 				eventJSON := strings.TrimPrefix(line, "data: ")

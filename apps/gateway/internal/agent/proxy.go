@@ -92,13 +92,34 @@ func sseProxy(cfg *config.Config, log *zap.Logger, agentURL string, body []byte)
 		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
 			defer resp.Body.Close()
 			buf := make([]byte, 4096)
+			heartbeat := time.NewTicker(15 * time.Second)
+			defer heartbeat.Stop()
+			lastFlush := time.Now()
+
 			for {
+				select {
+				case <-heartbeat.C:
+					if time.Since(lastFlush) >= 15*time.Second {
+						if _, writeErr := w.Write([]byte(":heartbeat\n\n")); writeErr != nil {
+							log.Warn("client heartbeat write failed", zap.Error(writeErr))
+							return
+						}
+						if flushErr := w.Flush(); flushErr != nil {
+							log.Warn("client heartbeat flush failed", zap.Error(flushErr))
+							return
+						}
+						lastFlush = time.Now()
+					}
+				default:
+				}
+
 				n, err := resp.Body.Read(buf)
 				if n > 0 {
 					if _, writeErr := w.Write(buf[:n]); writeErr != nil {
 						log.Warn("client write failed", zap.Error(writeErr))
 						return
 					}
+					lastFlush = time.Now()
 					if flushErr := w.Flush(); flushErr != nil {
 						log.Warn("client flush failed", zap.Error(flushErr))
 						return
