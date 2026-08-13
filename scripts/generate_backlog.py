@@ -289,6 +289,13 @@ def main():
         print("ERROR: No requirements found in merged SRS-BE", file=sys.stderr)
         sys.exit(1)
 
+    # Aggregate summary counts.
+    categories = {}
+    priorities = {}
+    for req in requirements:
+        categories[req["category"]] = categories.get(req["category"], 0) + 1
+        priorities[req["priority"]] = priorities.get(req["priority"], 0) + 1
+
     backlog_content = generate_backlog_document(
         args.project_id, args.doc_id, args.generated_by, requirements
     )
