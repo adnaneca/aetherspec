@@ -22,6 +22,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const sseHeartbeatInterval = 15 * time.Second
+
 // Valid workflow statuses.
 const (
 	StatusActive     = "active"
@@ -479,20 +481,73 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 			resp.Body.Close()
 			cancel()
 		}()
+
+		// Read agent lines in a goroutine so heartbeats can be emitted while
+		// the scanner is blocked waiting for slow LLM inference.
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+		lineChan := make(chan string, 16)
+		doneChan := make(chan error, 1)
+		go func() {
+			defer close(lineChan)
+			for scanner.Scan() {
+				lineChan <- scanner.Text()
+			}
+			if err := scanner.Err(); err != nil && err != io.EOF {
+				doneChan <- err
+			}
+			close(doneChan)
+		}()
 
-		// Keep the browser/proxy connection alive during long silent LLM inference.
-		heartbeat := time.NewTicker(15 * time.Second)
+		heartbeat := time.NewTicker(sseHeartbeatInterval)
 		defer heartbeat.Stop()
 		lastFlush := time.Now()
 
-		for scanner.Scan() {
+		for {
 			select {
+			case line, ok := <-lineChan:
+				if !ok {
+					_ = w.Flush()
+					return
+				}
+				if line == "" {
+					if _, writeErr := w.Write([]byte("\n")); writeErr != nil {
+						h.log.Warn("client write failed", zap.Error(writeErr))
+						return
+					}
+					continue
+				}
+
+				if _, writeErr := w.Write([]byte(line + "\n")); writeErr != nil {
+					h.log.Warn("client write failed", zap.Error(writeErr))
+					return
+				}
+				lastFlush = time.Now()
+
+				if strings.HasPrefix(line, "data: ") {
+					eventJSON := strings.TrimPrefix(line, "data: ")
+					var event map[string]interface{}
+					if err := json.Unmarshal([]byte(eventJSON), &event); err == nil {
+						if eventType, ok := event["type"].(string); ok {
+							switch eventType {
+							case "paused":
+								h.updateWorkflowStatus(context.Background(), workflowID, StatusPaused)
+							case "done":
+								h.updateWorkflowStatus(context.Background(), workflowID, StatusCompleted)
+							case "error":
+								h.updateWorkflowStatus(context.Background(), workflowID, StatusError)
+							}
+						}
+					}
+				}
+
+				if flushErr := w.Flush(); flushErr != nil {
+					h.log.Warn("client flush failed", zap.Error(flushErr))
+					return
+				}
+
 			case <-heartbeat.C:
-				// If the agent has been silent for >15s, emit a heartbeat comment so
-				// idle-connection timeouts (browser, proxy, load balancer) don't drop us.
-				if time.Since(lastFlush) >= 15*time.Second {
+				if time.Since(lastFlush) >= sseHeartbeatInterval {
 					if _, writeErr := w.Write([]byte(":heartbeat\n\n")); writeErr != nil {
 						h.log.Warn("client heartbeat write failed", zap.Error(writeErr))
 						return
@@ -503,53 +558,15 @@ func (h *Handler) proxyAgentSSE(c *fiber.Ctx, agentURL string, body []byte, work
 					}
 					lastFlush = time.Now()
 				}
-			default:
-			}
 
-			line := scanner.Text()
-			if line == "" {
-				if _, writeErr := w.Write([]byte("\n")); writeErr != nil {
-					h.log.Warn("client write failed", zap.Error(writeErr))
-					return
+			case scanErr := <-doneChan:
+				if scanErr != nil {
+					h.log.Warn("SSE stream scan failed", zap.Error(scanErr))
 				}
-				continue
-			}
-
-			if _, writeErr := w.Write([]byte(line + "\n")); writeErr != nil {
-				h.log.Warn("client write failed", zap.Error(writeErr))
-				return
-			}
-			lastFlush = time.Now()
-
-			if strings.HasPrefix(line, "data: ") {
-				eventJSON := strings.TrimPrefix(line, "data: ")
-				var event map[string]interface{}
-				if err := json.Unmarshal([]byte(eventJSON), &event); err == nil {
-					if eventType, ok := event["type"].(string); ok {
-						switch eventType {
-						case "paused":
-							h.updateWorkflowStatus(context.Background(), workflowID, StatusPaused)
-						case "done":
-							h.updateWorkflowStatus(context.Background(), workflowID, StatusCompleted)
-						case "error":
-							h.updateWorkflowStatus(context.Background(), workflowID, StatusError)
-						}
-					}
-				}
-			}
-
-			if flushErr := w.Flush(); flushErr != nil {
-				h.log.Warn("client flush failed", zap.Error(flushErr))
+				_ = w.Flush()
 				return
 			}
 		}
-
-		if scanErr := scanner.Err(); scanErr != nil && scanErr != io.EOF {
-			h.log.Warn("SSE stream scan failed", zap.Error(scanErr))
-		}
-
-		// Graceful termination: flush any remaining buffered bytes.
-		_ = w.Flush()
 	})
 
 	return nil
