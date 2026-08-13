@@ -129,7 +129,7 @@ func New(cfg *config.Config, log *zap.Logger, pool *pgxpool.Pool, minioClient *m
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"name":    "aetherspec-gateway",
-			"version": "0.0.0",
+			"version": "0.3.0",
 			"status":  "foundation",
 		})
 	})
