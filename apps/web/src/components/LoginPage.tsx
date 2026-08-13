@@ -65,7 +65,7 @@ export function LoginPage() {
         </div>
 
         <p className="font-mono text-[11px] text-muted-foreground">
-          realm: <span className="text-foreground">aetherspec</span> · v0.1.0-mvp
+          realm: <span className="text-foreground">aetherspec</span> · {import.meta.env.VITE_APP_VERSION || 'v0.2.7'}
         </p>
       </section>
 

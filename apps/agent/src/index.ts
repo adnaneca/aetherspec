@@ -5,26 +5,29 @@ import { logger } from './logger.js';
 import { buildMastra } from './mastra.js';
 import { fetchAdminConfig, getCachedAdminConfig } from './admin-config.js';
 import { runAgentStream, type ChatMessage, AGENT_INSTRUCTIONS, buildGenerationPrompt, selfValidate, stripValidationArtifacts } from './agent-runner.js';
-import { getBRSAgents, type BRSAgentId } from './agents.js';
-import { BRSWorkflow } from './workflow.js';
+import { getAgentsForWorkflow, type BRSAgentId } from './agents.js';
+import { BRSWorkflow, SRDWorkflow } from './workflow.js';
 import { createSSECallbacks } from './sse-emitter.js';
 import { getWorkflow } from './workflow-store.js';
 import { buildNegotiatorChatPrompt, parseNegotiatorChatResponse } from './negotiator-chat.js';
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
-const activeWorkflows = new Map<string, BRSWorkflow>();
+const activeWorkflows = new Map<string, BRSWorkflow | SRDWorkflow>();
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3000';
 
-// Fetch admin config on startup, then register BRS workflow agents
+// Fetch admin config on startup, then register workflow agents
 let adminConfigReady = false;
 fetchAdminConfig(GATEWAY_URL)
   .then(() => {
     adminConfigReady = true;
-    const brsAgents = getBRSAgents();
-    const registeredIds = Object.keys(brsAgents);
-    logger.info('admin config loaded — BRS agents registered', { registeredIds, count: registeredIds.length });
+    const brsAgents = getAgentsForWorkflow('brs-orchestrator');
+    const srdAgents = getAgentsForWorkflow('srd-orchestrator');
+    logger.info('admin config loaded — workflow agents registered', {
+      brsCount: Object.keys(brsAgents).length,
+      srdCount: Object.keys(srdAgents).length,
+    });
   })
   .catch((err) => {
     logger.error('admin config fetch failed', err);
@@ -83,8 +86,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/agents' && method === 'GET') {
-    const brsAgents = getBRSAgents();
-    const entries = Object.entries(brsAgents).map(([id, agent]) => ({
+    const brsAgents = getAgentsForWorkflow('brs-orchestrator');
+    const srdAgents = getAgentsForWorkflow('srd-orchestrator');
+    const allAgents = { ...brsAgents, ...srdAgents };
+    const entries = Object.entries(allAgents).map(([id, agent]) => ({
       id,
       name: agent.name,
     }));
@@ -138,7 +143,7 @@ const server = http.createServer(async (req, res) => {
   // POST /agents/:agentId/workflow/start
   const startMatch = url.match(/^\/agents\/([^\/]+)\/workflow\/start$/);
   if (startMatch && method === 'POST') {
-    // const agentId = startMatch[1] as BRSAgentId | (string & {});
+    const orchestratorId = startMatch[1];
 
     let body = '';
     for await (const chunk of req) {
@@ -166,35 +171,56 @@ const server = http.createServer(async (req, res) => {
     // Emit workflow ID as the first event so the client can resume.
     res.write(`data: ${JSON.stringify({ type: 'workflow', workflowId, status: 'started' })}\n\n`);
 
-    const brsAgents = getBRSAgents();
-    if (!brsAgents['brs-orchestrator'] || !brsAgents['brs-writer'] || !brsAgents['brs-negotiator'] || !brsAgents['brs-validator']) {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: 'BRS agents not available. Check admin config.' })}\n\n`);
+    const agents = getAgentsForWorkflow(orchestratorId);
+    const expectedIds = orchestratorId.startsWith('srd-')
+      ? ['srd-orchestrator', 'srd-writer', 'srd-negotiator', 'srd-validator']
+      : ['brs-orchestrator', 'brs-writer', 'brs-negotiator', 'brs-validator'];
+    const missing = expectedIds.filter((id) => !agents[id]);
+    if (missing.length > 0) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: `Workflow agents not available: ${missing.join(', ')}. Check admin config.` })}\n\n`);
       res.end();
       return;
     }
 
     const callbacks = createSSECallbacks(res);
-    const workflow = new BRSWorkflow(
-      {
-        orchestrator: brsAgents['brs-orchestrator'],
-        writer: brsAgents['brs-writer'],
-        negotiator: brsAgents['brs-negotiator'],
-        validator: brsAgents['brs-validator'],
-      },
-      {
-        workflowId,
-        projectId: parsed.projectId || 'unknown',
-        docId: parsed.docId || 'unknown',
-        stepId: Number(parsed.stepId) || 0,
-        sectionName: parsed.sectionName || '',
-        sectionGuide: parsed.sectionGuide || '',
-        dependencySections: parsed.dependencySections || [],
-        inputDocuments: parsed.inputDocuments || [],
-        qualityChecks: parsed.qualityChecks || [],
-        project: parsed.project,
-      },
-      callbacks,
-    );
+    const context = {
+      workflowId,
+      projectId: parsed.projectId || 'unknown',
+      docId: parsed.docId || 'unknown',
+      stepId: Number(parsed.stepId) || 0,
+      sectionName: parsed.sectionName || '',
+      sectionGuide: parsed.sectionGuide || '',
+      dependencySections: parsed.dependencySections || [],
+      upstreamSections: parsed.upstreamSections || [],
+      inputDocuments: parsed.inputDocuments || [],
+      qualityChecks: parsed.qualityChecks || [],
+      project: parsed.project,
+    };
+
+    let workflow: BRSWorkflow | SRDWorkflow;
+    if (orchestratorId.startsWith('srd-')) {
+      workflow = new SRDWorkflow(
+        {
+          orchestrator: agents['srd-orchestrator']!,
+          writer: agents['srd-writer']!,
+          negotiator: agents['srd-negotiator']!,
+          validator: agents['srd-validator']!,
+        },
+        context,
+        callbacks,
+      );
+    } else {
+      workflow = new BRSWorkflow(
+        {
+          orchestrator: agents['brs-orchestrator']!,
+          writer: agents['brs-writer']!,
+          negotiator: agents['brs-negotiator']!,
+          validator: agents['brs-validator']!,
+        },
+        context,
+        callbacks,
+      );
+    }
 
     activeWorkflows.set(workflowId, workflow);
     await workflow.run();
@@ -237,7 +263,9 @@ const server = http.createServer(async (req, res) => {
 
     const callbacks = createSSECallbacks(res);
     workflow.setCallbacks(callbacks);
-    await workflow.resume(parsed.userResponse);
+    // Ensure userResponse is always passed as an object property as expected by the workflow.
+    const userResponse = parsed.userResponse !== undefined ? parsed.userResponse : parsed;
+    await workflow.resume(userResponse);
     return;
   }
 
@@ -273,8 +301,9 @@ const server = http.createServer(async (req, res) => {
     const inputDocuments = context?.inputDocuments ?? [];
     const project = context?.project ?? {};
 
-    const brsAgents = getBRSAgents();
-    const negotiator = brsAgents['brs-negotiator'];
+    const workflowAgentId = workflow instanceof SRDWorkflow ? 'srd-negotiator' : 'brs-negotiator';
+    const agents = getAgentsForWorkflow(workflowAgentId);
+    const negotiator = agents[workflowAgentId];
     if (!negotiator) {
       res.write(`data: ${JSON.stringify({ type: 'error', error: 'Negotiator agent not available' })}\n\n`);
       res.end();
@@ -294,7 +323,7 @@ const server = http.createServer(async (req, res) => {
     let fullResponse = '';
     try {
       await runAgentStream(
-        { agentId: 'brs-negotiator', message: prompt, history: [] },
+        { agentId: workflowAgentId, message: prompt, history: [] },
         {
           onToken: (delta) => {
             fullResponse += delta;

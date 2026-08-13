@@ -185,6 +185,7 @@ export interface StartWorkflowRequest {
   inputDocuments?: string[];
   qualityChecks?: string[];
   agentId?: string;
+  docType?: string;
 }
 
 export async function startWorkflow(req: StartWorkflowRequest): Promise<ReadableStream<Uint8Array>> {

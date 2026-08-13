@@ -234,6 +234,7 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 		DocID     string `json:"docId"`
 		StepID    int    `json:"stepId"`
 		AgentID   string `json:"agentId"`
+		DocType   string `json:"docType"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return tmf.SendError(c, 400, "Invalid JSON")
@@ -244,6 +245,9 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 	}
 	if req.AgentID == "" {
 		req.AgentID = "brs-orchestrator"
+	}
+	if req.DocType == "" {
+		req.DocType = docTypeFromAgentID(req.AgentID)
 	}
 
 	workflowID := uuid.New().String()
@@ -301,6 +305,22 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 			return tmf.SendError(c, 500, "Failed to prepare agent request")
 		}
 		h.log.Info("Injected project metadata into workflow", zap.String("project", req.ProjectID))
+	}
+
+	// Inject approved upstream BRS sections when starting an SRD workflow.
+	if req.DocType == "srs" || req.DocType == "srs-be" {
+		upstreamSections, err := h.fetchUpstreamBRS(c.Context(), req.ProjectID, req.StepID)
+		if err != nil {
+			h.log.Warn("Failed to load upstream BRS sections", zap.Error(err), zap.String("project", req.ProjectID))
+		}
+		if len(upstreamSections) > 0 {
+			forwardBody, err = injectUpstreamSections(forwardBody, upstreamSections)
+			if err != nil {
+				h.log.Error("Failed to inject upstream sections", zap.Error(err))
+				return tmf.SendError(c, 500, "Failed to prepare agent request")
+			}
+			h.log.Info("Injected upstream BRS sections into SRD workflow", zap.String("project", req.ProjectID), zap.Int("count", len(upstreamSections)))
+		}
 	}
 
 	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/start", h.cfg.Agent.GRPCURL, req.AgentID)
@@ -609,5 +629,93 @@ func injectProjectMetadata(body []byte, project map[string]interface{}) ([]byte,
 		return nil, err
 	}
 	payload["project"] = project
+	return json.Marshal(payload)
+}
+
+// docTypeFromAgentID infers the document type from the agent identifier.
+func docTypeFromAgentID(agentID string) string {
+	if strings.HasPrefix(agentID, "srd-") {
+		return "srs"
+	}
+	if strings.HasPrefix(agentID, "brs-") {
+		return "brs"
+	}
+	return "brs"
+}
+
+// fetchUpstreamBRS returns approved BRS section contents from the same project.
+func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, currentStepNum int) ([]string, error) {
+	var brsDocID string
+	err := h.pool.QueryRow(ctx,
+		`SELECT id FROM documents WHERE project_id = $1 AND doc_type = 'brs' LIMIT 1`,
+		projectID,
+	).Scan(&brsDocID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := h.pool.Query(ctx,
+		`SELECT minio_path FROM document_steps
+		 WHERE document_id = $1 AND status = 'SIGNED_OFF' AND step_number <= $2
+		 ORDER BY step_number`,
+		brsDocID, currentStepNum)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contents []string
+	for rows.Next() {
+		var minioPath string
+		if err := rows.Scan(&minioPath); err != nil {
+			continue
+		}
+
+		bucket, key, ok := splitMinioPath(minioPath)
+		if !ok {
+			continue
+		}
+
+		content, err := h.loadMinioObject(ctx, bucket, key)
+		if err != nil {
+			h.log.Warn("failed to fetch upstream BRS section", zap.String("path", minioPath), zap.Error(err))
+			continue
+		}
+		contents = append(contents, content)
+	}
+
+	return contents, rows.Err()
+}
+
+// loadMinioObject returns the content of a MinIO object as string.
+func (h *Handler) loadMinioObject(ctx context.Context, bucket, key string) (string, error) {
+	obj, err := h.minioClient.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return "", err
+	}
+	defer obj.Close()
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// splitMinioPath splits a full minio_path into bucket and object key.
+func splitMinioPath(minioPath string) (bucket, key string, ok bool) {
+	parts := strings.SplitN(minioPath, "/", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+// injectUpstreamSections merges upstream BRS section contents into the forwarded payload.
+func injectUpstreamSections(body []byte, upstreamSections []string) ([]byte, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	payload["upstreamSections"] = upstreamSections
 	return json.Marshal(payload)
 }

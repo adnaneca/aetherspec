@@ -113,10 +113,16 @@ interface ChatMessage {
 
 // ── Helpers ──
 
-const agentForDocType = (dt: string) => {
+const chatAgentForDocType = (dt: string) => {
   if (dt === 'brs') return 'brs-agent';
   if (dt === 'srs') return 'srd-agent';
   return 'testcase-agent';
+};
+
+const workflowOrchestratorForDocType = (dt: string) => {
+  if (dt === 'brs') return 'brs-orchestrator';
+  if (dt === 'srs') return 'srd-orchestrator';
+  return 'brs-orchestrator';
 };
 
 
@@ -172,7 +178,7 @@ export function AetherStudio() {
 
   // UI state
   const [viewMode, setViewMode] = useState<'source' | 'split' | 'preview'>('preview');
-  const [activeAgent, setActiveAgent] = useState<string>(agentForDocType(docType || firstAccessibleDocType));
+  const [activeAgent, setActiveAgent] = useState<string>(chatAgentForDocType(docType || firstAccessibleDocType));
   const [generating, setGenerating] = useState(false);
 
   // Input documents state
@@ -235,7 +241,7 @@ export function AetherStudio() {
         setActiveDoc(matchedDoc);
 
         if (matchedDoc) {
-          setActiveAgent(agentForDocType(matchedDoc.docType));
+          setActiveAgent(chatAgentForDocType(matchedDoc.docType));
           return getDocumentSteps(matchedDoc.id).then((stepList) => {
             setSteps(stepList);
           });
@@ -616,7 +622,7 @@ export function AetherStudio() {
     if (!docAccess[newDocType]) return;
     const doc = documents.find((d) => d.docType === newDocType);
     if (doc) {
-      setActiveAgent(agentForDocType(newDocType));
+      setActiveAgent(chatAgentForDocType(newDocType));
       setActiveInputDoc(null);
       void navigate({
         to: '/studio',
@@ -850,7 +856,8 @@ export function AetherStudio() {
         dependencySections: [],
         inputDocuments: [],
         qualityChecks: [],
-        agentId: 'brs-orchestrator',
+        agentId: workflowOrchestratorForDocType(docType || 'brs'),
+        docType: docType || 'brs',
       });
       await readStream(stream);
     } catch (err) {
