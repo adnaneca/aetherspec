@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 const sseHeartbeatInterval = 15 * time.Second
@@ -309,17 +310,23 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 
 	// Inject approved upstream BRS sections when starting an SRD workflow.
 	if req.DocType == "srs" || req.DocType == "srs-be" {
-		upstreamSections, err := h.fetchUpstreamBRS(c.Context(), req.ProjectID, req.StepID)
+		upstreamIDs, err := h.resolveUpstreamBRSIDs(c.Context(), req.StepID)
 		if err != nil {
-			h.log.Warn("Failed to load upstream BRS sections", zap.Error(err), zap.String("project", req.ProjectID))
+			h.log.Warn("Failed to resolve upstream BRS IDs", zap.Error(err), zap.String("project", req.ProjectID))
 		}
-		if len(upstreamSections) > 0 {
-			forwardBody, err = injectUpstreamSections(forwardBody, upstreamSections)
+		if len(upstreamIDs) > 0 {
+			upstreamSections, err := h.fetchUpstreamBRS(c.Context(), req.ProjectID, upstreamIDs)
 			if err != nil {
-				h.log.Error("Failed to inject upstream sections", zap.Error(err))
-				return tmf.SendError(c, 500, "Failed to prepare agent request")
+				h.log.Warn("Failed to load upstream BRS sections", zap.Error(err), zap.String("project", req.ProjectID))
 			}
-			h.log.Info("Injected upstream BRS sections into SRD workflow", zap.String("project", req.ProjectID), zap.Int("count", len(upstreamSections)))
+			if len(upstreamSections) > 0 {
+				forwardBody, err = injectUpstreamSections(forwardBody, upstreamSections)
+				if err != nil {
+					h.log.Error("Failed to inject upstream sections", zap.Error(err))
+					return tmf.SendError(c, 500, "Failed to prepare agent request")
+				}
+				h.log.Info("Injected upstream BRS sections into SRD workflow", zap.String("project", req.ProjectID), zap.Int("count", len(upstreamSections)))
+			}
 		}
 	}
 
@@ -643,8 +650,43 @@ func docTypeFromAgentID(agentID string) string {
 	return "brs"
 }
 
-// fetchUpstreamBRS returns approved BRS section contents from the same project.
-func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, currentStepNum int) ([]string, error) {
+// resolveUpstreamBRSIDs reads the SRD sections.yaml and returns the upstream
+// BRS section IDs mapped for the given SRD step.
+func (h *Handler) resolveUpstreamBRSIDs(ctx context.Context, srdStepNum int) ([]int, error) {
+	bucket := h.cfg.MinIO.TemplateBucket
+	obj, err := h.minioClient.GetObject(ctx, bucket, "srs-be/sections.yaml", minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Close()
+
+	content, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, err
+	}
+
+	var data struct {
+		Sections []struct {
+			ID       int   `yaml:"id"`
+			Upstream []int `yaml:"upstream"`
+		} `yaml:"sections"`
+	}
+	if err := yaml.Unmarshal(content, &data); err != nil {
+		return nil, err
+	}
+
+	for _, s := range data.Sections {
+		if s.ID == srdStepNum {
+			return s.Upstream, nil
+		}
+	}
+
+	return nil, fmt.Errorf("SRD section %d not found in sections.yaml", srdStepNum)
+}
+
+// fetchUpstreamBRS returns approved BRS section contents from the same project
+// for the requested upstream section IDs.
+func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, upstreamIDs []int) ([]string, error) {
 	var brsDocID string
 	err := h.pool.QueryRow(ctx,
 		`SELECT id FROM documents WHERE project_id = $1 AND doc_type = 'brs' LIMIT 1`,
@@ -654,11 +696,16 @@ func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, curren
 		return nil, err
 	}
 
+	wanted := make(map[int]bool)
+	for _, id := range upstreamIDs {
+		wanted[id] = true
+	}
+
 	rows, err := h.pool.Query(ctx,
-		`SELECT minio_path FROM document_steps
-		 WHERE document_id = $1 AND status = 'SIGNED_OFF' AND step_number <= $2
+		`SELECT minio_path, step_number FROM document_steps
+		 WHERE document_id = $1 AND status = 'SIGNED_OFF'
 		 ORDER BY step_number`,
-		brsDocID, currentStepNum)
+		brsDocID)
 	if err != nil {
 		return nil, err
 	}
@@ -667,7 +714,11 @@ func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, curren
 	var contents []string
 	for rows.Next() {
 		var minioPath string
-		if err := rows.Scan(&minioPath); err != nil {
+		var stepNum int
+		if err := rows.Scan(&minioPath, &stepNum); err != nil {
+			continue
+		}
+		if !wanted[stepNum] {
 			continue
 		}
 
