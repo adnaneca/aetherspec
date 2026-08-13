@@ -157,7 +157,11 @@ def generate_story(requirement_text, category):
     # Strip bold/italic markdown and leading system phrases.
     text = re.sub(r"\*\*|__|\*|_", "", requirement_text)
     text = re.sub(r"^\s*The backend system\s+", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s+(shall|should|may|must)\s+", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"^\s*The system\s+", "", text, flags=re.IGNORECASE)
+    # Remove standalone RFC 2119 keywords at the start.
+    text = re.sub(r"^\s*(shall|should|may|must)\s+", "", text, flags=re.IGNORECASE)
+    # Remove inline standalone keywords (preserve surrounding text).
+    text = re.sub(r"\s+\*\*(shall|should|may|must)\*\*\s+", " ", text, flags=re.IGNORECASE)
     text = text.strip().rstrip(".")
     if not text:
         text = f"support the {category.lower()} requirement"
@@ -267,9 +271,9 @@ def main():
     requirements = []
     for row in rows:
         req_id = row["id"]
-        prefix = req_id.split("-")[0]
-        if prefix.endswith("BE"):
-            prefix = "-".join(req_id.split("-")[:2])
+        # Match two-part prefixes like SR-BE, NFR-BE, DATA-BE, etc.
+        match = re.match(r"^([A-Z]+-BE)-\d+\b", req_id)
+        prefix = match.group(1) if match else req_id.split("-")[0]
         category = CATEGORY_MAP.get(prefix, "Unknown")
         requirement_text = row.get("requirement") or row.get("description") or req_id
         priority = row.get("priority") or infer_priority(requirement_text)
