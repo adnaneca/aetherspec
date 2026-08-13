@@ -24,9 +24,11 @@ fetchAdminConfig(GATEWAY_URL)
     adminConfigReady = true;
     const brsAgents = getAgentsForWorkflow('brs-orchestrator');
     const srdAgents = getAgentsForWorkflow('srd-orchestrator');
+    const tcAgents = getAgentsForWorkflow('tc-orchestrator');
     logger.info('admin config loaded — workflow agents registered', {
       brsCount: Object.keys(brsAgents).length,
       srdCount: Object.keys(srdAgents).length,
+      tcCount: Object.keys(tcAgents).length,
     });
   })
   .catch((err) => {
