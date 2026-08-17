@@ -31,6 +31,7 @@ nano .env.prod
 ```
 
 Required credentials:
+
 - `POSTGRES_PASSWORD` — PostgreSQL root password
 - `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` — MinIO credentials
 - `OLLAMA_API_KEY` — Your Ollama Cloud API key
@@ -47,6 +48,7 @@ Required credentials:
 ```
 
 The script performs the following:
+
 - Checks out the requested tag on the server.
 - Installs dependencies (`pnpm install`, Python venv).
 - Builds the Go gateway, TypeScript agent, and React web app.
@@ -73,7 +75,7 @@ ssh root@157.180.57.246 "systemctl status aetherspec-gateway aetherspec-agent"
 Expected gateway root response:
 
 ```json
-{"name":"aetherspec-gateway","status":"foundation","version":"0.4.0"}
+{ "name": "aetherspec-gateway", "status": "foundation", "version": "0.4.0" }
 ```
 
 ## MinIO configuration for new document types
@@ -86,6 +88,7 @@ mc cp --recursive /path/to/srd-config/ local/aetherspec-templates/srs-be/
 ```
 
 Template API path mapping:
+
 - `GET /api/template/srs/sections` → `aetherspec-templates/srs-be/sections.yaml`
 - `GET /api/template/srs/section-guide/01` → `aetherspec-templates/srs-be/section-guide/01.md`
 - `GET /api/template/srs/template` → `aetherspec-templates/srs-be/srs-be.md`

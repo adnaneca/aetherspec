@@ -23,12 +23,12 @@ docker compose -f docker-compose.dev.yml down -v
 
 ## Services
 
-| Service | Port | Credentials |
-|---------|------|-------------|
-| **PostgreSQL** | 5432 | `aetherspec/devpassword` |
-| **MinIO** | 9000 (API), 9001 (Console) | `aetheradmin/aetherdevpassword` |
-| **Keycloak** | 8080 | `admin/admin` |
-| **Langfuse** | 3001 | See Langfuse docs |
+| Service        | Port                       | Credentials                     |
+| -------------- | -------------------------- | ------------------------------- |
+| **PostgreSQL** | 5432                       | `aetherspec/devpassword`        |
+| **MinIO**      | 9000 (API), 9001 (Console) | `aetheradmin/aetherdevpassword` |
+| **Keycloak**   | 8080                       | `admin/admin`                   |
+| **Langfuse**   | 3001                       | See Langfuse docs               |
 
 ## Data Persistence
 

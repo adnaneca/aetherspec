@@ -6,7 +6,7 @@
 
 // ----- Health -----
 export interface HealthResponse {
-  status: 'alive' | 'ready' | 'down';
+  status: "alive" | "ready" | "down";
   service: string;
   checks?: Record<string, string>;
 }
@@ -21,41 +21,38 @@ export interface AgentRunRequest {
 }
 
 export interface AgentTokenEvent {
-  type: 'token';
+  type: "token";
   delta: string;
   threadId: string;
 }
 
 export interface AgentToolCallEvent {
-  type: 'tool_call';
+  type: "tool_call";
   toolName: string;
   args: unknown;
   callId: string;
 }
 
 export interface AgentToolResultEvent {
-  type: 'tool_result';
+  type: "tool_result";
   callId: string;
   result: unknown;
   approved: boolean;
 }
 
 export interface AgentDoneEvent {
-  type: 'done';
+  type: "done";
   threadId: string;
   tokensUsed: number;
 }
 
 export type AgentStreamEvent =
-  | AgentTokenEvent
-  | AgentToolCallEvent
-  | AgentToolResultEvent
-  | AgentDoneEvent;
+  AgentTokenEvent | AgentToolCallEvent | AgentToolResultEvent | AgentDoneEvent;
 
 // ----- Workspace / Files -----
 export interface FileNode {
   path: string;
-  type: 'file' | 'dir';
+  type: "file" | "dir";
   size?: number;
   children?: FileNode[];
 }
