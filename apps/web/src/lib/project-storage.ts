@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'aetherspec.activeProjectId';
+const STORAGE_KEY = "aetherspec.activeProjectId";
 
 export function getStoredProjectId(): string | null {
   return localStorage.getItem(STORAGE_KEY);

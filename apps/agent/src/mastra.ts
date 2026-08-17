@@ -1,5 +1,5 @@
-import { Mastra } from '@mastra/core';
-import { logger } from './logger.js';
+import { Mastra } from "@mastra/core";
+import { logger } from "./logger.js";
 
 /**
  * Mastra instance for the AetherSpec agent sidecar.
@@ -14,7 +14,7 @@ import { logger } from './logger.js';
  * memory (Postgres-backed threads).
  */
 export function buildMastra(): Mastra {
-  logger.info('building Mastra instance with agent registry');
+  logger.info("building Mastra instance with agent registry");
 
   const m = new Mastra({
     // Agents are created dynamically in agent-runner.ts and cached.

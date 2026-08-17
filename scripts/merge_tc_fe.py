@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-AetherSpec — SRS-FE Document Merger
-Deterministically assembles the final SRS-FE document from approved sections.
+AetherSpec — Frontend Test Case Document Merger
+Deterministically assembles the final TC-FE document from approved sections.
 No LLM involved. 100% accurate. 0% hallucination.
 
 Usage:
-    python3 merge_srs_fe.py --project-id prj-001 --doc-id doc-001 --db-url "..."
+    python3 merge_tc_fe.py --project-id prj-001 --doc-id doc-001 --db-url "..."
 
 Environment:
     MINIO_ENDPOINT        MinIO host (default: 127.0.0.1:9000)
@@ -14,11 +14,11 @@ Environment:
     MINIO_USE_SSL         true/false (default: false)
 
 Output:
-    {project_id}/output/{output_name}               (main document)
-    {project_id}/srs-fe/appendices/A-rtm.md         (requirements traceability matrix)
-    {project_id}/srs-fe/appendices/B-approval.md    (approval record)
-    {project_id}/srs-fe/appendices/C-history.md     (change history placeholder)
-    {project_id}/srs-fe/appendices/D-revisions.md   (draft revision log)
+    {project_id}/output/{output_name}             (main document)
+    {project_id}/tc-fe/appendices/A-rtm.md       (requirements traceability matrix)
+    {project_id}/tc-fe/appendices/B-approval.md  (approval record)
+    {project_id}/tc-fe/appendices/C-history.md   (change history placeholder)
+    {project_id}/tc-fe/appendices/D-revisions.md (draft revision log)
 """
 
 import argparse
@@ -37,14 +37,9 @@ from minio.error import S3Error
 
 # ── ID extraction patterns ──
 ID_PATTERNS = {
+    "TC-FE": r"\bTC-FE-\d+\b",
     "SR-FE": r"\bSR-FE-\d+\b",
-    "NFR-FE": r"\bNFR-FE-\d+\b",
-    "UI-FE": r"\bUI-FE-\d+\b",
-    "INT-FE": r"\bINT-FE-\d+\b",
-    "CONSTR-FE": r"\bCONSTR-FE-\d+\b",
-    "RULE-FE": r"\bRULE-FE-\d+\b",
-    "ASSUMP-FE": r"\bASSUMP-FE-\d+\b",
-    "RISK-FE": r"\bRISK-FE-\d+\b",
+    "BR": r"\bBR-\d+\b",
 }
 
 VALID_STATUSES = {"active", "paused", "completed", "terminated", "error"}
@@ -135,130 +130,29 @@ def extract_sources(content):
     return sorted(sources)
 
 
-def extract_traces_to(content):
-    """Extract FE-xxx -> BR-xxx mappings from markdown table 'Traces-To' column."""
-    fe_prefixes = tuple(['SR-FE-', 'INT-FE-', 'FR-FE-', 'NFR-FE-', 'UI-FE-',
-                         'CONSTR-FE-', 'RULE-FE-', 'ASSUMP-FE-', 'RISK-FE-'])
-    traces = []
-    lines = content.split('\n') if content else []
-    in_table = False
-    header_cells = []
-    traces_col_idx = -1
-    req_col_idx = -1
-
-    for line in lines:
-        stripped = line.strip()
-        if '|' in line:
-            cells = [c.strip() for c in stripped.split('|')]
-            cells = [c for c in cells if c != '']
-            if not cells:
-                continue
-            if all(re.match(r'^:?-+:?$', c) for c in cells):
-                continue
-
-            if not in_table:
-                in_table = True
-                header_cells = cells
-                traces_col_idx = -1
-                req_col_idx = -1
-                for i, cell in enumerate(cells):
-                    if 'trace' in cell.lower():
-                        traces_col_idx = i
-                    if cell == 'ID' or any(cell.startswith(p) for p in fe_prefixes):
-                        req_col_idx = i
-                continue
-
-            if in_table and traces_col_idx >= 0 and req_col_idx >= 0:
-                if req_col_idx < len(cells) and traces_col_idx < len(cells):
-                    req_id = cells[req_col_idx]
-                    br_ref = cells[traces_col_idx]
-                    if req_id.startswith(fe_prefixes) and br_ref.startswith('BR-'):
-                        traces.append(f"{req_id} -> {br_ref}")
-        elif in_table:
-            in_table = False
-
-    return traces
-
-
-def extract_api_consumption(content):
-    """Extract INT-FE-xxx -> INT-BE-xxx mappings from Section 5 markdown tables."""
-    traces = []
-    lines = content.split('\n') if content else []
-    in_table = False
-    header_cells = []
-    int_fe_col_idx = -1
-    contract_col_idx = -1
-
-    for line in lines:
-        stripped = line.strip()
-        if '|' in line:
-            cells = [c.strip() for c in stripped.split('|')]
-            cells = [c for c in cells if c != '']
-            if not cells:
-                continue
-
-            # A separator line like |---|---|---| ends header detection
-            if all(re.match(r'^:?-+:?$', c) for c in cells):
-                continue
-
-            if not in_table:
-                # Header row: locate columns by header names
-                in_table = True
-                header_cells = cells
-                int_fe_col_idx = -1
-                contract_col_idx = -1
-                for i, cell in enumerate(cells):
-                    if cell == 'ID' or cell.startswith('INT-FE'):
-                        int_fe_col_idx = i
-                    if any(term in cell.lower() for term in ['api', 'contract', 'consumes', 'backend api', 'int-be']):
-                        contract_col_idx = i
-                continue
-
-            if in_table and int_fe_col_idx >= 0 and contract_col_idx >= 0:
-                if int_fe_col_idx < len(cells) and contract_col_idx < len(cells):
-                    int_fe_id = cells[int_fe_col_idx]
-                    contract_ref = cells[contract_col_idx]
-                    if int_fe_id.startswith('INT-FE') and 'INT-BE' in contract_ref:
-                        int_be_ids = re.findall(r'INT-BE-\d+', contract_ref)
-                        for int_be_id in int_be_ids:
-                            traces.append(f"{int_fe_id} -> {int_be_id}")
-        elif in_table:
-            in_table = False
-            header_cells = []
-            int_fe_col_idx = -1
-            contract_col_idx = -1
-
-    return traces
-
-
-def build_rtm(all_ids, all_traces, all_api_consumption):
+def build_rtm(all_ids):
     """Build the Requirements Traceability Matrix (Appendix A)."""
     lines = [
         "# Appendix A: Requirements Traceability Matrix",
         "",
         f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "",
-        "## A.1 Frontend Requirements -> Business Requirements",
-        "",
-        "| Requirement ID | Traces To (BR) | Status |",
+        "| ID | Type | Status |",
         "|---|---|---|",
     ]
 
-    for trace in all_traces:
-        lines.append(f"| {trace.replace(' -> ', ' | ')} | Traced |")
+    for id_str in all_ids:
+        if id_str.startswith("TC-FE-"):
+            id_type = "Frontend Test Case"
+        elif id_str.startswith("SR-FE-"):
+            id_type = "Frontend Functional Requirement"
+        elif id_str.startswith("BR-"):
+            id_type = "Business Requirement"
+        else:
+            id_type = "Unknown"
+        lines.append(f"| {id_str} | {id_type} | Traced |")
 
-    lines.extend([
-        "",
-        "## A.2 Frontend Interactions -> Backend API Contracts",
-        "",
-        "| INT-FE ID | Consumes (INT-BE) | Status |",
-        "|---|---|---|",
-    ])
-
-    for trace in all_api_consumption:
-        lines.append(f"| {trace.replace(' -> ', ' | ')} | Traced |")
-
-    lines.extend(["", f"**Total FE IDs:** {len(all_ids)} | **BR traces:** {len(all_traces)} | **API consumptions:** {len(all_api_consumption)}", ""])
+    lines.extend(["", f"**Total IDs:** {len(all_ids)}", ""])
     return "\n".join(lines)
 
 
@@ -323,22 +217,22 @@ def build_revision_log():
 """
 
 
-def build_main_srs(sections_content, all_ids, all_sources, output_name):
-    """Build the main SRS-FE document."""
-    srs_id = output_name.replace(".md", "")
+def build_main_tc(sections_content, all_ids, all_sources, output_name):
+    """Build the main Test Case document."""
+    tc_id = output_name.replace(".md", "")
     now = datetime.now().strftime("%Y-%m-%d")
 
     lines = [
         "---",
-        f"id: {srs_id}",
-        "title: Software Requirements Specification — Frontend",
+        f"id: {tc_id}",
+        "title: Frontend Test Case Document",
         "version: v1.0.0",
         "status: SIGNED_OFF",
         f"created: {now}",
         f"approved: {now}",
         "---",
         "",
-        "# Software Requirements Specification — Frontend",
+        "# Frontend Test Case Document",
         "",
     ]
 
@@ -376,7 +270,7 @@ def put_markdown(minio_client, bucket, key, content):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Merge approved SRS-FE sections into a final document"
+        description="Merge approved Frontend Test Case sections into a final document"
     )
     parser.add_argument("--project-id", required=True, help="Project ID (MinIO bucket)")
     parser.add_argument("--doc-id", required=True, help="Document ID in Postgres")
@@ -405,8 +299,8 @@ def main():
     )
     parser.add_argument(
         "--output-name",
-        default="SRS-FE-001.md",
-        help="Name of the merged SRS-FE file (used for frontmatter id)",
+        default="TC-FE-001.md",
+        help="Name of the merged TC file (used for frontmatter id)",
     )
 
     args = parser.parse_args()
@@ -435,8 +329,6 @@ def main():
     sections_content = []
     all_ids = set()
     all_sources = set()
-    all_traces = set()
-    all_api_consumption = set()
 
     for step in steps:
         minio_path = step.get("minio_path")
@@ -448,18 +340,16 @@ def main():
             sections_content.append(content)
             all_ids.update(extract_ids(content))
             all_sources.update(extract_sources(content))
-            all_traces.update(extract_traces_to(content))
-            all_api_consumption.update(extract_api_consumption(content))
 
     if not sections_content:
         print("Error: No section content could be loaded", file=sys.stderr)
         sys.exit(1)
 
     now_date = datetime.now().strftime("%Y-%m-%d")
-    main_content = build_main_srs(
+    main_content = build_main_tc(
         sections_content, sorted(all_ids), sorted(all_sources), args.output_name
     )
-    rtm_content = build_rtm(sorted(all_ids), sorted(all_traces), sorted(all_api_consumption))
+    rtm_content = build_rtm(sorted(all_ids))
     approval_content = build_approval_record(steps, args.merged_by, now_date)
     history_content = build_change_history()
     revision_content = build_revision_log()
@@ -469,19 +359,19 @@ def main():
     print(f"Written: {args.project_id}/{main_path}")
 
     appendices = [
-        ("srs-fe/appendices/A-rtm.md", rtm_content),
-        ("srs-fe/appendices/B-approval.md", approval_content),
-        ("srs-fe/appendices/C-history.md", history_content),
-        ("srs-fe/appendices/D-revisions.md", revision_content),
+        ("tc-fe/appendices/A-rtm.md", rtm_content),
+        ("tc-fe/appendices/B-approval.md", approval_content),
+        ("tc-fe/appendices/C-history.md", history_content),
+        ("tc-fe/appendices/D-revisions.md", revision_content),
     ]
 
     for path, content in appendices:
         put_markdown(minio_client, args.project_id, path, content)
         print(f"Written: {args.project_id}/{path}")
 
-    print("\n✅ SRS-FE merged successfully!")
+    print("\n✅ Test Case document merged successfully!")
     print(f"   Main document: {args.project_id}/{main_path}")
-    print(f"   Appendices: 4 files in {args.project_id}/srs-fe/appendices/")
+    print(f"   Appendices: 4 files in {args.project_id}/tc-fe/appendices/")
     print(f"   Total IDs: {len(all_ids)}")
     print(f"   Total sources: {len(all_sources)}")
 

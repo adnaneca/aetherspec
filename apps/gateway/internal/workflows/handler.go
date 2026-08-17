@@ -406,6 +406,45 @@ func (h *Handler) StartAgentWorkflow(c *fiber.Ctx) error {
 		}
 	}
 
+	// Inject approved upstream BRS and SRS-FE sections when starting a TC-FE workflow.
+	// TC-FE has DUAL upstream: BRS (for BR-xxx traceability) + SRS-FE (for SR-FE-xxx requirements).
+	// Uses the same upstream_brs + upstream_srs format as TC-BE, but upstream_srs refers to SRS-FE sections.
+	if req.DocType == "tc-fe" {
+		srsIDs, brsIDs, _, err := h.resolveUpstreamForPrefix(c.Context(), "tc-fe/", req.StepID)
+		if err != nil {
+			h.log.Warn("Failed to resolve upstream BRS/SRS-FE IDs for TC-FE", zap.Error(err), zap.String("project", req.ProjectID))
+		}
+		var upstreamSections []string
+		if len(brsIDs) > 0 {
+			brsSections, err := h.fetchUpstreamBRS(c.Context(), req.ProjectID, brsIDs)
+			if err != nil {
+				h.log.Warn("Failed to load upstream BRS sections for TC-FE", zap.Error(err), zap.String("project", req.ProjectID))
+			} else {
+				upstreamSections = append(upstreamSections, brsSections...)
+			}
+		}
+		if len(srsIDs) > 0 {
+			// TC-FE upstream_srs refers to SRS-FE sections (docType "srs-fe"), not SRS-BE (docType "srs")
+			srsSections, err := h.fetchUpstreamSections(c.Context(), req.ProjectID, "srs-fe", srsIDs)
+			if err != nil {
+				h.log.Warn("Failed to load upstream SRS-FE sections for TC-FE", zap.Error(err), zap.String("project", req.ProjectID))
+			} else {
+				upstreamSections = append(upstreamSections, srsSections...)
+			}
+		}
+		if len(upstreamSections) > 0 {
+			forwardBody, err = injectUpstreamSections(forwardBody, upstreamSections)
+			if err != nil {
+				h.log.Error("Failed to inject upstream sections into TC-FE workflow", zap.Error(err))
+				return tmf.SendError(c, 500, "Failed to prepare agent request")
+			}
+			h.log.Info("Injected upstream BRS+SRS-FE sections into TC-FE workflow",
+				zap.String("project", req.ProjectID),
+				zap.Int("brsCount", len(brsIDs)),
+				zap.Int("srsFeCount", len(srsIDs)))
+		}
+	}
+
 	agentURL := fmt.Sprintf("http://%s/agents/%s/workflow/start", h.cfg.Agent.GRPCURL, req.AgentID)
 	return h.proxyAgentSSE(c, agentURL, forwardBody, workflowID)
 }

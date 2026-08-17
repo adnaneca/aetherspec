@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
 interface LayoutState {
   /** Serialized Dockview JSON. */
@@ -6,7 +6,10 @@ interface LayoutState {
   setSerialized: (s: string | null) => void;
   /** Open tab metadata. */
   tabs: Record<string, { fileId: string; cursor: number; scroll: number }>;
-  setTab: (id: string, meta: { fileId: string; cursor: number; scroll: number }) => void;
+  setTab: (
+    id: string,
+    meta: { fileId: string; cursor: number; scroll: number },
+  ) => void;
   removeTab: (id: string) => void;
 }
 

@@ -1,78 +1,104 @@
-import http from 'node:http';
-import { randomUUID } from 'node:crypto';
-import { config } from './config.js';
-import { logger } from './logger.js';
-import { buildMastra } from './mastra.js';
-import { fetchAdminConfig, getCachedAdminConfig } from './admin-config.js';
-import { runAgentStream, type ChatMessage, AGENT_INSTRUCTIONS, buildGenerationPrompt, selfValidate, stripValidationArtifacts } from './agent-runner.js';
-import { getAgentsForWorkflow, type BRSAgentId } from './agents.js';
-import { BRSWorkflow, SRDWorkflow, SRSFEWorkflow, TCWorkflow } from './workflow.js';
-import { createSSECallbacks } from './sse-emitter.js';
-import { getWorkflow } from './workflow-store.js';
-import { buildNegotiatorChatPrompt, parseNegotiatorChatResponse } from './negotiator-chat.js';
+import http from "node:http";
+import { randomUUID } from "node:crypto";
+import { config } from "./config.js";
+import { logger } from "./logger.js";
+import { buildMastra } from "./mastra.js";
+import { fetchAdminConfig, getCachedAdminConfig } from "./admin-config.js";
+import {
+  runAgentStream,
+  type ChatMessage,
+  AGENT_INSTRUCTIONS,
+  buildGenerationPrompt,
+  selfValidate,
+  stripValidationArtifacts,
+} from "./agent-runner.js";
+import { getAgentsForWorkflow, type BRSAgentId } from "./agents.js";
+import {
+  BRSWorkflow,
+  SRDWorkflow,
+  SRSFEWorkflow,
+  TCWorkflow,
+  TCFEWorkflow,
+} from "./workflow.js";
+import { createSSECallbacks } from "./sse-emitter.js";
+import { getWorkflow } from "./workflow-store.js";
+import {
+  buildNegotiatorChatPrompt,
+  parseNegotiatorChatResponse,
+} from "./negotiator-chat.js";
 
 buildMastra(); // Initialize Mastra (foundation stub)
 
-const activeWorkflows = new Map<string, BRSWorkflow | SRDWorkflow | SRSFEWorkflow | TCWorkflow>();
+const activeWorkflows = new Map<
+  string,
+  BRSWorkflow | SRDWorkflow | SRSFEWorkflow | TCWorkflow | TCFEWorkflow
+>();
 
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3000';
+const GATEWAY_URL = process.env.GATEWAY_URL || "http://localhost:3000";
 
 // Fetch admin config on startup, then register workflow agents
 let adminConfigReady = false;
 fetchAdminConfig(GATEWAY_URL)
   .then(() => {
     adminConfigReady = true;
-    const brsAgents = getAgentsForWorkflow('brs-orchestrator');
-    const srdAgents = getAgentsForWorkflow('srd-orchestrator');
-    const srsfeAgents = getAgentsForWorkflow('srs-fe-orchestrator');
-    const tcAgents = getAgentsForWorkflow('tc-orchestrator');
-    logger.info('admin config loaded — workflow agents registered', {
+    const brsAgents = getAgentsForWorkflow("brs-orchestrator");
+    const srdAgents = getAgentsForWorkflow("srd-orchestrator");
+    const srsfeAgents = getAgentsForWorkflow("srs-fe-orchestrator");
+    const tcfeAgents = getAgentsForWorkflow("tc-fe-orchestrator");
+    const tcAgents = getAgentsForWorkflow("tc-orchestrator");
+    logger.info("admin config loaded — workflow agents registered", {
       brsCount: Object.keys(brsAgents).length,
       srdCount: Object.keys(srdAgents).length,
       srsfeCount: Object.keys(srsfeAgents).length,
+      tcfeCount: Object.keys(tcfeAgents).length,
       tcCount: Object.keys(tcAgents).length,
     });
   })
   .catch((err) => {
-    logger.error('admin config fetch failed', err);
+    logger.error("admin config fetch failed", err);
   });
 
 const server = http.createServer(async (req, res) => {
-  const url = req.url ?? '/';
-  const method = req.method ?? 'GET';
+  const url = req.url ?? "/";
+  const method = req.method ?? "GET";
   logger.debug(`req ${method} ${url}`);
 
   // ── Health endpoints ──
 
-  if (url === '/healthz') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ status: 'alive', service: 'aetherspec-agent' }));
+  if (url === "/healthz") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: "alive", service: "aetherspec-agent" }));
     return;
   }
 
-  if (url === '/readyz') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({
-      status: 'ready',
-      checks: {
-        agent: 'ok',
-        mastra: 'loaded',
-        adminConfig: adminConfigReady ? 'loaded' : 'pending',
-      },
-    }));
+  if (url === "/readyz") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        status: "ready",
+        checks: {
+          agent: "ok",
+          mastra: "loaded",
+          adminConfig: adminConfigReady ? "loaded" : "pending",
+        },
+      }),
+    );
     return;
   }
 
-  if (url === '/config') {
+  if (url === "/config") {
     const cfg = getCachedAdminConfig();
     if (cfg) {
       const safeProviders = cfg.providers.map((p) => ({
         ...p,
-        apiKey: p.apiKey ? '***' : '',
+        apiKey: p.apiKey ? "***" : "",
       }));
       const safeAgents = cfg.agents
         ? Object.fromEntries(
-            Object.entries(cfg.agents).map(([id, a]) => [id, { ...a, apiKey: a.apiKey ? '***' : '' }])
+            Object.entries(cfg.agents).map(([id, a]) => [
+              id,
+              { ...a, apiKey: a.apiKey ? "***" : "" },
+            ]),
           )
         : undefined;
       const safe = {
@@ -80,67 +106,81 @@ const server = http.createServer(async (req, res) => {
         providers: safeProviders,
         agents: safeAgents,
       };
-      res.writeHead(200, { 'content-type': 'application/json' });
+      res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(safe));
     } else {
-      res.writeHead(503, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'config not loaded yet' }));
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "config not loaded yet" }));
     }
     return;
   }
 
-  if (url === '/agents' && method === 'GET') {
-    const brsAgents = getAgentsForWorkflow('brs-orchestrator');
-    const srdAgents = getAgentsForWorkflow('srd-orchestrator');
-    const srsfeAgents = getAgentsForWorkflow('srs-fe-orchestrator');
-    const tcAgents = getAgentsForWorkflow('tc-orchestrator');
-    const allAgents = { ...brsAgents, ...srdAgents, ...srsfeAgents, ...tcAgents };
+  if (url === "/agents" && method === "GET") {
+    const brsAgents = getAgentsForWorkflow("brs-orchestrator");
+    const srdAgents = getAgentsForWorkflow("srd-orchestrator");
+    const srsfeAgents = getAgentsForWorkflow("srs-fe-orchestrator");
+    const tcfeAgents = getAgentsForWorkflow("tc-fe-orchestrator");
+    const tcAgents = getAgentsForWorkflow("tc-orchestrator");
+    const allAgents = {
+      ...brsAgents,
+      ...srdAgents,
+      ...srsfeAgents,
+      ...tcfeAgents,
+      ...tcAgents,
+    };
     const entries = Object.entries(allAgents).map(([id, agent]) => ({
       id,
       name: agent.name,
     }));
-    res.writeHead(200, { 'content-type': 'application/json' });
+    res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ agents: entries }));
     return;
   }
 
-  if (url === '/') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({
-      name: 'aetherspec-agent',
-      version: '0.4.0',
-      status: 'foundation',
-      adminConfigReady,
-    }));
+  if (url === "/") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        name: "aetherspec-agent",
+        version: "0.4.0",
+        status: "foundation",
+        adminConfigReady,
+      }),
+    );
     return;
   }
 
   // ── Workflow state endpoint ──
   // GET /workflow/:id
   const workflowStateMatch = url.match(/^\/workflow\/([^\/]+)$/);
-  if (workflowStateMatch && method === 'GET') {
+  if (workflowStateMatch && method === "GET") {
     const workflowId = workflowStateMatch[1];
     try {
       const row = await getWorkflow(workflowId);
       if (!row) {
-        res.writeHead(404, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: 'workflow not found' }));
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "workflow not found" }));
         return;
       }
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({
-        id: row.id,
-        projectId: row.projectId,
-        docId: row.docId,
-        stepId: row.stepId,
-        agentId: row.agentId,
-        status: row.status,
-        state: row.state,
-      }));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: row.id,
+          projectId: row.projectId,
+          docId: row.docId,
+          stepId: row.stepId,
+          agentId: row.agentId,
+          status: row.status,
+          state: row.state,
+        }),
+      );
     } catch (err) {
-      logger.error('failed to fetch workflow state', { workflowId, error: (err as Error).message });
-      res.writeHead(500, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'failed to fetch workflow state' }));
+      logger.error("failed to fetch workflow state", {
+        workflowId,
+        error: (err as Error).message,
+      });
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "failed to fetch workflow state" }));
     }
     return;
   }
@@ -148,10 +188,10 @@ const server = http.createServer(async (req, res) => {
   // ── Workflow start endpoint ──
   // POST /agents/:agentId/workflow/start
   const startMatch = url.match(/^\/agents\/([^\/]+)\/workflow\/start$/);
-  if (startMatch && method === 'POST') {
+  if (startMatch && method === "POST") {
     const orchestratorId = startMatch[1];
 
-    let body = '';
+    let body = "";
     for await (const chunk of req) {
       body += chunk;
     }
@@ -160,37 +200,68 @@ const server = http.createServer(async (req, res) => {
     try {
       parsed = JSON.parse(body);
     } catch {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid JSON body" }));
       return;
     }
 
     const workflowId = randomUUID();
 
     res.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache',
-      'connection': 'keep-alive',
-      'access-control-allow-origin': '*',
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+      "access-control-allow-origin": "*",
     });
 
     // Emit workflow ID as the first event so the client can resume.
-    res.write(`data: ${JSON.stringify({ type: 'workflow', workflowId, status: 'started' })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "workflow", workflowId, status: "started" })}\n\n`,
+    );
 
     const agents = getAgentsForWorkflow(orchestratorId);
     let expectedIds: string[];
-    if (orchestratorId.startsWith('srs-fe-')) {
-      expectedIds = ['srs-fe-orchestrator', 'srs-fe-writer', 'srs-fe-negotiator', 'srs-fe-validator'];
-    } else if (orchestratorId.startsWith('srd-')) {
-      expectedIds = ['srd-orchestrator', 'srd-writer', 'srd-negotiator', 'srd-validator'];
-    } else if (orchestratorId.startsWith('tc-')) {
-      expectedIds = ['tc-orchestrator', 'tc-writer', 'tc-negotiator', 'tc-validator'];
+    if (orchestratorId.startsWith("srs-fe-")) {
+      expectedIds = [
+        "srs-fe-orchestrator",
+        "srs-fe-writer",
+        "srs-fe-negotiator",
+        "srs-fe-validator",
+      ];
+    } else if (orchestratorId.startsWith("tc-fe-")) {
+      expectedIds = [
+        "tc-fe-orchestrator",
+        "tc-fe-writer",
+        "tc-fe-negotiator",
+        "tc-fe-validator",
+      ];
+    } else if (orchestratorId.startsWith("srd-")) {
+      expectedIds = [
+        "srd-orchestrator",
+        "srd-writer",
+        "srd-negotiator",
+        "srd-validator",
+      ];
+    } else if (orchestratorId.startsWith("tc-")) {
+      expectedIds = [
+        "tc-orchestrator",
+        "tc-writer",
+        "tc-negotiator",
+        "tc-validator",
+      ];
     } else {
-      expectedIds = ['brs-orchestrator', 'brs-writer', 'brs-negotiator', 'brs-validator'];
+      expectedIds = [
+        "brs-orchestrator",
+        "brs-writer",
+        "brs-negotiator",
+        "brs-validator",
+      ];
     }
     const missing = expectedIds.filter((id) => !agents[id]);
     if (missing.length > 0) {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: `Workflow agents not available: ${missing.join(', ')}. Check admin config.` })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "error", error: `Workflow agents not available: ${missing.join(", ")}. Check admin config.` })}\n\n`,
+      );
       res.end();
       return;
     }
@@ -198,11 +269,11 @@ const server = http.createServer(async (req, res) => {
     const callbacks = createSSECallbacks(res);
     const context = {
       workflowId,
-      projectId: parsed.projectId || 'unknown',
-      docId: parsed.docId || 'unknown',
+      projectId: parsed.projectId || "unknown",
+      docId: parsed.docId || "unknown",
       stepId: Number(parsed.stepId) || 0,
-      sectionName: parsed.sectionName || '',
-      sectionGuide: parsed.sectionGuide || '',
+      sectionName: parsed.sectionName || "",
+      sectionGuide: parsed.sectionGuide || "",
       dependencySections: parsed.dependencySections || [],
       upstreamSections: parsed.upstreamSections || [],
       inputDocuments: parsed.inputDocuments || [],
@@ -210,36 +281,48 @@ const server = http.createServer(async (req, res) => {
       project: parsed.project,
     };
 
-    let workflow: BRSWorkflow | SRDWorkflow | SRSFEWorkflow | TCWorkflow;
-    if (orchestratorId.startsWith('srs-fe-')) {
+    let workflow:
+      BRSWorkflow | SRDWorkflow | SRSFEWorkflow | TCWorkflow | TCFEWorkflow;
+    if (orchestratorId.startsWith("srs-fe-")) {
       workflow = new SRSFEWorkflow(
         {
-          orchestrator: agents['srs-fe-orchestrator']!,
-          writer: agents['srs-fe-writer']!,
-          negotiator: agents['srs-fe-negotiator']!,
-          validator: agents['srs-fe-validator']!,
+          orchestrator: agents["srs-fe-orchestrator"]!,
+          writer: agents["srs-fe-writer"]!,
+          negotiator: agents["srs-fe-negotiator"]!,
+          validator: agents["srs-fe-validator"]!,
         },
         context,
         callbacks,
       );
-    } else if (orchestratorId.startsWith('srd-')) {
+    } else if (orchestratorId.startsWith("tc-fe-")) {
+      workflow = new TCFEWorkflow(
+        {
+          orchestrator: agents["tc-fe-orchestrator"]!,
+          writer: agents["tc-fe-writer"]!,
+          negotiator: agents["tc-fe-negotiator"]!,
+          validator: agents["tc-fe-validator"]!,
+        },
+        context,
+        callbacks,
+      );
+    } else if (orchestratorId.startsWith("srd-")) {
       workflow = new SRDWorkflow(
         {
-          orchestrator: agents['srd-orchestrator']!,
-          writer: agents['srd-writer']!,
-          negotiator: agents['srd-negotiator']!,
-          validator: agents['srd-validator']!,
+          orchestrator: agents["srd-orchestrator"]!,
+          writer: agents["srd-writer"]!,
+          negotiator: agents["srd-negotiator"]!,
+          validator: agents["srd-validator"]!,
         },
         context,
         callbacks,
       );
-    } else if (orchestratorId.startsWith('tc-')) {
+    } else if (orchestratorId.startsWith("tc-")) {
       workflow = new TCWorkflow(
         {
-          orchestrator: agents['tc-orchestrator']!,
-          writer: agents['tc-writer']!,
-          negotiator: agents['tc-negotiator']!,
-          validator: agents['tc-validator']!,
+          orchestrator: agents["tc-orchestrator"]!,
+          writer: agents["tc-writer"]!,
+          negotiator: agents["tc-negotiator"]!,
+          validator: agents["tc-validator"]!,
         },
         context,
         callbacks,
@@ -247,10 +330,10 @@ const server = http.createServer(async (req, res) => {
     } else {
       workflow = new BRSWorkflow(
         {
-          orchestrator: agents['brs-orchestrator']!,
-          writer: agents['brs-writer']!,
-          negotiator: agents['brs-negotiator']!,
-          validator: agents['brs-validator']!,
+          orchestrator: agents["brs-orchestrator"]!,
+          writer: agents["brs-writer"]!,
+          negotiator: agents["brs-negotiator"]!,
+          validator: agents["brs-validator"]!,
         },
         context,
         callbacks,
@@ -264,11 +347,13 @@ const server = http.createServer(async (req, res) => {
 
   // ── Workflow resume endpoint ──
   // POST /agents/:agentId/workflow/:workflowId/resume
-  const resumeMatch = url.match(/^\/agents\/([^\/]+)\/workflow\/([^\/]+)\/resume$/);
-  if (resumeMatch && method === 'POST') {
+  const resumeMatch = url.match(
+    /^\/agents\/([^\/]+)\/workflow\/([^\/]+)\/resume$/,
+  );
+  if (resumeMatch && method === "POST") {
     const workflowId = resumeMatch[2];
 
-    let body = '';
+    let body = "";
     for await (const chunk of req) {
       body += chunk;
     }
@@ -277,21 +362,23 @@ const server = http.createServer(async (req, res) => {
     try {
       parsed = JSON.parse(body);
     } catch {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid JSON body" }));
       return;
     }
 
     res.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache',
-      'connection': 'keep-alive',
-      'access-control-allow-origin': '*',
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+      "access-control-allow-origin": "*",
     });
 
     const workflow = activeWorkflows.get(workflowId);
     if (!workflow) {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: 'Workflow not found' })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "error", error: "Workflow not found" })}\n\n`,
+      );
       res.end();
       return;
     }
@@ -299,18 +386,21 @@ const server = http.createServer(async (req, res) => {
     const callbacks = createSSECallbacks(res);
     workflow.setCallbacks(callbacks);
     // Ensure userResponse is always passed as an object property as expected by the workflow.
-    const userResponse = parsed.userResponse !== undefined ? parsed.userResponse : parsed;
+    const userResponse =
+      parsed.userResponse !== undefined ? parsed.userResponse : parsed;
     await workflow.resume(userResponse);
     return;
   }
 
   // ── Negotiator chat side-channel (WP-08) ──
   // POST /agents/:agentId/workflow/:workflowId/negotiator-chat
-  const negotiatorChatMatch = url.match(/^\/agents\/([^\/]+)\/workflow\/([^\/]+)\/negotiator-chat$/);
-  if (negotiatorChatMatch && method === 'POST') {
+  const negotiatorChatMatch = url.match(
+    /^\/agents\/([^\/]+)\/workflow\/([^\/]+)\/negotiator-chat$/,
+  );
+  if (negotiatorChatMatch && method === "POST") {
     const workflowId = negotiatorChatMatch[2];
 
-    let body = '';
+    let body = "";
     for await (const chunk of req) {
       body += chunk;
     }
@@ -319,16 +409,16 @@ const server = http.createServer(async (req, res) => {
     try {
       parsed = JSON.parse(body);
     } catch {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid JSON body" }));
       return;
     }
 
     res.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache',
-      'connection': 'keep-alive',
-      'access-control-allow-origin': '*',
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+      "access-control-allow-origin": "*",
     });
 
     const workflow = activeWorkflows.get(workflowId);
@@ -337,19 +427,23 @@ const server = http.createServer(async (req, res) => {
     const project = context?.project ?? {};
 
     let workflowAgentId: string;
-    if (workflow instanceof TCWorkflow) {
-      workflowAgentId = 'tc-negotiator';
+    if (workflow instanceof TCFEWorkflow) {
+      workflowAgentId = "tc-fe-negotiator";
+    } else if (workflow instanceof TCWorkflow) {
+      workflowAgentId = "tc-negotiator";
     } else if (workflow instanceof SRSFEWorkflow) {
-      workflowAgentId = 'srs-fe-negotiator';
+      workflowAgentId = "srs-fe-negotiator";
     } else if (workflow instanceof SRDWorkflow) {
-      workflowAgentId = 'srd-negotiator';
+      workflowAgentId = "srd-negotiator";
     } else {
-      workflowAgentId = 'brs-negotiator';
+      workflowAgentId = "brs-negotiator";
     }
     const agents = getAgentsForWorkflow(workflowAgentId);
     const negotiator = agents[workflowAgentId];
     if (!negotiator) {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: 'Negotiator agent not available' })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "error", error: "Negotiator agent not available" })}\n\n`,
+      );
       res.end();
       return;
     }
@@ -364,7 +458,7 @@ const server = http.createServer(async (req, res) => {
       project,
     });
 
-    let fullResponse = '';
+    let fullResponse = "";
     try {
       await runAgentStream(
         { agentId: workflowAgentId, message: prompt, history: [] },
@@ -374,23 +468,27 @@ const server = http.createServer(async (req, res) => {
           },
           onDone: () => {
             const parsedResponse = parseNegotiatorChatResponse(fullResponse);
-            res.write(`data: ${JSON.stringify({
-              type: 'negotiator_chat_response',
-              questionId: parsed.questionId,
-              response: parsedResponse.response,
-              updatedSuggestion: parsedResponse.updatedSuggestion,
-              shouldUpdateSuggestion: parsedResponse.shouldUpdateSuggestion,
-            })}\n\n`);
+            res.write(
+              `data: ${JSON.stringify({
+                type: "negotiator_chat_response",
+                questionId: parsed.questionId,
+                response: parsedResponse.response,
+                updatedSuggestion: parsedResponse.updatedSuggestion,
+                shouldUpdateSuggestion: parsedResponse.shouldUpdateSuggestion,
+              })}\n\n`,
+            );
             res.end();
           },
           onError: (error) => {
-            res.write(`data: ${JSON.stringify({ type: 'error', error })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: "error", error })}\n\n`);
             res.end();
           },
         },
       );
     } catch (err) {
-      res.write(`data: ${JSON.stringify({ type: 'error', error: (err as Error).message })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "error", error: (err as Error).message })}\n\n`,
+      );
       res.end();
     }
     return;
@@ -402,11 +500,11 @@ const server = http.createServer(async (req, res) => {
   // Response: SSE stream (text/event-stream)
 
   const streamMatch = url.match(/^\/agents\/([^\/]+)\/stream$/);
-  if (streamMatch && method === 'POST') {
+  if (streamMatch && method === "POST") {
     const agentId = streamMatch[1] as BRSAgentId | (string & {});
 
     // Read request body
-    let body = '';
+    let body = "";
     for await (const chunk of req) {
       body += chunk;
     }
@@ -415,23 +513,23 @@ const server = http.createServer(async (req, res) => {
     try {
       parsed = JSON.parse(body);
     } catch {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid JSON body" }));
       return;
     }
 
     if (!parsed.message) {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'message is required' }));
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "message is required" }));
       return;
     }
 
     // Set SSE headers
     res.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache',
-      'connection': 'keep-alive',
-      'access-control-allow-origin': '*',
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+      "access-control-allow-origin": "*",
     });
 
     // Run the agent stream
@@ -439,14 +537,16 @@ const server = http.createServer(async (req, res) => {
       { message: parsed.message, agentId, history: parsed.history },
       {
         onToken: (delta) => {
-          res.write(`data: ${JSON.stringify({ type: 'token', delta })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: "token", delta })}\n\n`);
         },
         onDone: (tokensUsed) => {
-          res.write(`data: ${JSON.stringify({ type: 'done', tokensUsed })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ type: "done", tokensUsed })}\n\n`,
+          );
           res.end();
         },
         onError: (error) => {
-          res.write(`data: ${JSON.stringify({ type: 'error', error })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: "error", error })}\n\n`);
           res.end();
         },
       },
@@ -460,10 +560,10 @@ const server = http.createServer(async (req, res) => {
   // Response: SSE stream (status → tokens → findings → done)
 
   const generateMatch = url.match(/^\/agents\/([^\/]+)\/generate$/);
-  if (generateMatch && method === 'POST') {
+  if (generateMatch && method === "POST") {
     const agentId = generateMatch[1];
 
-    let body = '';
+    let body = "";
     for await (const chunk of req) {
       body += chunk;
     }
@@ -472,44 +572,61 @@ const server = http.createServer(async (req, res) => {
     try {
       parsed = JSON.parse(body);
     } catch {
-      res.writeHead(400, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid JSON body" }));
       return;
     }
 
     res.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache',
-      'connection': 'keep-alive',
-      'access-control-allow-origin': '*',
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      connection: "keep-alive",
+      "access-control-allow-origin": "*",
     });
 
-    res.write(`data: ${JSON.stringify({ type: 'status', step: 'generating', message: `Generating Section ${parsed.sectionId}: ${parsed.sectionName}...` })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "status", step: "generating", message: `Generating Section ${parsed.sectionId}: ${parsed.sectionName}...` })}\n\n`,
+    );
 
-    const systemPrompt = AGENT_INSTRUCTIONS[agentId] || AGENT_INSTRUCTIONS['general'];
+    const systemPrompt =
+      AGENT_INSTRUCTIONS[agentId] || AGENT_INSTRUCTIONS["general"];
     const userPrompt = buildGenerationPrompt(parsed);
 
-    let generatedContent = '';
+    let generatedContent = "";
 
     await runAgentStream(
-      { message: userPrompt, agentId, history: [{ role: 'system', content: systemPrompt }] },
+      {
+        message: userPrompt,
+        agentId,
+        history: [{ role: "system", content: systemPrompt }],
+      },
       {
         onToken: (delta) => {
           generatedContent += delta;
-          res.write(`data: ${JSON.stringify({ type: 'token', delta })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: "token", delta })}\n\n`);
         },
         onDone: (tokensUsed) => {
-          res.write(`data: ${JSON.stringify({ type: 'status', step: 'validating', message: 'Running quality checks...' })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ type: "status", step: "validating", message: "Running quality checks..." })}\n\n`,
+          );
 
           const cleanContent = stripValidationArtifacts(generatedContent);
-          const findings = selfValidate(parsed.sectionId, parsed.sectionName, cleanContent);
-          res.write(`data: ${JSON.stringify({ type: 'findings', findings })}\n\n`);
+          const findings = selfValidate(
+            parsed.sectionId,
+            parsed.sectionName,
+            cleanContent,
+          );
+          res.write(
+            `data: ${JSON.stringify({ type: "findings", findings })}\n\n`,
+          );
 
-          res.write(`data: ${JSON.stringify({ type: 'done', tokensUsed })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ type: "done", tokensUsed })}\n\n`,
+          );
           res.end();
         },
         onError: (error) => {
-          res.write(`data: ${JSON.stringify({ type: 'error', error })}\\n\\n`);
+          res.write(`data: ${JSON.stringify({ type: "error", error })}\\n\\n`);
           res.end();
         },
       },
@@ -519,10 +636,12 @@ const server = http.createServer(async (req, res) => {
 
   // ── 404 ──
 
-  res.writeHead(404, { 'content-type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not found' }));
+  res.writeHead(404, { "content-type": "application/json" });
+  res.end(JSON.stringify({ error: "not found" }));
 });
 
 server.listen(config.agent.port, () => {
-  logger.info(`agent sidecar listening on :${config.agent.port}`, { env: config.agent.env });
+  logger.info(`agent sidecar listening on :${config.agent.port}`, {
+    env: config.agent.env,
+  });
 });

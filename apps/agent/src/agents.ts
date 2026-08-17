@@ -1,71 +1,93 @@
-import { Agent } from '@mastra/core/agent';
-import { getCachedAdminConfig, type AdminSettings, type AgentConfig } from './admin-config.js';
-import { logger } from './logger.js';
-import { BRS_AGENT_INSTRUCTIONS, SRD_AGENT_INSTRUCTIONS, SRS_FE_AGENT_INSTRUCTIONS, TC_AGENT_INSTRUCTIONS } from './instructions.js';
+import { Agent } from "@mastra/core/agent";
+import {
+  getCachedAdminConfig,
+  type AdminSettings,
+  type AgentConfig,
+} from "./admin-config.js";
+import { logger } from "./logger.js";
+import {
+  BRS_AGENT_INSTRUCTIONS,
+  SRD_AGENT_INSTRUCTIONS,
+  SRS_FE_AGENT_INSTRUCTIONS,
+  TC_AGENT_INSTRUCTIONS,
+  TC_FE_AGENT_INSTRUCTIONS,
+} from "./instructions.js";
 
 /** Agent IDs that participate in the interactive BRS workflow. */
 export const BRS_AGENT_IDS = [
-  'brs-orchestrator',
-  'brs-writer',
-  'brs-negotiator',
-  'brs-validator',
+  "brs-orchestrator",
+  "brs-writer",
+  "brs-negotiator",
+  "brs-validator",
 ] as const;
 export type BRSAgentId = (typeof BRS_AGENT_IDS)[number];
 
 /** Agent IDs that participate in the interactive SRD workflow. */
 export const SRD_AGENT_IDS = [
-  'srd-orchestrator',
-  'srd-writer',
-  'srd-negotiator',
-  'srd-validator',
+  "srd-orchestrator",
+  "srd-writer",
+  "srd-negotiator",
+  "srd-validator",
 ] as const;
 export type SRDAgentId = (typeof SRD_AGENT_IDS)[number];
 
 /** Agent IDs that participate in the interactive TC workflow. */
 export const TC_AGENT_IDS = [
-  'tc-orchestrator',
-  'tc-writer',
-  'tc-negotiator',
-  'tc-validator',
+  "tc-orchestrator",
+  "tc-writer",
+  "tc-negotiator",
+  "tc-validator",
 ] as const;
 export type TCAgentId = (typeof TC_AGENT_IDS)[number];
 
 /** Agent IDs that participate in the interactive SRS-FE workflow. */
 export const SRS_FE_AGENT_IDS = [
-  'srs-fe-orchestrator',
-  'srs-fe-writer',
-  'srs-fe-negotiator',
-  'srs-fe-validator',
+  "srs-fe-orchestrator",
+  "srs-fe-writer",
+  "srs-fe-negotiator",
+  "srs-fe-validator",
 ] as const;
 export type SRSFEAgentId = (typeof SRS_FE_AGENT_IDS)[number];
 
-const DEFAULT_FALLBACK_MODEL = 'ollama/glm-5.2';
+/** Agent IDs that participate in the interactive TC-FE workflow. */
+export const TC_FE_AGENT_IDS = [
+  "tc-fe-orchestrator",
+  "tc-fe-writer",
+  "tc-fe-negotiator",
+  "tc-fe-validator",
+] as const;
+export type TCFEAgentId = (typeof TC_FE_AGENT_IDS)[number];
+
+const DEFAULT_FALLBACK_MODEL = "ollama/glm-5.2";
 
 function stripProviderPrefix(model: string): string {
-  const slashIndex = model.indexOf('/');
+  const slashIndex = model.indexOf("/");
   return slashIndex >= 0 ? model.substring(slashIndex + 1) : model;
 }
 
 function toOpenAICompatibleUrl(baseUrl?: string): string {
-  if (!baseUrl || baseUrl === 'https://ollama.com') {
-    return 'https://ollama.com/v1';
+  if (!baseUrl || baseUrl === "https://ollama.com") {
+    return "https://ollama.com/v1";
   }
-  const normalized = baseUrl.replace(/\/+$/, '');
-  if (normalized.endsWith('/v1')) {
+  const normalized = baseUrl.replace(/\/+$/, "");
+  if (normalized.endsWith("/v1")) {
     return normalized;
   }
   return `${normalized}/v1`;
 }
 
 function resolveProvider(config: AdminSettings) {
-  const ollama = config.providers.find((p) => p.id === 'ollama' && p.enabled);
+  const ollama = config.providers.find((p) => p.id === "ollama" && p.enabled);
   return {
     baseUrl: ollama?.baseUrl,
     apiKey: ollama?.apiKey,
   };
 }
 
-function resolveAgentConfig(agentId: BRSAgentId | SRDAgentId | TCAgentId | SRSFEAgentId, config: AdminSettings): AgentConfig {
+function resolveAgentConfig(
+  agentId: BRSAgentId | SRDAgentId | TCAgentId | SRSFEAgentId | TCFEAgentId,
+  config: AdminSettings,
+): AgentConfig {
   const agentOverride = config.agents?.[agentId];
   const provider = resolveProvider(config);
   const defaultModel = config.agentModels?.[agentId] || DEFAULT_FALLBACK_MODEL;
@@ -95,12 +117,20 @@ function clearAgentCacheForId(agentId: string) {
   }
 }
 
-type AnyWorkflowAgentId = BRSAgentId | SRDAgentId | TCAgentId | SRSFEAgentId;
+type AnyWorkflowAgentId =
+  BRSAgentId | SRDAgentId | TCAgentId | SRSFEAgentId | TCFEAgentId;
 
-function createAgent(agentId: AnyWorkflowAgentId, config: AdminSettings): Agent | null {
+function createAgent(
+  agentId: AnyWorkflowAgentId,
+  config: AdminSettings,
+): Agent | null {
   const { baseURL, apiKey, model } = resolveAgentConfig(agentId, config);
   if (!baseURL || !apiKey) {
-    logger.error('missing baseURL or apiKey for workflow agent', { agentId, hasBaseURL: !!baseURL, hasApiKey: !!apiKey });
+    logger.error("missing baseURL or apiKey for workflow agent", {
+      agentId,
+      hasBaseURL: !!baseURL,
+      hasApiKey: !!apiKey,
+    });
     return null;
   }
 
@@ -110,7 +140,7 @@ function createAgent(agentId: AnyWorkflowAgentId, config: AdminSettings): Agent 
 
   const cached = agentCache.get(cacheKey);
   if (cached) {
-    logger.debug('using cached workflow agent', { agentId, modelId, cacheKey });
+    logger.debug("using cached workflow agent", { agentId, modelId, cacheKey });
     return cached;
   }
 
@@ -120,20 +150,26 @@ function createAgent(agentId: AnyWorkflowAgentId, config: AdminSettings): Agent 
     BRS_AGENT_INSTRUCTIONS[agentId as BRSAgentId] ??
     SRD_AGENT_INSTRUCTIONS[agentId as SRDAgentId] ??
     TC_AGENT_INSTRUCTIONS[agentId as TCAgentId] ??
-    SRS_FE_AGENT_INSTRUCTIONS[agentId as SRSFEAgentId];
+    SRS_FE_AGENT_INSTRUCTIONS[agentId as SRSFEAgentId] ??
+    TC_FE_AGENT_INSTRUCTIONS[agentId as TCFEAgentId];
   if (!instructions) {
-    logger.error('no instructions for workflow agent', { agentId });
+    logger.error("no instructions for workflow agent", { agentId });
     return null;
   }
 
-  logger.info('creating new workflow agent', { agentId, modelId, url: url.replace(/\/v1$/, ''), cacheKey });
+  logger.info("creating new workflow agent", {
+    agentId,
+    modelId,
+    url: url.replace(/\/v1$/, ""),
+    cacheKey,
+  });
 
   const agent = new Agent({
     id: agentId,
     name: agentId,
     instructions,
     model: {
-      providerId: 'openai-compatible',
+      providerId: "openai-compatible",
       modelId,
       url,
       apiKey,
@@ -152,7 +188,9 @@ function createAgent(agentId: AnyWorkflowAgentId, config: AdminSettings): Agent 
 export function getOrCreateBRSAgent(agentId: BRSAgentId): Agent | null {
   const config = getCachedAdminConfig();
   if (!config) {
-    logger.error('admin config not loaded; cannot create BRS agent', { agentId });
+    logger.error("admin config not loaded; cannot create BRS agent", {
+      agentId,
+    });
     return null;
   }
   return createAgent(agentId, config);
@@ -164,7 +202,9 @@ export function getOrCreateBRSAgent(agentId: BRSAgentId): Agent | null {
 export function getOrCreateSRDAgent(agentId: SRDAgentId): Agent | null {
   const config = getCachedAdminConfig();
   if (!config) {
-    logger.error('admin config not loaded; cannot create SRD agent', { agentId });
+    logger.error("admin config not loaded; cannot create SRD agent", {
+      agentId,
+    });
     return null;
   }
   return createAgent(agentId, config);
@@ -190,7 +230,9 @@ export function getBRSAgents(): Record<string, Agent> {
 export function getOrCreateTCAgent(agentId: TCAgentId): Agent | null {
   const config = getCachedAdminConfig();
   if (!config) {
-    logger.error('admin config not loaded; cannot create TC agent', { agentId });
+    logger.error("admin config not loaded; cannot create TC agent", {
+      agentId,
+    });
     return null;
   }
   return createAgent(agentId, config);
@@ -202,7 +244,23 @@ export function getOrCreateTCAgent(agentId: TCAgentId): Agent | null {
 export function getOrCreateSRSFEAgent(agentId: SRSFEAgentId): Agent | null {
   const config = getCachedAdminConfig();
   if (!config) {
-    logger.error('admin config not loaded; cannot create SRS-FE agent', { agentId });
+    logger.error("admin config not loaded; cannot create SRS-FE agent", {
+      agentId,
+    });
+    return null;
+  }
+  return createAgent(agentId, config);
+}
+
+/**
+ * Creates or returns a cached Mastra Agent for the interactive TC-FE workflow.
+ */
+export function getOrCreateTCFEAgent(agentId: TCFEAgentId): Agent | null {
+  const config = getCachedAdminConfig();
+  if (!config) {
+    logger.error("admin config not loaded; cannot create TC-FE agent", {
+      agentId,
+    });
     return null;
   }
   return createAgent(agentId, config);
@@ -251,16 +309,35 @@ export function getSRSFEAgents(): Record<string, Agent> {
 }
 
 /**
+ * Returns all configured TC-FE agents, skipping any that cannot be created.
+ */
+export function getTCFEAgents(): Record<string, Agent> {
+  const agents: Record<string, Agent> = {};
+  for (const id of TC_FE_AGENT_IDS) {
+    const agent = getOrCreateTCFEAgent(id);
+    if (agent) {
+      agents[id] = agent;
+    }
+  }
+  return agents;
+}
+
+/**
  * Returns the agent set for a workflow based on the orchestrator agent ID.
  */
-export function getAgentsForWorkflow(orchestratorId: string): Record<string, Agent> {
-  if (orchestratorId.startsWith('srs-fe-')) {
+export function getAgentsForWorkflow(
+  orchestratorId: string,
+): Record<string, Agent> {
+  if (orchestratorId.startsWith("srs-fe-")) {
     return getSRSFEAgents();
   }
-  if (orchestratorId.startsWith('srd-')) {
+  if (orchestratorId.startsWith("tc-fe-")) {
+    return getTCFEAgents();
+  }
+  if (orchestratorId.startsWith("srd-")) {
     return getSRDAgents();
   }
-  if (orchestratorId.startsWith('tc-')) {
+  if (orchestratorId.startsWith("tc-")) {
     return getTCAgents();
   }
   return getBRSAgents();
@@ -270,14 +347,17 @@ export function getAgentsForWorkflow(orchestratorId: string): Record<string, Age
  * Returns the orchestrator agent ID for a document type.
  */
 export function getOrchestratorForDocType(docType: string): string {
-  if (docType === 'srs-fe') {
-    return 'srs-fe-orchestrator';
+  if (docType === "srs-fe") {
+    return "srs-fe-orchestrator";
   }
-  if (docType === 'srs' || docType === 'srs-be') {
-    return 'srd-orchestrator';
+  if (docType === "tc-fe") {
+    return "tc-fe-orchestrator";
   }
-  if (docType === 'testcase') {
-    return 'tc-orchestrator';
+  if (docType === "srs" || docType === "srs-be") {
+    return "srd-orchestrator";
   }
-  return 'brs-orchestrator';
+  if (docType === "testcase") {
+    return "tc-orchestrator";
+  }
+  return "brs-orchestrator";
 }

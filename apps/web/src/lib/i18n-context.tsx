@@ -1,12 +1,12 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
-type Language = 'en' | 'tr';
+type Language = "en" | "tr";
 
 interface I18nContextValue {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: ReturnType<typeof useTranslation>['t'];
+  t: ReturnType<typeof useTranslation>["t"];
 }
 
 const I18nContext = createContext<I18nContextValue | undefined>(undefined);
@@ -18,7 +18,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const setLanguage = (lang: Language) => {
     i18n.changeLanguage(lang);
-    localStorage.setItem('aetherspec.language', lang);
+    localStorage.setItem("aetherspec.language", lang);
     document.documentElement.lang = lang;
   };
 
@@ -35,6 +35,6 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 export function useI18n() {
   const ctx = useContext(I18nContext);
-  if (!ctx) throw new Error('useI18n must be used within I18nProvider');
+  if (!ctx) throw new Error("useI18n must be used within I18nProvider");
   return ctx;
 }

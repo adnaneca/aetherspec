@@ -1,5 +1,5 @@
-import { Link } from '@tanstack/react-router';
-import { ShieldX } from 'lucide-react';
+import { Link } from "@tanstack/react-router";
+import { ShieldX } from "lucide-react";
 
 export function UnauthorizedPage() {
   return (

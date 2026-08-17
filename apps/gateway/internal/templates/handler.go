@@ -36,6 +36,8 @@ func docTypePrefix(docType string) string {
 		return "srs-fe/"
 	case "testcase":
 		return "testcase/"
+	case "tc-fe":
+		return "tc-fe/"
 	case "brs":
 		return ""
 	default:
@@ -202,6 +204,8 @@ func (h *Handler) getTemplate(c *fiber.Ctx) error {
 		templateName = "srs-fe.md"
 	case "testcase/":
 		templateName = "testcase.md"
+	case "tc-fe/":
+		templateName = "tc-fe.md"
 	}
 
 	obj, err := h.minioClient.GetObject(ctx, bucket, prefix+templateName, minio.GetObjectOptions{})

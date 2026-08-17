@@ -149,6 +149,19 @@ func (h *Handler) mergeDocument(c *fiber.Ctx) error {
 			"testcase/appendices/C-history.md",
 			"testcase/appendices/D-revisions.md",
 		}
+	case "tc-fe":
+		scriptPath = strings.Replace(scriptPath, "merge_brs.py", "merge_tc_fe.py", 1)
+		if scriptPath == h.cfg.Merge.ScriptPath {
+			scriptPath = "/opt/aetherspec-v2/scripts/merge_tc_fe.py"
+		}
+		outputName = "TC-FE-001.md"
+		mainPath = "output/TC-FE-001.md"
+		appendixKeys = []string{
+			"tc-fe/appendices/A-rtm.md",
+			"tc-fe/appendices/B-approval.md",
+			"tc-fe/appendices/C-history.md",
+			"tc-fe/appendices/D-revisions.md",
+		}
 	}
 
 	args := strings.Fields(scriptPath)

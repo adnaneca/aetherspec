@@ -1,14 +1,14 @@
-import { useState, useEffect } from 'react';
-import { useKeycloak } from '../lib/keycloak';
-import { Header } from './Header';
-import { UserSettings } from './UserSettings';
+import { useState, useEffect } from "react";
+import { useKeycloak } from "../lib/keycloak";
+import { Header } from "./Header";
+import { UserSettings } from "./UserSettings";
 import {
   resolvePersonasFromKeycloak,
   getStoredPersonaRole,
   setStoredPersonaRole,
-} from '../lib/persona-resolver';
-import { INITIAL_PERSONAS, MOCK_PROJECTS } from '../data/mockData';
-import type { Persona, PersonaRole } from '../types';
+} from "../lib/persona-resolver";
+import { INITIAL_PERSONAS, MOCK_PROJECTS } from "../data/mockData";
+import type { Persona, PersonaRole } from "../types";
 
 export function UserSettingsPage() {
   const { user } = useKeycloak();
@@ -17,15 +17,17 @@ export function UserSettingsPage() {
     ? resolvePersonasFromKeycloak(user.roles, user.username)
     : [INITIAL_PERSONAS[0]];
 
-  const [activePersonaRole, setActivePersonaRole] = useState<PersonaRole>(() => {
-    const stored = getStoredPersonaRole();
-    if (stored && availablePersonas.some((p) => p.id === stored)) {
-      return stored;
-    }
-    return availablePersonas[0]?.id ?? INITIAL_PERSONAS[0].id;
-  });
+  const [activePersonaRole, setActivePersonaRole] = useState<PersonaRole>(
+    () => {
+      const stored = getStoredPersonaRole();
+      if (stored && availablePersonas.some((p) => p.id === stored)) {
+        return stored;
+      }
+      return availablePersonas[0]?.id ?? INITIAL_PERSONAS[0].id;
+    },
+  );
 
-  const [activeProjectId, setActiveProjectId] = useState('prj-001');
+  const [activeProjectId, setActiveProjectId] = useState("prj-001");
 
   useEffect(() => {
     const stored = getStoredPersonaRole();

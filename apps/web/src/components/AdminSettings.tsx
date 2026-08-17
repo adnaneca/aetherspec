@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from '@tanstack/react-router';
-import type { AdminSettingsConfig, AdminProvider } from '../types';
+import { useState, useEffect } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import type { AdminSettingsConfig, AdminProvider } from "../types";
 import {
   getAdminConfig,
   saveAdminConfig,
   getOllamaModels,
   testProvider,
   type TestProviderResult,
-} from '../lib/api';
+} from "../lib/api";
 import {
   ShieldAlert,
   Bot,
@@ -20,95 +20,139 @@ import {
   Wrench,
   ArrowLeft,
   RefreshCw,
-} from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+} from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const FALLBACK_OLLAMA_MODELS = [
-  'glm-5.2',
-  'gemma4:31b',
-  'deepseek-v4-flash:0731',
-  'gpt-oss:20b',
+  "glm-5.2",
+  "gemma4:31b",
+  "deepseek-v4-flash:0731",
+  "gpt-oss:20b",
 ];
 
-const CLOUD_PROVIDER_CATALOG: Record<Exclude<AdminProvider['id'], 'ollama'>, { name: string; models: string[] }> = {
+const CLOUD_PROVIDER_CATALOG: Record<
+  Exclude<AdminProvider["id"], "ollama">,
+  { name: string; models: string[] }
+> = {
   openai: {
-    name: 'OpenAI',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-mini'],
+    name: "OpenAI",
+    models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o1-mini"],
   },
   anthropic: {
-    name: 'Anthropic',
-    models: ['claude-3-5-sonnet', 'claude-3-opus', 'claude-3-5-haiku'],
+    name: "Anthropic",
+    models: ["claude-3-5-sonnet", "claude-3-opus", "claude-3-5-haiku"],
   },
   gemini: {
-    name: 'Google Gemini',
-    models: ['gemini-1.5-pro', 'gemini-1.5-flash'],
+    name: "Google Gemini",
+    models: ["gemini-1.5-pro", "gemini-1.5-flash"],
   },
   deepseek: {
-    name: 'DeepSeek',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
+    name: "DeepSeek",
+    models: ["deepseek-chat", "deepseek-reasoner"],
   },
 };
 
 const AGENTS = [
   {
-    id: 'brs-agent',
-    name: 'brs-agent',
-    description: 'Generates Business Requirement Specs',
+    id: "brs-agent",
+    name: "brs-agent",
+    description: "Generates Business Requirement Specs",
     icon: Bot,
   },
   {
-    id: 'srd-agent',
-    name: 'srd-agent',
-    description: 'Generates SRS/SDD & Implementation Backlog',
+    id: "srd-agent",
+    name: "srd-agent",
+    description: "Generates SRS/SDD & Implementation Backlog",
     icon: Bot,
   },
   {
-    id: 'testcase-agent',
-    name: 'testcase-agent',
-    description: 'Generates Test Cases & Traceability',
+    id: "testcase-agent",
+    name: "testcase-agent",
+    description: "Generates Test Cases & Traceability",
     icon: Bot,
   },
 ];
 
 const BRS_WORKFLOW_AGENTS = [
-  { id: 'brs-orchestrator', name: 'BRS Orchestrator', description: 'Coordinates the interactive BRS workflow', icon: Bot },
-  { id: 'brs-writer', name: 'BRS Writer', description: 'Generates section content', icon: Bot },
-  { id: 'brs-negotiator', name: 'BRS Negotiator', description: 'Proposes answers and fixes', icon: Bot },
-  { id: 'brs-validator', name: 'BRS Validator', description: 'Independent quality checker', icon: Bot },
+  {
+    id: "brs-orchestrator",
+    name: "BRS Orchestrator",
+    description: "Coordinates the interactive BRS workflow",
+    icon: Bot,
+  },
+  {
+    id: "brs-writer",
+    name: "BRS Writer",
+    description: "Generates section content",
+    icon: Bot,
+  },
+  {
+    id: "brs-negotiator",
+    name: "BRS Negotiator",
+    description: "Proposes answers and fixes",
+    icon: Bot,
+  },
+  {
+    id: "brs-validator",
+    name: "BRS Validator",
+    description: "Independent quality checker",
+    icon: Bot,
+  },
 ];
 
 const DEFAULT_PROVIDERS: AdminProvider[] = [
-  { id: 'ollama', name: 'Ollama Cloud', enabled: true, apiKey: '', baseUrl: 'https://ollama.com' },
-  { id: 'openai', name: 'OpenAI', enabled: false, apiKey: '' },
-  { id: 'anthropic', name: 'Anthropic', enabled: false, apiKey: '' },
-  { id: 'gemini', name: 'Google Gemini', enabled: false, apiKey: '' },
-  { id: 'deepseek', name: 'DeepSeek', enabled: false, apiKey: '' },
+  {
+    id: "ollama",
+    name: "Ollama Cloud",
+    enabled: true,
+    apiKey: "",
+    baseUrl: "https://ollama.com",
+  },
+  { id: "openai", name: "OpenAI", enabled: false, apiKey: "" },
+  { id: "anthropic", name: "Anthropic", enabled: false, apiKey: "" },
+  { id: "gemini", name: "Google Gemini", enabled: false, apiKey: "" },
+  { id: "deepseek", name: "DeepSeek", enabled: false, apiKey: "" },
 ];
 
-const DEFAULT_BRS_AGENTS: Record<string, { model: string; apiKey: string; baseURL: string }> = {
-  'brs-orchestrator': { model: 'qwen3.5:7b', apiKey: '', baseURL: 'https://ollama.com' },
-  'brs-writer': { model: 'glm-5.2', apiKey: '', baseURL: 'https://ollama.com' },
-  'brs-negotiator': { model: 'nemotron3:ultra', apiKey: '', baseURL: 'https://ollama.com' },
-  'brs-validator': { model: 'deepseek-v4:pro', apiKey: '', baseURL: 'https://ollama.com' },
+const DEFAULT_BRS_AGENTS: Record<
+  string,
+  { model: string; apiKey: string; baseURL: string }
+> = {
+  "brs-orchestrator": {
+    model: "qwen3.5:7b",
+    apiKey: "",
+    baseURL: "https://ollama.com",
+  },
+  "brs-writer": { model: "glm-5.2", apiKey: "", baseURL: "https://ollama.com" },
+  "brs-negotiator": {
+    model: "nemotron3:ultra",
+    apiKey: "",
+    baseURL: "https://ollama.com",
+  },
+  "brs-validator": {
+    model: "deepseek-v4:pro",
+    apiKey: "",
+    baseURL: "https://ollama.com",
+  },
 };
 
 const DEFAULT_CONFIG: AdminSettingsConfig = {
   providers: DEFAULT_PROVIDERS,
   agentModels: {
-    'brs-agent': 'ollama/llama3.1:70b',
-    'srd-agent': 'ollama/llama3.1:70b',
-    'testcase-agent': 'ollama/llama3.1:70b',
+    "brs-agent": "ollama/llama3.1:70b",
+    "srd-agent": "ollama/llama3.1:70b",
+    "testcase-agent": "ollama/llama3.1:70b",
   },
   agents: DEFAULT_BRS_AGENTS,
-  executionPolicy: 'request-review',
-  fileAccessPolicy: 'workspace-only',
-  internetAccessPolicy: 'allow',
+  executionPolicy: "request-review",
+  fileAccessPolicy: "workspace-only",
+  internetAccessPolicy: "allow",
   activeSkills: [
-    'generate-brs-section',
-    'validate-brs-section',
-    'generate-srs-section',
-    'validate-srs-section',
-    'generate-testcase-section',
+    "generate-brs-section",
+    "validate-brs-section",
+    "generate-srs-section",
+    "validate-srs-section",
+    "generate-testcase-section",
   ],
 };
 
@@ -119,7 +163,7 @@ function normalizeConfig(raw: unknown): AdminSettingsConfig {
   const cfg = raw as Partial<AdminSettingsConfig> | Record<string, unknown>;
   const next: AdminSettingsConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
-  if (cfg && typeof cfg === 'object') {
+  if (cfg && typeof cfg === "object") {
     // Providers
     const rawProviders = cfg.providers;
     if (Array.isArray(rawProviders)) {
@@ -131,7 +175,7 @@ function normalizeConfig(raw: unknown): AdminSettingsConfig {
         id: def.id,
         name: def.name,
       }));
-    } else if (rawProviders && typeof rawProviders === 'object') {
+    } else if (rawProviders && typeof rawProviders === "object") {
       // legacy shape: { ollamaEndpoint, ollamaApiKey, openaiKey, ... }
       const legacy = rawProviders as Record<string, string>;
       next.providers = DEFAULT_PROVIDERS.map((def) => {
@@ -144,33 +188,41 @@ function normalizeConfig(raw: unknown): AdminSettingsConfig {
         };
         return {
           ...def,
-          enabled: !!keyMap[def.id] || def.id === 'ollama',
-          apiKey: keyMap[def.id] || '',
-          baseUrl: def.id === 'ollama' ? legacy.ollamaEndpoint || def.baseUrl : def.baseUrl,
+          enabled: !!keyMap[def.id] || def.id === "ollama",
+          apiKey: keyMap[def.id] || "",
+          baseUrl:
+            def.id === "ollama"
+              ? legacy.ollamaEndpoint || def.baseUrl
+              : def.baseUrl,
         };
       });
     }
 
     // Agent models
     const rawAgentModels = cfg.agentModels;
-    if (rawAgentModels && typeof rawAgentModels === 'object') {
-      Object.entries(rawAgentModels as Record<string, string>).forEach(([k, v]) => {
-        if (next.agentModels[k] !== undefined) {
-          next.agentModels[k] = v;
-        }
-      });
+    if (rawAgentModels && typeof rawAgentModels === "object") {
+      Object.entries(rawAgentModels as Record<string, string>).forEach(
+        ([k, v]) => {
+          if (next.agentModels[k] !== undefined) {
+            next.agentModels[k] = v;
+          }
+        },
+      );
     }
 
     // Per-agent LLM configs (WP-02)
     const rawAgents = (cfg as any).agents;
-    if (rawAgents && typeof rawAgents === 'object') {
-      const nextAgents: Record<string, { model: string; apiKey: string; baseURL: string }> = {};
+    if (rawAgents && typeof rawAgents === "object") {
+      const nextAgents: Record<
+        string,
+        { model: string; apiKey: string; baseURL: string }
+      > = {};
       Object.entries(rawAgents as Record<string, any>).forEach(([k, v]) => {
-        if (typeof v === 'object' && v.model) {
+        if (typeof v === "object" && v.model) {
           nextAgents[k] = {
             model: String(v.model),
-            apiKey: v.apiKey ? String(v.apiKey) : '',
-            baseURL: v.baseURL ? String(v.baseURL) : '',
+            apiKey: v.apiKey ? String(v.apiKey) : "",
+            baseURL: v.baseURL ? String(v.baseURL) : "",
           };
         }
       });
@@ -178,12 +230,19 @@ function normalizeConfig(raw: unknown): AdminSettingsConfig {
     }
 
     // Policies
-    if (cfg.executionPolicy) next.executionPolicy = cfg.executionPolicy as AdminSettingsConfig['executionPolicy'];
-    if (cfg.fileAccessPolicy) next.fileAccessPolicy = cfg.fileAccessPolicy as AdminSettingsConfig['fileAccessPolicy'];
-    if (cfg.internetAccessPolicy) next.internetAccessPolicy = cfg.internetAccessPolicy as AdminSettingsConfig['internetAccessPolicy'];
+    if (cfg.executionPolicy)
+      next.executionPolicy =
+        cfg.executionPolicy as AdminSettingsConfig["executionPolicy"];
+    if (cfg.fileAccessPolicy)
+      next.fileAccessPolicy =
+        cfg.fileAccessPolicy as AdminSettingsConfig["fileAccessPolicy"];
+    if (cfg.internetAccessPolicy)
+      next.internetAccessPolicy =
+        cfg.internetAccessPolicy as AdminSettingsConfig["internetAccessPolicy"];
 
     // Skills
-    if (Array.isArray(cfg.activeSkills)) next.activeSkills = cfg.activeSkills as string[];
+    if (Array.isArray(cfg.activeSkills))
+      next.activeSkills = cfg.activeSkills as string[];
   }
 
   return next;
@@ -192,14 +251,24 @@ function normalizeConfig(raw: unknown): AdminSettingsConfig {
 export function AdminSettings() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [adminConfig, setAdminConfig] = useState<AdminSettingsConfig | null>(null);
-  const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'workflowAgents' | 'policies' | 'mcp' | 'keycloak' | 'minio'>(
-    'providers'
+  const [adminConfig, setAdminConfig] = useState<AdminSettingsConfig | null>(
+    null,
   );
+  const [activeTab, setActiveTab] = useState<
+    | "providers"
+    | "models"
+    | "workflowAgents"
+    | "policies"
+    | "mcp"
+    | "keycloak"
+    | "minio"
+  >("providers");
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [ollamaModels, setOllamaModels] = useState<string[]>(FALLBACK_OLLAMA_MODELS);
+  const [ollamaModels, setOllamaModels] = useState<string[]>(
+    FALLBACK_OLLAMA_MODELS,
+  );
   const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
 
   useEffect(() => {
@@ -214,7 +283,9 @@ export function AdminSettings() {
       });
   }, []);
 
-  const [providerTestStatus, setProviderTestStatus] = useState<Record<string, TestProviderResult | null>>({});
+  const [providerTestStatus, setProviderTestStatus] = useState<
+    Record<string, TestProviderResult | null>
+  >({});
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
 
   const fetchOllamaModels = async () => {
@@ -226,14 +297,17 @@ export function AdminSettings() {
         setOllamaModels(names);
       }
     } catch (err) {
-      console.warn('[AdminSettings] failed to fetch Ollama models via gateway:', err);
+      console.warn(
+        "[AdminSettings] failed to fetch Ollama models via gateway:",
+        err,
+      );
     } finally {
       setOllamaModelsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'providers' || activeTab === 'models') {
+    if (activeTab === "providers" || activeTab === "models") {
       void fetchOllamaModels();
     }
   }, [activeTab]);
@@ -247,7 +321,7 @@ export function AdminSettings() {
     } catch (err) {
       setProviderTestStatus((prev) => ({
         ...prev,
-        [provider.id]: { status: 'failed', reason: (err as Error).message },
+        [provider.id]: { status: "failed", reason: (err as Error).message },
       }));
     } finally {
       setTestingProvider(null);
@@ -265,20 +339,28 @@ export function AdminSettings() {
     }
   };
 
-  const updateProvider = (id: AdminProvider['id'], patch: Partial<AdminProvider>) => {
+  const updateProvider = (
+    id: AdminProvider["id"],
+    patch: Partial<AdminProvider>,
+  ) => {
     if (!adminConfig) return;
     setAdminConfig({
       ...adminConfig,
-      providers: adminConfig.providers.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+      providers: adminConfig.providers.map((p) =>
+        p.id === id ? { ...p, ...patch } : p,
+      ),
     });
   };
 
-  const enabledProviders = adminConfig?.providers.filter((p) => p.enabled) ?? [];
+  const enabledProviders =
+    adminConfig?.providers.filter((p) => p.enabled) ?? [];
 
   if (loading) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+        <div className="text-muted-foreground text-sm">
+          {t("common.loading")}
+        </div>
       </div>
     );
   }
@@ -286,7 +368,9 @@ export function AdminSettings() {
   if (error) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <div className="text-destructive text-sm">{t('common.error')}: {error}</div>
+        <div className="text-destructive text-sm">
+          {t("common.error")}: {error}
+        </div>
       </div>
     );
   }
@@ -299,22 +383,24 @@ export function AdminSettings() {
       <div className="flex items-center justify-between p-6 rounded-xl border border-border bg-card">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => navigate({ to: '/' })}
+            onClick={() => navigate({ to: "/" })}
             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-xs font-mono"
             title="Return to ProjectHub"
           >
             <ArrowLeft className="size-4" />
-            {t('common.back')}
+            {t("common.back")}
           </button>
           <div className="h-6 w-px bg-border" />
           <div>
             <div className="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider text-primary">
               <ShieldAlert className="size-4" />
-              <span>{t('adminSettings.header')}</span>
+              <span>{t("adminSettings.header")}</span>
             </div>
-            <h1 className="text-xl font-bold text-foreground mt-1">{t('adminSettings.title')}</h1>
+            <h1 className="text-xl font-bold text-foreground mt-1">
+              {t("adminSettings.title")}
+            </h1>
             <p className="text-muted-foreground text-xs mt-1">
-              {t('adminSettings.subtitle')}
+              {t("adminSettings.subtitle")}
             </p>
           </div>
         </div>
@@ -324,64 +410,107 @@ export function AdminSettings() {
           className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs px-4 py-2 rounded-lg transition-all"
         >
           <CheckCircle2 className="size-4" />
-          {saved ? t('adminSettings.saved') : t('adminSettings.save')}
+          {saved ? t("adminSettings.saved") : t("adminSettings.save")}
         </button>
       </div>
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border pb-2 text-xs font-mono">
-        <TabButton active={activeTab === 'providers'} onClick={() => setActiveTab('providers')} icon={<Key className="size-4" />} label={t('adminSettings.models')} />
-        <TabButton active={activeTab === 'models'} onClick={() => setActiveTab('models')} icon={<Cpu className="size-4" />} label={t('adminSettings.routingMatrix')} />
-        <TabButton active={activeTab === 'workflowAgents'} onClick={() => setActiveTab('workflowAgents')} icon={<Bot className="size-4" />} label={t('adminSettings.brsAgents')} />
-        <TabButton active={activeTab === 'policies'} onClick={() => setActiveTab('policies')} icon={<Lock className="size-4" />} label={t('adminSettings.policies')} />
-        <TabButton active={activeTab === 'mcp'} onClick={() => setActiveTab('mcp')} icon={<Wrench className="size-4" />} label={t('adminSettings.skills')} />
-        <TabButton active={activeTab === 'keycloak'} onClick={() => setActiveTab('keycloak')} icon={<ShieldCheck className="size-4" />} label={t('adminSettings.keycloak')} />
-        <TabButton active={activeTab === 'minio'} onClick={() => setActiveTab('minio')} icon={<HardDrive className="size-4" />} label={t('adminSettings.minio')} />
+        <TabButton
+          active={activeTab === "providers"}
+          onClick={() => setActiveTab("providers")}
+          icon={<Key className="size-4" />}
+          label={t("adminSettings.models")}
+        />
+        <TabButton
+          active={activeTab === "models"}
+          onClick={() => setActiveTab("models")}
+          icon={<Cpu className="size-4" />}
+          label={t("adminSettings.routingMatrix")}
+        />
+        <TabButton
+          active={activeTab === "workflowAgents"}
+          onClick={() => setActiveTab("workflowAgents")}
+          icon={<Bot className="size-4" />}
+          label={t("adminSettings.brsAgents")}
+        />
+        <TabButton
+          active={activeTab === "policies"}
+          onClick={() => setActiveTab("policies")}
+          icon={<Lock className="size-4" />}
+          label={t("adminSettings.policies")}
+        />
+        <TabButton
+          active={activeTab === "mcp"}
+          onClick={() => setActiveTab("mcp")}
+          icon={<Wrench className="size-4" />}
+          label={t("adminSettings.skills")}
+        />
+        <TabButton
+          active={activeTab === "keycloak"}
+          onClick={() => setActiveTab("keycloak")}
+          icon={<ShieldCheck className="size-4" />}
+          label={t("adminSettings.keycloak")}
+        />
+        <TabButton
+          active={activeTab === "minio"}
+          onClick={() => setActiveTab("minio")}
+          icon={<HardDrive className="size-4" />}
+          label={t("adminSettings.minio")}
+        />
       </div>
 
       {/* Providers Tab */}
-      {activeTab === 'providers' && (
+      {activeTab === "providers" && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
             <Key className="size-4" />
-            <span>{t('adminSettings.apiKeys')}</span>
+            <span>{t("adminSettings.apiKeys")}</span>
           </div>
-          <p className="text-muted-foreground">
-            {t('adminSettings.subtitle')}
-          </p>
+          <p className="text-muted-foreground">{t("adminSettings.subtitle")}</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {adminConfig.providers.map((provider) => (
               <div
                 key={provider.id}
                 className={`p-4 rounded-lg border space-y-3 transition-colors ${
-                  provider.enabled ? 'border-primary/40 bg-primary/5' : 'border-border bg-background'
+                  provider.enabled
+                    ? "border-primary/40 bg-primary/5"
+                    : "border-border bg-background"
                 }`}
               >
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={provider.enabled}
-                    onChange={(e) => updateProvider(provider.id, { enabled: e.target.checked })}
+                    onChange={(e) =>
+                      updateProvider(provider.id, { enabled: e.target.checked })
+                    }
                     className="size-4 accent-primary rounded"
                   />
-                  <span className="font-semibold text-foreground">{provider.name}</span>
-                  {provider.id === 'ollama' && ollamaModelsLoading && (
-                    <span className="text-[10px] text-muted-foreground ml-auto">{t('common.loading')}</span>
+                  <span className="font-semibold text-foreground">
+                    {provider.name}
+                  </span>
+                  {provider.id === "ollama" && ollamaModelsLoading && (
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      {t("common.loading")}
+                    </span>
                   )}
                 </label>
 
-                {provider.id === 'ollama' && (
+                {provider.id === "ollama" && (
                   <ConfigInput
-                    label={t('adminSettings.ollamaEndpoint')}
+                    label={t("adminSettings.ollamaEndpoint")}
                     type="text"
-                    value={provider.baseUrl || ''}
-                    onChange={(v) => updateProvider(provider.id, { baseUrl: v })}
+                    value={provider.baseUrl || ""}
+                    onChange={(v) =>
+                      updateProvider(provider.id, { baseUrl: v })
+                    }
                   />
                 )}
 
                 <ConfigInput
-                  label={t('adminSettings.ollamaApiKey')}
+                  label={t("adminSettings.ollamaApiKey")}
                   type="password"
                   value={provider.apiKey}
                   onChange={(v) => updateProvider(provider.id, { apiKey: v })}
@@ -391,18 +520,25 @@ export function AdminSettings() {
                   <button
                     type="button"
                     onClick={() => handleTestProvider(provider)}
-                    disabled={testingProvider === provider.id || !provider.apiKey}
+                    disabled={
+                      testingProvider === provider.id || !provider.apiKey
+                    }
                     className="flex items-center gap-1.5 text-[10px] font-mono px-2.5 py-1.5 rounded border border-border bg-background hover:bg-accent disabled:opacity-50 transition-colors"
                   >
-                    <RefreshCw className={`size-3 ${testingProvider === provider.id ? 'animate-spin' : ''}`} />
-                    {testingProvider === provider.id ? t('common.loading') : 'Test'}
+                    <RefreshCw
+                      className={`size-3 ${testingProvider === provider.id ? "animate-spin" : ""}`}
+                    />
+                    {testingProvider === provider.id
+                      ? t("common.loading")
+                      : "Test"}
                   </button>
                   <ProviderStatus status={providerTestStatus[provider.id]} />
                 </div>
 
-                {provider.id === 'ollama' && (
+                {provider.id === "ollama" && (
                   <p className="text-[10px] text-muted-foreground">
-                    Model list pulled from ollama.com/api/tags ({ollamaModels.length} models available).
+                    Model list pulled from ollama.com/api/tags (
+                    {ollamaModels.length} models available).
                   </p>
                 )}
               </div>
@@ -412,51 +548,67 @@ export function AdminSettings() {
       )}
 
       {/* Models Tab */}
-      {activeTab === 'models' && (
+      {activeTab === "models" && (
         <div className="space-y-6 text-xs">
           <div className="p-5 rounded-xl border border-border bg-card space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-2">
               <div className="flex items-center gap-2 text-primary font-bold text-sm">
                 <Cpu className="size-4" />
-                <span>{t('adminSettings.routingMatrix')}</span>
+                <span>{t("adminSettings.routingMatrix")}</span>
               </div>
-              <span className="font-mono text-[10px] text-muted-foreground">{t('adminSettings.routingDesc')}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {t("adminSettings.routingDesc")}
+              </span>
             </div>
 
             {enabledProviders.length === 0 && (
               <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive">
-                No providers enabled. Go to the Provider Setup tab and tick at least one provider.
+                No providers enabled. Go to the Provider Setup tab and tick at
+                least one provider.
               </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {AGENTS.map((agent) => (
-                <div key={agent.id} className="p-3 bg-background rounded-lg border border-border space-y-2">
+                <div
+                  key={agent.id}
+                  className="p-3 bg-background rounded-lg border border-border space-y-2"
+                >
                   <div className="font-bold text-primary flex items-center gap-1.5">
                     <agent.icon className="size-3.5" /> {agent.name}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">{agent.description}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {agent.description}
+                  </div>
                   <select
-                    value={adminConfig.agentModels[agent.id] || ''}
+                    value={adminConfig.agentModels[agent.id] || ""}
                     onChange={(e) =>
                       setAdminConfig({
                         ...adminConfig,
-                        agentModels: { ...adminConfig.agentModels, [agent.id]: e.target.value },
+                        agentModels: {
+                          ...adminConfig.agentModels,
+                          [agent.id]: e.target.value,
+                        },
                       })
                     }
                     disabled={enabledProviders.length === 0}
                     className="w-full bg-card border border-border rounded p-1.5 text-foreground font-mono disabled:opacity-50"
                   >
-                    {enabledProviders.length === 0 && <option value="">— no provider enabled —</option>}
+                    {enabledProviders.length === 0 && (
+                      <option value="">— no provider enabled —</option>
+                    )}
                     {enabledProviders.map((provider) => {
                       const models =
-                        provider.id === 'ollama'
+                        provider.id === "ollama"
                           ? ollamaModels
                           : CLOUD_PROVIDER_CATALOG[provider.id].models;
                       return (
                         <optgroup key={provider.id} label={provider.name}>
                           {models.map((model) => (
-                            <option key={`${provider.id}/${model}`} value={`${provider.id}/${model}`}>
+                            <option
+                              key={`${provider.id}/${model}`}
+                              value={`${provider.id}/${model}`}
+                            >
                               {model}
                             </option>
                           ))}
@@ -472,34 +624,47 @@ export function AdminSettings() {
       )}
 
       {/* BRS Workflow Agents Tab */}
-      {activeTab === 'workflowAgents' && adminConfig.agents && (
+      {activeTab === "workflowAgents" && adminConfig.agents && (
         <div className="space-y-6 text-xs">
           <div className="p-5 rounded-xl border border-border bg-card space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-2">
               <div className="flex items-center gap-2 text-primary font-bold text-sm">
                 <Bot className="size-4" />
-                <span>{t('adminSettings.brsAgents')}</span>
+                <span>{t("adminSettings.brsAgents")}</span>
               </div>
-              <span className="font-mono text-[10px] text-muted-foreground">{t('adminSettings.brsAgentsDesc')}</span>
+              <span className="font-mono text-[10px] text-muted-foreground">
+                {t("adminSettings.brsAgentsDesc")}
+              </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {BRS_WORKFLOW_AGENTS.map((agent) => (
-                <div key={agent.id} className="p-3 bg-background rounded-lg border border-border space-y-2">
+                <div
+                  key={agent.id}
+                  className="p-3 bg-background rounded-lg border border-border space-y-2"
+                >
                   <div className="font-bold text-primary flex items-center gap-1.5">
                     <agent.icon className="size-3.5" /> {agent.name}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">{agent.description}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {agent.description}
+                  </div>
                   <ConfigInput
                     label="Base URL"
                     type="text"
-                    value={adminConfig.agents?.[agent.id]?.baseURL || ''}
+                    value={adminConfig.agents?.[agent.id]?.baseURL || ""}
                     onChange={(v) =>
                       setAdminConfig({
                         ...adminConfig,
                         agents: {
                           ...adminConfig.agents,
-                          [agent.id]: { ...(adminConfig.agents?.[agent.id] || { model: '', apiKey: '' }), baseURL: v },
+                          [agent.id]: {
+                            ...(adminConfig.agents?.[agent.id] || {
+                              model: "",
+                              apiKey: "",
+                            }),
+                            baseURL: v,
+                          },
                         },
                       })
                     }
@@ -507,13 +672,19 @@ export function AdminSettings() {
                   <ConfigInput
                     label="API Key"
                     type="password"
-                    value={adminConfig.agents?.[agent.id]?.apiKey || ''}
+                    value={adminConfig.agents?.[agent.id]?.apiKey || ""}
                     onChange={(v) =>
                       setAdminConfig({
                         ...adminConfig,
                         agents: {
                           ...adminConfig.agents,
-                          [agent.id]: { ...(adminConfig.agents?.[agent.id] || { model: '', baseURL: '' }), apiKey: v },
+                          [agent.id]: {
+                            ...(adminConfig.agents?.[agent.id] || {
+                              model: "",
+                              baseURL: "",
+                            }),
+                            apiKey: v,
+                          },
                         },
                       })
                     }
@@ -521,13 +692,19 @@ export function AdminSettings() {
                   <ConfigInput
                     label="Model"
                     type="text"
-                    value={adminConfig.agents?.[agent.id]?.model || ''}
+                    value={adminConfig.agents?.[agent.id]?.model || ""}
                     onChange={(v) =>
                       setAdminConfig({
                         ...adminConfig,
                         agents: {
                           ...adminConfig.agents,
-                          [agent.id]: { ...(adminConfig.agents?.[agent.id] || { apiKey: '', baseURL: '' }), model: v },
+                          [agent.id]: {
+                            ...(adminConfig.agents?.[agent.id] || {
+                              apiKey: "",
+                              baseURL: "",
+                            }),
+                            model: v,
+                          },
                         },
                       })
                     }
@@ -540,100 +717,158 @@ export function AdminSettings() {
       )}
 
       {/* Policies Tab */}
-      {activeTab === 'policies' && (
+      {activeTab === "policies" && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
             <Lock className="size-4" />
-            <span>{t('adminSettings.executionPolicy')}</span>
+            <span>{t("adminSettings.executionPolicy")}</span>
           </div>
 
           <div className="space-y-4">
             <PolicySelect
-              label={t('adminSettings.executionPolicy')}
+              label={t("adminSettings.executionPolicy")}
               value={adminConfig.executionPolicy}
               options={[
-                { value: 'request-review', label: t('adminSettings.executionReview') },
-                { value: 'strict-approvals', label: t('adminSettings.executionStrict') },
-                { value: 'always-proceed', label: t('adminSettings.executionAuto') },
+                {
+                  value: "request-review",
+                  label: t("adminSettings.executionReview"),
+                },
+                {
+                  value: "strict-approvals",
+                  label: t("adminSettings.executionStrict"),
+                },
+                {
+                  value: "always-proceed",
+                  label: t("adminSettings.executionAuto"),
+                },
               ]}
-              onChange={(v) => setAdminConfig({ ...adminConfig, executionPolicy: v as AdminSettingsConfig['executionPolicy'] })}
+              onChange={(v) =>
+                setAdminConfig({
+                  ...adminConfig,
+                  executionPolicy: v as AdminSettingsConfig["executionPolicy"],
+                })
+              }
             />
             <PolicySelect
-              label={t('adminSettings.fileAccess')}
+              label={t("adminSettings.fileAccess")}
               value={adminConfig.fileAccessPolicy}
               options={[
-                { value: 'workspace-only', label: t('adminSettings.fileWorkspace') },
-                { value: 'external-minio', label: t('adminSettings.fileMinio') },
-                { value: 'unrestricted', label: t('adminSettings.fileUnrestricted') },
+                {
+                  value: "workspace-only",
+                  label: t("adminSettings.fileWorkspace"),
+                },
+                {
+                  value: "external-minio",
+                  label: t("adminSettings.fileMinio"),
+                },
+                {
+                  value: "unrestricted",
+                  label: t("adminSettings.fileUnrestricted"),
+                },
               ]}
-              onChange={(v) => setAdminConfig({ ...adminConfig, fileAccessPolicy: v as AdminSettingsConfig['fileAccessPolicy'] })}
+              onChange={(v) =>
+                setAdminConfig({
+                  ...adminConfig,
+                  fileAccessPolicy:
+                    v as AdminSettingsConfig["fileAccessPolicy"],
+                })
+              }
             />
             <PolicySelect
-              label={t('adminSettings.internetPolicy')}
+              label={t("adminSettings.internetPolicy")}
               value={adminConfig.internetAccessPolicy}
               options={[
-                { value: 'allow', label: t('adminSettings.internetAllow') },
-                { value: 'ask', label: t('adminSettings.internetAsk') },
-                { value: 'deny', label: t('adminSettings.internetDeny') },
+                { value: "allow", label: t("adminSettings.internetAllow") },
+                { value: "ask", label: t("adminSettings.internetAsk") },
+                { value: "deny", label: t("adminSettings.internetDeny") },
               ]}
-              onChange={(v) => setAdminConfig({ ...adminConfig, internetAccessPolicy: v as AdminSettingsConfig['internetAccessPolicy'] })}
+              onChange={(v) =>
+                setAdminConfig({
+                  ...adminConfig,
+                  internetAccessPolicy:
+                    v as AdminSettingsConfig["internetAccessPolicy"],
+                })
+              }
             />
           </div>
         </div>
       )}
 
       {/* Skills Tab */}
-      {activeTab === 'mcp' && (
+      {activeTab === "mcp" && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center justify-between border-b border-border pb-2">
             <div className="flex items-center gap-2 text-primary font-bold text-sm">
               <Wrench className="size-4" />
-              <span>{t('adminSettings.activeSkills')}</span>
+              <span>{t("adminSettings.activeSkills")}</span>
             </div>
-            <span className="font-mono text-[10px] text-muted-foreground">{t('adminSettings.activeSkillsCount', { count: adminConfig.activeSkills.length })}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {t("adminSettings.activeSkillsCount", {
+                count: adminConfig.activeSkills.length,
+              })}
+            </span>
           </div>
 
           <div className="space-y-2">
             {adminConfig.activeSkills.map((skill) => (
-              <div key={skill} className="p-3 bg-background rounded-lg border border-border flex items-center justify-between font-mono">
+              <div
+                key={skill}
+                className="p-3 bg-background rounded-lg border border-border flex items-center justify-between font-mono"
+              >
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 text-status-approved" />
                   <span className="text-foreground font-semibold">{skill}</span>
                 </div>
-                <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded">{t('adminSettings.loaded')}</span>
+                <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded">
+                  {t("adminSettings.loaded")}
+                </span>
               </div>
             ))}
             {adminConfig.activeSkills.length === 0 && (
-              <div className="text-muted-foreground text-center py-4">{t('adminSettings.noSkills')}</div>
+              <div className="text-muted-foreground text-center py-4">
+                {t("adminSettings.noSkills")}
+              </div>
             )}
           </div>
         </div>
       )}
 
       {/* Keycloak Tab */}
-      {activeTab === 'keycloak' && (
+      {activeTab === "keycloak" && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
             <ShieldCheck className="size-4" />
-            <span>{t('adminSettings.keycloak')}</span>
+            <span>{t("adminSettings.keycloak")}</span>
           </div>
           <div className="space-y-2 font-mono">
-            <ReadOnlyRow label="Issuer URL" value={`${import.meta.env.VITE_KEYCLOAK_URL}/realms/${import.meta.env.VITE_KEYCLOAK_REALM}`} />
-            <ReadOnlyRow label="Client ID" value={import.meta.env.VITE_KEYCLOAK_CLIENT_ID as string} />
-            <ReadOnlyRow label="Realm" value={import.meta.env.VITE_KEYCLOAK_REALM as string} />
+            <ReadOnlyRow
+              label="Issuer URL"
+              value={`${import.meta.env.VITE_KEYCLOAK_URL}/realms/${import.meta.env.VITE_KEYCLOAK_REALM}`}
+            />
+            <ReadOnlyRow
+              label="Client ID"
+              value={import.meta.env.VITE_KEYCLOAK_CLIENT_ID as string}
+            />
+            <ReadOnlyRow
+              label="Realm"
+              value={import.meta.env.VITE_KEYCLOAK_REALM as string}
+            />
           </div>
         </div>
       )}
 
       {/* MinIO Tab */}
-      {activeTab === 'minio' && (
+      {activeTab === "minio" && (
         <div className="p-5 rounded-xl border border-border bg-card space-y-4 text-xs">
           <div className="flex items-center gap-2 text-primary font-bold text-sm border-b border-border pb-2">
             <HardDrive className="size-4" />
-            <span>{t('adminSettings.minio')}</span>
+            <span>{t("adminSettings.minio")}</span>
           </div>
           <div className="space-y-2 font-mono">
-            <ReadOnlyRow label="Endpoint" value="127.0.0.1:9000 (server-side)" />
+            <ReadOnlyRow
+              label="Endpoint"
+              value="127.0.0.1:9000 (server-side)"
+            />
             <ReadOnlyRow label="Bucket" value="aetherspec-artifacts" />
             <ReadOnlyRow label="KVKK PII Redaction" value="Enabled" />
           </div>
@@ -645,9 +880,13 @@ export function AdminSettings() {
 
 // ── Helper components ──
 
-function ProviderStatus({ status }: { status: TestProviderResult | null | undefined }) {
+function ProviderStatus({
+  status,
+}: {
+  status: TestProviderResult | null | undefined;
+}) {
   if (!status) return null;
-  if (status.status === 'connected') {
+  if (status.status === "connected") {
     return (
       <span className="text-[10px] font-mono text-status-approved flex items-center gap-1">
         <CheckCircle2 className="size-3" /> Connected
@@ -655,8 +894,11 @@ function ProviderStatus({ status }: { status: TestProviderResult | null | undefi
     );
   }
   return (
-    <span className="text-[10px] font-mono text-destructive" title={status.reason || ''}>
-      Failed{status.reason ? `: ${status.reason}` : ''}
+    <span
+      className="text-[10px] font-mono text-destructive"
+      title={status.reason || ""}
+    >
+      Failed{status.reason ? `: ${status.reason}` : ""}
     </span>
   );
 }
@@ -677,8 +919,8 @@ function TabButton({
       onClick={onClick}
       className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors ${
         active
-          ? 'bg-primary/20 border border-primary/40 text-primary font-bold'
-          : 'text-muted-foreground hover:bg-accent'
+          ? "bg-primary/20 border border-primary/40 text-primary font-bold"
+          : "text-muted-foreground hover:bg-accent"
       }`}
     >
       {icon}
@@ -700,7 +942,9 @@ function ConfigInput({
 }) {
   return (
     <div>
-      <label className="block text-foreground font-mono text-[11px] mb-1">{label}</label>
+      <label className="block text-foreground font-mono text-[11px] mb-1">
+        {label}
+      </label>
       <input
         type={type}
         value={value}
@@ -731,7 +975,9 @@ function PolicySelect({
         className="w-full bg-background border border-border rounded-lg p-2.5 text-foreground font-mono outline-none focus:border-ring"
       >
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
         ))}
       </select>
     </div>

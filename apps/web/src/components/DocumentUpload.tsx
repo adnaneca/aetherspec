@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Upload, FileText, Loader2, CheckCircle2 } from 'lucide-react';
+import { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { Upload, FileText, Loader2, CheckCircle2 } from "lucide-react";
 
 interface UploadedFile {
   name: string;
@@ -13,7 +13,8 @@ interface DocumentUploadProps {
   onUploaded?: (file: UploadedFile) => void;
 }
 
-const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'https://api.aetherspec.ai';
+const GATEWAY_URL =
+  import.meta.env.VITE_GATEWAY_API_URL || "https://api.aetherspec.ai";
 
 export function DocumentUpload({ projectId, onUploaded }: DocumentUploadProps) {
   const { t } = useTranslation();
@@ -30,12 +31,12 @@ export function DocumentUpload({ projectId, onUploaded }: DocumentUploadProps) {
     for (const file of Array.from(files)) {
       try {
         const formData = new FormData();
-        formData.append('file', file);
-        formData.append('projectId', projectId);
-        formData.append('folder', 'input');
+        formData.append("file", file);
+        formData.append("projectId", projectId);
+        formData.append("folder", "input");
 
         const resp = await fetch(`${GATEWAY_URL}/api/attachment`, {
-          method: 'POST',
+          method: "POST",
           body: formData,
         });
 
@@ -50,14 +51,18 @@ export function DocumentUpload({ projectId, onUploaded }: DocumentUploadProps) {
         setUploadedFiles((prev) => [...prev, uploaded]);
         onUploaded?.(uploaded);
         // Also refresh the attachments list in parent Studio
-        window.dispatchEvent(new CustomEvent('aetherspec:attachmentUploaded', { detail: uploaded }));
+        window.dispatchEvent(
+          new CustomEvent("aetherspec:attachmentUploaded", {
+            detail: uploaded,
+          }),
+        );
       } catch (err) {
         setError((err as Error).message);
       }
     }
 
     setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const formatSize = (bytes: number) => {
@@ -85,18 +90,20 @@ export function DocumentUpload({ projectId, onUploaded }: DocumentUploadProps) {
         {uploading ? (
           <>
             <Loader2 className="size-3.5 animate-spin" />
-            {t('studio.uploading')}
+            {t("studio.uploading")}
           </>
         ) : (
           <>
             <Upload className="size-3.5" />
-            {t('studio.uploadDocs')}
+            {t("studio.uploadDocs")}
           </>
         )}
       </button>
 
       {error && (
-        <div className="mt-2 text-[10px] text-destructive font-mono">{error}</div>
+        <div className="mt-2 text-[10px] text-destructive font-mono">
+          {error}
+        </div>
       )}
 
       {uploadedFiles.length > 0 && (
@@ -109,14 +116,16 @@ export function DocumentUpload({ projectId, onUploaded }: DocumentUploadProps) {
               <CheckCircle2 className="size-3 text-status-approved shrink-0" />
               <FileText className="size-3 text-muted-foreground shrink-0" />
               <span className="truncate text-foreground">{file.name}</span>
-              <span className="text-muted-foreground ml-auto shrink-0">{formatSize(file.size)}</span>
+              <span className="text-muted-foreground ml-auto shrink-0">
+                {formatSize(file.size)}
+              </span>
             </div>
           ))}
         </div>
       )}
 
       <p className="mt-2 text-center font-mono text-[10px] text-muted-foreground">
-        {t('studio.uploadsBucket', { bucket: projectId })}
+        {t("studio.uploadsBucket", { bucket: projectId })}
       </p>
     </div>
   );

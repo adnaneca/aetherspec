@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from '@tanstack/react-router';
-import { useKeycloak } from '../lib/keycloak';
-import { Header } from './Header';
-import { ProjectHub } from './ProjectHub';
+import { useState, useEffect } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useKeycloak } from "../lib/keycloak";
+import { Header } from "./Header";
+import { ProjectHub } from "./ProjectHub";
 import {
   resolvePersonasFromKeycloak,
   getStoredPersonaRole,
   setStoredPersonaRole,
-} from '../lib/persona-resolver';
-import { getProjects } from '../lib/api';
-import { getStoredProjectId, setStoredProjectId } from '../lib/project-storage';
-import { INITIAL_PERSONAS } from '../data/mockData';
-import type { Persona, PersonaRole, DocType, SDLCProject } from '../types';
+} from "../lib/persona-resolver";
+import { getProjects } from "../lib/api";
+import { getStoredProjectId, setStoredProjectId } from "../lib/project-storage";
+import { INITIAL_PERSONAS } from "../data/mockData";
+import type { Persona, PersonaRole, DocType, SDLCProject } from "../types";
 
 export function ProjectHubPage() {
   const navigate = useNavigate();
@@ -21,20 +21,22 @@ export function ProjectHubPage() {
     ? resolvePersonasFromKeycloak(user.roles, user.username)
     : [INITIAL_PERSONAS[0]];
 
-  const [activePersonaRole, setActivePersonaRole] = useState<PersonaRole>(() => {
-    const stored = getStoredPersonaRole();
-    if (stored && availablePersonas.some((p) => p.id === stored)) {
-      return stored;
-    }
-    return availablePersonas[0]?.id ?? INITIAL_PERSONAS[0].id;
-  });
+  const [activePersonaRole, setActivePersonaRole] = useState<PersonaRole>(
+    () => {
+      const stored = getStoredPersonaRole();
+      if (stored && availablePersonas.some((p) => p.id === stored)) {
+        return stored;
+      }
+      return availablePersonas[0]?.id ?? INITIAL_PERSONAS[0].id;
+    },
+  );
 
   const [projects, setProjects] = useState<SDLCProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [projectError, setProjectError] = useState<string | null>(null);
   const [activeProjectId, setActiveProjectIdState] = useState<string>(() => {
     const stored = getStoredProjectId();
-    return stored || '';
+    return stored || "";
   });
 
   const setActiveProjectId = (id: string) => {
@@ -87,11 +89,14 @@ export function ProjectHubPage() {
 
   const handleOpenStudio = (projectId: string, docType: DocType) => {
     setActiveProjectId(projectId);
-    void navigate({ to: '/studio', search: { project: projectId, doc: docType, step: 1 } });
+    void navigate({
+      to: "/studio",
+      search: { project: projectId, doc: docType, step: 1 },
+    });
   };
 
   const handleOpenSignOff = () => {
-    void navigate({ to: '/signoff' });
+    void navigate({ to: "/signoff" });
   };
 
   if (loadingProjects) {
@@ -105,7 +110,9 @@ export function ProjectHubPage() {
   if (projectError) {
     return (
       <div className="min-h-screen bg-background text-foreground font-sans flex items-center justify-center">
-        <div className="text-destructive text-sm">Failed to load projects: {projectError}</div>
+        <div className="text-destructive text-sm">
+          Failed to load projects: {projectError}
+        </div>
       </div>
     );
   }

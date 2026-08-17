@@ -1,14 +1,14 @@
-export type ThemeName = 'default' | 'tomorrow-night-blue' | 'bank' | 'rental';
+export type ThemeName = "default" | "tomorrow-night-blue" | "bank" | "rental";
 
 export type PersonaRole =
-  | 'ba_lead'
-  | 'business_analyst'
-  | 'solution_architect'
-  | 'tech_lead'
-  | 'qa_lead'
-  | 'scrum_master'
-  | 'marketing_manager'
-  | 'admin';
+  | "ba_lead"
+  | "business_analyst"
+  | "solution_architect"
+  | "tech_lead"
+  | "qa_lead"
+  | "scrum_master"
+  | "marketing_manager"
+  | "admin";
 
 export interface Persona {
   id: PersonaRole;
@@ -19,11 +19,12 @@ export interface Persona {
   department: string;
 }
 
-export type DocType = 'brs' | 'srs' | 'srs-fe' | 'testcase' | 'tc-fe';
-export type DocStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'AWAITING_SIGNATURE' | 'SIGNED_OFF';
+export type DocType = "brs" | "srs" | "srs-fe" | "testcase" | "tc-fe";
+export type DocStatus =
+  "NOT_STARTED" | "IN_PROGRESS" | "AWAITING_SIGNATURE" | "SIGNED_OFF";
 
 export interface AdminProvider {
-  id: 'ollama' | 'openai' | 'anthropic' | 'gemini' | 'deepseek';
+  id: "ollama" | "openai" | "anthropic" | "gemini" | "deepseek";
   name: string;
   enabled: boolean;
   apiKey: string;
@@ -46,13 +47,13 @@ export interface AdminSettingsConfig {
   providers: AdminProvider[];
   agentModels: Record<string, string>; // agentId -> "providerId/modelId"
   agents?: Record<string, AdminAgentConfig>; // per-agent LLM config (WP-02)
-  executionPolicy: 'always-proceed' | 'request-review' | 'strict-approvals';
-  fileAccessPolicy: 'workspace-only' | 'external-minio' | 'unrestricted';
-  internetAccessPolicy: 'allow' | 'ask' | 'deny';
+  executionPolicy: "always-proceed" | "request-review" | "strict-approvals";
+  fileAccessPolicy: "workspace-only" | "external-minio" | "unrestricted";
+  internetAccessPolicy: "allow" | "ask" | "deny";
   activeSkills: string[];
 }
 
-export type ProjectStatus = 'Active' | 'Review' | 'Completed';
+export type ProjectStatus = "Active" | "Review" | "Completed";
 
 export interface PipelinePhase {
   status: string;
@@ -70,9 +71,9 @@ export interface SDLCProject {
   pipeline: {
     brs: PipelinePhase;
     srs: PipelinePhase;
-    'srs-fe': PipelinePhase;
+    "srs-fe": PipelinePhase;
     testcase: PipelinePhase;
-    'tc-fe': PipelinePhase;
+    "tc-fe": PipelinePhase;
   };
   href?: string;
   revision?: number;
@@ -115,11 +116,11 @@ export interface DocumentStep {
 }
 
 export interface UserSettingsConfig {
-  theme: 'dark' | 'light' | 'system';
-  language: 'en' | 'tr';
-  canvasWidth: 'default' | 'wide' | 'full';
-  density: 'compact' | 'comfortable';
-  artifactReviewMode: 'agent-decides' | 'always-ask' | 'auto-proceed';
+  theme: "dark" | "light" | "system";
+  language: "en" | "tr";
+  canvasWidth: "default" | "wide" | "full";
+  density: "compact" | "comfortable";
+  artifactReviewMode: "agent-decides" | "always-ask" | "auto-proceed";
   visualDiffs: boolean;
   strictGherkin: boolean;
   emailNotifications: boolean;

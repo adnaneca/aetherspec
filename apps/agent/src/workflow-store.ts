@@ -1,6 +1,6 @@
-import { Pool } from 'pg';
-import { config } from './config.js';
-import { logger } from './logger.js';
+import { Pool } from "pg";
+import { config } from "./config.js";
+import { logger } from "./logger.js";
 
 let pool: Pool | null = null;
 
@@ -12,7 +12,10 @@ function getPool(): Pool {
       database: config.postgres.db,
       user: config.postgres.user,
       password: config.postgres.password,
-      ssl: config.postgres.sslmode === 'require' ? { rejectUnauthorized: false } : false,
+      ssl:
+        config.postgres.sslmode === "require"
+          ? { rejectUnauthorized: false }
+          : false,
     });
   }
   return pool;
@@ -51,15 +54,22 @@ export async function createWorkflow(
          state = EXCLUDED.state,
          status = EXCLUDED.status,
          updated_at = NOW()`,
-      [id, projectId, docId, stepId, agentId, JSON.stringify(state), 'active'],
+      [id, projectId, docId, stepId, agentId, JSON.stringify(state), "active"],
     );
   } catch (err) {
-    logger.error('failed to create workflow', { id, error: (err as Error).message });
+    logger.error("failed to create workflow", {
+      id,
+      error: (err as Error).message,
+    });
     throw err;
   }
 }
 
-export async function updateWorkflowState(id: string, state: any, status?: string): Promise<void> {
+export async function updateWorkflowState(
+  id: string,
+  state: any,
+  status?: string,
+): Promise<void> {
   const db = getPool();
   try {
     if (status) {
@@ -74,7 +84,10 @@ export async function updateWorkflowState(id: string, state: any, status?: strin
       );
     }
   } catch (err) {
-    logger.error('failed to update workflow state', { id, error: (err as Error).message });
+    logger.error("failed to update workflow state", {
+      id,
+      error: (err as Error).message,
+    });
     throw err;
   }
 }
@@ -90,7 +103,10 @@ export async function getWorkflow(id: string): Promise<WorkflowRow | null> {
     );
     return result.rows[0] || null;
   } catch (err) {
-    logger.error('failed to get workflow', { id, error: (err as Error).message });
+    logger.error("failed to get workflow", {
+      id,
+      error: (err as Error).message,
+    });
     throw err;
   }
 }

@@ -1,24 +1,28 @@
-import type { Persona, PersonaRole } from '../types';
-import { INITIAL_PERSONAS } from '../data/mockData';
+import type { Persona, PersonaRole } from "../types";
+import { INITIAL_PERSONAS } from "../data/mockData";
 
 const ROLE_PRIORITY: string[] = [
-  'ROLE_REALM_ADMIN',
-  'ROLE_BA_LEAD',
-  'ROLE_SOLUTION_ARCHITECT',
-  'ROLE_MARKETING_HEAD',
-  'ROLE_DEV_LEAD',
-  'ROLE_QA_LEAD',
+  "ROLE_REALM_ADMIN",
+  "ROLE_BA_LEAD",
+  "ROLE_SOLUTION_ARCHITECT",
+  "ROLE_MARKETING_HEAD",
+  "ROLE_DEV_LEAD",
+  "ROLE_QA_LEAD",
 ];
 
-export function resolvePersonasFromKeycloak(roles: string[], username: string): Persona[] {
+export function resolvePersonasFromKeycloak(
+  roles: string[],
+  username: string,
+): Persona[] {
   const byRole = INITIAL_PERSONAS.filter((p) =>
-    p.keycloakRoles.some((r) => roles.includes(r))
+    p.keycloakRoles.some((r) => roles.includes(r)),
   );
 
   // Fallback: match by username pattern
   if (byRole.length === 0) {
     const byName = INITIAL_PERSONAS.find(
-      (p) => p.name.toLowerCase().replace(/\s+/g, '.') === username.toLowerCase()
+      (p) =>
+        p.name.toLowerCase().replace(/\s+/g, ".") === username.toLowerCase(),
     );
     return byName ? [byName] : [INITIAL_PERSONAS[0]];
   }
@@ -31,14 +35,19 @@ export function resolvePersonasFromKeycloak(roles: string[], username: string): 
   });
 }
 
-export function resolveFirstPersona(roles: string[], username: string): Persona {
+export function resolveFirstPersona(
+  roles: string[],
+  username: string,
+): Persona {
   return resolvePersonasFromKeycloak(roles, username)[0];
 }
 
-const PERSONA_STORAGE_KEY = 'aetherspec.activePersona';
+const PERSONA_STORAGE_KEY = "aetherspec.activePersona";
 
 export function getStoredPersonaRole(): PersonaRole | null {
-  const stored = localStorage.getItem(PERSONA_STORAGE_KEY) as PersonaRole | null;
+  const stored = localStorage.getItem(
+    PERSONA_STORAGE_KEY,
+  ) as PersonaRole | null;
   if (stored && INITIAL_PERSONAS.some((p) => p.id === stored)) {
     return stored;
   }

@@ -2,7 +2,7 @@
   "name": "aetherspec",
   "version": "0.4.0",
   "private": true,
-  "description": "AetherSpec — Enterprise AI SDLC Workbench (monorepo)",
+  "description": "AetherSpec \u2014 Enterprise AI SDLC Workbench (monorepo)",
   "license": "UNLICENSED",
   "packageManager": "pnpm@9.12.0",
   "engines": {
@@ -14,8 +14,8 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .prettierignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .prettierignore"
   },
   "devDependencies": {
     "prettier": "^3.3.3",

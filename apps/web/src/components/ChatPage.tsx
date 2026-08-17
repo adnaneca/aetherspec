@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, Loader2, Hexagon } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import { streamChat } from '../lib/chat-stream';
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Bot, User, Loader2, Hexagon } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { streamChat } from "../lib/chat-stream";
 
 interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   streaming?: boolean;
   error?: boolean;
@@ -14,14 +14,14 @@ interface ChatMessage {
 export function ChatPage() {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [agentId, setAgentId] = useState('general');
+  const [agentId, setAgentId] = useState("general");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const sendMessage = useCallback(async () => {
@@ -29,21 +29,21 @@ export function ChatPage() {
 
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}-user`,
-      role: 'user',
+      role: "user",
       content: input.trim(),
     };
 
     const assistantId = `msg-${Date.now()}-assistant`;
     const assistantMessage: ChatMessage = {
       id: assistantId,
-      role: 'assistant',
-      content: '',
+      role: "assistant",
+      content: "",
       streaming: true,
     };
 
     // Add user message + empty assistant message
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
-    setInput('');
+    setInput("");
     setIsStreaming(true);
 
     // Build history from existing messages (exclude the streaming one)
@@ -78,7 +78,12 @@ export function ChatPage() {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
-                  ? { ...m, streaming: false, error: true, content: t('chat.connectionError', { error }) }
+                  ? {
+                      ...m,
+                      streaming: false,
+                      error: true,
+                      content: t("chat.connectionError", { error }),
+                    }
                   : m,
               ),
             );
@@ -93,11 +98,16 @@ export function ChatPage() {
         ),
       );
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
-            ? { ...m, streaming: false, error: true, content: t('chat.connectionError', { error: errorMsg }) }
+            ? {
+                ...m,
+                streaming: false,
+                error: true,
+                content: t("chat.connectionError", { error: errorMsg }),
+              }
             : m,
         ),
       );
@@ -107,7 +117,7 @@ export function ChatPage() {
   }, [input, isStreaming, messages, agentId, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
@@ -125,9 +135,11 @@ export function ChatPage() {
           <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Hexagon className="size-4 fill-current" />
           </div>
-          <span className="text-sm font-semibold tracking-tight">{t('chat.title')}</span>
+          <span className="text-sm font-semibold tracking-tight">
+            {t("chat.title")}
+          </span>
           <span className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            {t('chat.subtitle')}
+            {t("chat.subtitle")}
           </span>
         </div>
 
@@ -139,12 +151,12 @@ export function ChatPage() {
             disabled={isStreaming}
             className="bg-background border border-border rounded-md px-3 py-1.5 text-xs text-foreground font-mono focus:outline-none focus:border-ring disabled:opacity-50"
           >
-            <option value="general">{t('chat.general')}</option>
-            <option value="brs-agent">{t('chat.brsAgent')}</option>
-            <option value="srd-agent">{t('chat.srdAgent')}</option>
-            <option value="srs-fe-agent">{t('chat.srsFeAgent')}</option>
-            <option value="testcase-agent">{t('chat.testcaseAgent')}</option>
-            <option value="tc-fe-agent">{t('chat.tcFeAgent')}</option>
+            <option value="general">{t("chat.general")}</option>
+            <option value="brs-agent">{t("chat.brsAgent")}</option>
+            <option value="srd-agent">{t("chat.srdAgent")}</option>
+            <option value="srs-fe-agent">{t("chat.srsFeAgent")}</option>
+            <option value="testcase-agent">{t("chat.testcaseAgent")}</option>
+            <option value="tc-fe-agent">{t("chat.tcFeAgent")}</option>
           </select>
 
           <button
@@ -152,7 +164,7 @@ export function ChatPage() {
             disabled={isStreaming || messages.length === 0}
             className="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
           >
-            {t('chat.clear')}
+            {t("chat.clear")}
           </button>
         </div>
       </header>
@@ -166,14 +178,29 @@ export function ChatPage() {
               <div className="flex size-16 items-center justify-center rounded-2xl border border-border bg-card mb-4">
                 <Bot className="size-8 text-muted-foreground" />
               </div>
-              <h2 className="text-lg font-semibold text-foreground">{t('chat.emptyTitle')}</h2>
+              <h2 className="text-lg font-semibold text-foreground">
+                {t("chat.emptyTitle")}
+              </h2>
               <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                {t('chat.emptyDesc')}
+                {t("chat.emptyDesc")}
               </p>
               <div className="mt-6 flex flex-wrap gap-2 justify-center">
-                <SuggestionButton text={t('chat.suggestion1')} onClick={() => setInput(t('chat.suggestion1'))} />
-                <SuggestionButton text={t('chat.suggestion2')} onClick={() => setInput("Explain what a BRD document is in 3 sentences.")} />
-                <SuggestionButton text={t('chat.suggestion3')} onClick={() => setInput("List 5 acceptance criteria for a login page.")} />
+                <SuggestionButton
+                  text={t("chat.suggestion1")}
+                  onClick={() => setInput(t("chat.suggestion1"))}
+                />
+                <SuggestionButton
+                  text={t("chat.suggestion2")}
+                  onClick={() =>
+                    setInput("Explain what a BRD document is in 3 sentences.")
+                  }
+                />
+                <SuggestionButton
+                  text={t("chat.suggestion3")}
+                  onClick={() =>
+                    setInput("List 5 acceptance criteria for a login page.")
+                  }
+                />
               </div>
             </div>
           )}
@@ -182,27 +209,31 @@ export function ChatPage() {
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex gap-3 animate-fade-in ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+              className={`flex gap-3 animate-fade-in ${msg.role === "user" ? "flex-row-reverse" : ""}`}
             >
               {/* Avatar */}
               <div
                 className={`flex size-8 shrink-0 items-center justify-center rounded-md ${
-                  msg.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'border border-border bg-card text-primary'
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "border border-border bg-card text-primary"
                 }`}
               >
-                {msg.role === 'user' ? <User className="size-4" /> : <Bot className="size-4" />}
+                {msg.role === "user" ? (
+                  <User className="size-4" />
+                ) : (
+                  <Bot className="size-4" />
+                )}
               </div>
 
               {/* Message bubble */}
               <div
                 className={`min-w-0 max-w-[80%] rounded-lg px-4 py-3 text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground"
                     : msg.error
-                    ? 'border border-destructive/40 bg-destructive/10 text-destructive'
-                    : 'border border-border bg-card text-foreground'
+                      ? "border border-destructive/40 bg-destructive/10 text-destructive"
+                      : "border border-border bg-card text-foreground"
                 }`}
               >
                 {msg.content}
@@ -227,22 +258,30 @@ export function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isStreaming}
-              placeholder={isStreaming ? t('chat.streamingPlaceholder') : t('chat.placeholder')}
+              placeholder={
+                isStreaming
+                  ? t("chat.streamingPlaceholder")
+                  : t("chat.placeholder")
+              }
               rows={1}
               className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none disabled:opacity-50"
-              style={{ minHeight: '38px', maxHeight: '200px' }}
+              style={{ minHeight: "38px", maxHeight: "200px" }}
             />
             <button
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
               className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
-              title={t('chat.send')}
+              title={t("chat.send")}
             >
-              {isStreaming ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {isStreaming ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
             </button>
           </div>
           <p className="mt-1.5 px-1 font-mono text-[10px] text-muted-foreground">
-            {t('chat.footer', { agent: agentId })}
+            {t("chat.footer", { agent: agentId })}
           </p>
         </div>
       </div>
@@ -250,7 +289,13 @@ export function ChatPage() {
   );
 }
 
-function SuggestionButton({ text, onClick }: { text: string; onClick: () => void }) {
+function SuggestionButton({
+  text,
+  onClick,
+}: {
+  text: string;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}

@@ -20,15 +20,15 @@ See the [v0.4.0 release notes](https://github.com/adnaneca/aetherspec/releases/t
 
 ## Monorepo structure
 
-| Path | Description |
-|------|-------------|
-| `apps/gateway` | Go Fiber API server — templates, documents, workflow orchestration, MinIO/Postgres integration |
-| `apps/agent` | TypeScript Mastra-based agent sidecar — workflow agents and state machines |
-| `apps/web` | React + Vite frontend — Aether Studio, SSO login, workflow UI |
-| `packages/shared-types` | Shared TypeScript definitions |
-| `packages/proto` | Shared protobuf/contract definitions |
-| `scripts` | Python utilities (`merge_brs.py`, `merge_srs.py`) |
-| `infra/deploy` | Hetzner production deployment scripts and systemd services |
+| Path                    | Description                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------------- |
+| `apps/gateway`          | Go Fiber API server — templates, documents, workflow orchestration, MinIO/Postgres integration |
+| `apps/agent`            | TypeScript Mastra-based agent sidecar — workflow agents and state machines                     |
+| `apps/web`              | React + Vite frontend — Aether Studio, SSO login, workflow UI                                  |
+| `packages/shared-types` | Shared TypeScript definitions                                                                  |
+| `packages/proto`        | Shared protobuf/contract definitions                                                           |
+| `scripts`               | Python utilities (`merge_brs.py`, `merge_srs.py`)                                              |
+| `infra/deploy`          | Hetzner production deployment scripts and systemd services                                     |
 
 ## Quick start
 
