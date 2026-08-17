@@ -1,6 +1,6 @@
 {
   "name": "@aetherspec/agent",
-  "version": "0.0.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "AetherSpec Agent Sidecar — Mastra-based AI orchestration",

@@ -36,21 +36,32 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 // Drop-in replacement for fetch() that adds Authorization header.
-export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function authFetch(
+  url: string,
+  options: RequestInit = {},
+): Promise<Response> {
   const headers = new Headers(options.headers);
   const token = await getAuthToken();
 
   // Inject Bearer token if available.
   if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   // Set Content-Type for JSON bodies (unless FormData).
-  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json');
+  if (
+    !headers.has("Content-Type") &&
+    options.body &&
+    !(options.body instanceof FormData)
+  ) {
+    headers.set("Content-Type", "application/json");
   }
 
-  const resp = await fetch(url, { ...options, headers, credentials: 'include' });
+  const resp = await fetch(url, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
 
   // Handle 401 — token may be expired. Delegate to the registered handler.
   if (resp.status === 401 && onTokenExpired) {
@@ -62,21 +73,24 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
 
 // SSE-specific fetch that also includes the Bearer token.
 // (SSE uses ReadableStream, so we need a separate function.)
-export async function authFetchStream(url: string, body: any): Promise<ReadableStream<Uint8Array>> {
+export async function authFetchStream(
+  url: string,
+  body: any,
+): Promise<ReadableStream<Uint8Array>> {
   const token = await getAuthToken();
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   };
 
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const resp = await fetch(url, {
-    method: 'POST',
+    method: "POST",
     headers,
     body: JSON.stringify(body),
-    credentials: 'include',
+    credentials: "include",
   });
 
   if (resp.status === 401 && onTokenExpired) {
@@ -88,7 +102,7 @@ export async function authFetchStream(url: string, body: any): Promise<ReadableS
   }
 
   if (!resp.body) {
-    throw new Error('No stream received');
+    throw new Error("No stream received");
   }
 
   return resp.body;

@@ -8,190 +8,190 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AdminSettingsRouteImport } from './routes/admin-settings'
-import { Route as ChatRouteImport } from './routes/chat'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as SignoffRouteImport } from './routes/signoff'
-import { Route as StudioRouteImport } from './routes/studio'
-import { Route as UnauthorizedRouteImport } from './routes/unauthorized'
-import { Route as UserPreferencesRouteImport } from './routes/user-preferences'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as AdminSettingsRouteImport } from "./routes/admin-settings";
+import { Route as ChatRouteImport } from "./routes/chat";
+import { Route as LoginRouteImport } from "./routes/login";
+import { Route as SignoffRouteImport } from "./routes/signoff";
+import { Route as StudioRouteImport } from "./routes/studio";
+import { Route as UnauthorizedRouteImport } from "./routes/unauthorized";
+import { Route as UserPreferencesRouteImport } from "./routes/user-preferences";
 
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AdminSettingsRoute = AdminSettingsRouteImport.update({
-  id: '/admin-settings',
-  path: '/admin-settings',
+  id: "/admin-settings",
+  path: "/admin-settings",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ChatRoute = ChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
+  id: "/chat",
+  path: "/chat",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+  id: "/login",
+  path: "/login",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const SignoffRoute = SignoffRouteImport.update({
-  id: '/signoff',
-  path: '/signoff',
+  id: "/signoff",
+  path: "/signoff",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const StudioRoute = StudioRouteImport.update({
-  id: '/studio',
-  path: '/studio',
+  id: "/studio",
+  path: "/studio",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const UnauthorizedRoute = UnauthorizedRouteImport.update({
-  id: '/unauthorized',
-  path: '/unauthorized',
+  id: "/unauthorized",
+  path: "/unauthorized",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const UserPreferencesRoute = UserPreferencesRouteImport.update({
-  id: '/user-preferences',
-  path: '/user-preferences',
+  id: "/user-preferences",
+  path: "/user-preferences",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/admin-settings': typeof AdminSettingsRoute
-  '/chat': typeof ChatRoute
-  '/login': typeof LoginRoute
-  '/signoff': typeof SignoffRoute
-  '/studio': typeof StudioRoute
-  '/unauthorized': typeof UnauthorizedRoute
-  '/user-preferences': typeof UserPreferencesRoute
+  "/": typeof IndexRoute;
+  "/admin-settings": typeof AdminSettingsRoute;
+  "/chat": typeof ChatRoute;
+  "/login": typeof LoginRoute;
+  "/signoff": typeof SignoffRoute;
+  "/studio": typeof StudioRoute;
+  "/unauthorized": typeof UnauthorizedRoute;
+  "/user-preferences": typeof UserPreferencesRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/admin-settings': typeof AdminSettingsRoute
-  '/chat': typeof ChatRoute
-  '/login': typeof LoginRoute
-  '/signoff': typeof SignoffRoute
-  '/studio': typeof StudioRoute
-  '/unauthorized': typeof UnauthorizedRoute
-  '/user-preferences': typeof UserPreferencesRoute
+  "/": typeof IndexRoute;
+  "/admin-settings": typeof AdminSettingsRoute;
+  "/chat": typeof ChatRoute;
+  "/login": typeof LoginRoute;
+  "/signoff": typeof SignoffRoute;
+  "/studio": typeof StudioRoute;
+  "/unauthorized": typeof UnauthorizedRoute;
+  "/user-preferences": typeof UserPreferencesRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/admin-settings': typeof AdminSettingsRoute
-  '/chat': typeof ChatRoute
-  '/login': typeof LoginRoute
-  '/signoff': typeof SignoffRoute
-  '/studio': typeof StudioRoute
-  '/unauthorized': typeof UnauthorizedRoute
-  '/user-preferences': typeof UserPreferencesRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/admin-settings": typeof AdminSettingsRoute;
+  "/chat": typeof ChatRoute;
+  "/login": typeof LoginRoute;
+  "/signoff": typeof SignoffRoute;
+  "/studio": typeof StudioRoute;
+  "/unauthorized": typeof UnauthorizedRoute;
+  "/user-preferences": typeof UserPreferencesRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    | '/'
-    | '/admin-settings'
-    | '/chat'
-    | '/login'
-    | '/signoff'
-    | '/studio'
-    | '/unauthorized'
-    | '/user-preferences'
-  fileRoutesByTo: FileRoutesByTo
+    | "/"
+    | "/admin-settings"
+    | "/chat"
+    | "/login"
+    | "/signoff"
+    | "/studio"
+    | "/unauthorized"
+    | "/user-preferences";
+  fileRoutesByTo: FileRoutesByTo;
   to:
-    | '/'
-    | '/admin-settings'
-    | '/chat'
-    | '/login'
-    | '/signoff'
-    | '/studio'
-    | '/unauthorized'
-    | '/user-preferences'
+    | "/"
+    | "/admin-settings"
+    | "/chat"
+    | "/login"
+    | "/signoff"
+    | "/studio"
+    | "/unauthorized"
+    | "/user-preferences";
   id:
-    | '__root__'
-    | '/'
-    | '/admin-settings'
-    | '/chat'
-    | '/login'
-    | '/signoff'
-    | '/studio'
-    | '/unauthorized'
-    | '/user-preferences'
-  fileRoutesById: FileRoutesById
+    | "__root__"
+    | "/"
+    | "/admin-settings"
+    | "/chat"
+    | "/login"
+    | "/signoff"
+    | "/studio"
+    | "/unauthorized"
+    | "/user-preferences";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AdminSettingsRoute: typeof AdminSettingsRoute
-  ChatRoute: typeof ChatRoute
-  LoginRoute: typeof LoginRoute
-  SignoffRoute: typeof SignoffRoute
-  StudioRoute: typeof StudioRoute
-  UnauthorizedRoute: typeof UnauthorizedRoute
-  UserPreferencesRoute: typeof UserPreferencesRoute
+  IndexRoute: typeof IndexRoute;
+  AdminSettingsRoute: typeof AdminSettingsRoute;
+  ChatRoute: typeof ChatRoute;
+  LoginRoute: typeof LoginRoute;
+  SignoffRoute: typeof SignoffRoute;
+  StudioRoute: typeof StudioRoute;
+  UnauthorizedRoute: typeof UnauthorizedRoute;
+  UserPreferencesRoute: typeof UserPreferencesRoute;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin-settings': {
-      id: '/admin-settings'
-      path: '/admin-settings'
-      fullPath: '/admin-settings'
-      preLoaderRoute: typeof AdminSettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/chat': {
-      id: '/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof ChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/signoff': {
-      id: '/signoff'
-      path: '/signoff'
-      fullPath: '/signoff'
-      preLoaderRoute: typeof SignoffRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/studio': {
-      id: '/studio'
-      path: '/studio'
-      fullPath: '/studio'
-      preLoaderRoute: typeof StudioRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/unauthorized': {
-      id: '/unauthorized'
-      path: '/unauthorized'
-      fullPath: '/unauthorized'
-      preLoaderRoute: typeof UnauthorizedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/user-preferences': {
-      id: '/user-preferences'
-      path: '/user-preferences'
-      fullPath: '/user-preferences'
-      preLoaderRoute: typeof UserPreferencesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/admin-settings": {
+      id: "/admin-settings";
+      path: "/admin-settings";
+      fullPath: "/admin-settings";
+      preLoaderRoute: typeof AdminSettingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/chat": {
+      id: "/chat";
+      path: "/chat";
+      fullPath: "/chat";
+      preLoaderRoute: typeof ChatRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/login": {
+      id: "/login";
+      path: "/login";
+      fullPath: "/login";
+      preLoaderRoute: typeof LoginRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/signoff": {
+      id: "/signoff";
+      path: "/signoff";
+      fullPath: "/signoff";
+      preLoaderRoute: typeof SignoffRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/studio": {
+      id: "/studio";
+      path: "/studio";
+      fullPath: "/studio";
+      preLoaderRoute: typeof StudioRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/unauthorized": {
+      id: "/unauthorized";
+      path: "/unauthorized";
+      fullPath: "/unauthorized";
+      preLoaderRoute: typeof UnauthorizedRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/user-preferences": {
+      id: "/user-preferences";
+      path: "/user-preferences";
+      fullPath: "/user-preferences";
+      preLoaderRoute: typeof UserPreferencesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
@@ -204,7 +204,7 @@ const rootRouteChildren: RootRouteChildren = {
   StudioRoute: StudioRoute,
   UnauthorizedRoute: UnauthorizedRoute,
   UserPreferencesRoute: UserPreferencesRoute,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();

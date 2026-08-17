@@ -1,7 +1,15 @@
-import type { AdminSettingsConfig, AdminProvider, UserSettingsConfig, SDLCProject, Document, DocumentStep } from '../types';
-import { authFetch, authFetchStream } from './auth-fetch';
+import type {
+  AdminSettingsConfig,
+  AdminProvider,
+  UserSettingsConfig,
+  SDLCProject,
+  Document,
+  DocumentStep,
+} from "../types";
+import { authFetch, authFetchStream } from "./auth-fetch";
 
-const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'http://localhost:3000';
+const GATEWAY_URL =
+  import.meta.env.VITE_GATEWAY_API_URL || "http://localhost:3000";
 
 export async function getAdminConfig(): Promise<AdminSettingsConfig> {
   const resp = await authFetch(`${GATEWAY_URL}/api/admin/config`);
@@ -9,10 +17,12 @@ export async function getAdminConfig(): Promise<AdminSettingsConfig> {
   return resp.json();
 }
 
-export async function saveAdminConfig(config: AdminSettingsConfig): Promise<{ status: string }> {
+export async function saveAdminConfig(
+  config: AdminSettingsConfig,
+): Promise<{ status: string }> {
   const resp = await authFetch(`${GATEWAY_URL}/api/admin/config`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/merge-patch+json' },
+    method: "PATCH",
+    headers: { "Content-Type": "application/merge-patch+json" },
     body: JSON.stringify(config),
   });
   if (!resp.ok) throw new Error(`Failed to save admin config: ${resp.status}`);
@@ -24,40 +34,51 @@ export interface OllamaModelCatalog {
 }
 
 export async function getOllamaModels(): Promise<OllamaModelCatalog> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/admin/providers/ollama/models`);
-  if (!resp.ok) throw new Error(`Failed to fetch Ollama models: ${resp.status}`);
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/admin/providers/ollama/models`,
+  );
+  if (!resp.ok)
+    throw new Error(`Failed to fetch Ollama models: ${resp.status}`);
   return resp.json();
 }
 
 export interface TestProviderResult {
-  status: 'connected' | 'failed';
+  status: "connected" | "failed";
   reason?: string;
 }
 
-export async function testProvider(provider: AdminProvider): Promise<TestProviderResult> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/admin/providers/${provider.id}/test`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      providerId: provider.id,
-      baseUrl: provider.baseUrl,
-      apiKey: provider.apiKey,
-    }),
-  });
+export async function testProvider(
+  provider: AdminProvider,
+): Promise<TestProviderResult> {
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/admin/providers/${provider.id}/test`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        providerId: provider.id,
+        baseUrl: provider.baseUrl,
+        apiKey: provider.apiKey,
+      }),
+    },
+  );
   if (!resp.ok) throw new Error(`Provider test failed: ${resp.status}`);
   return resp.json();
 }
 
 export async function getUserSettings(): Promise<UserSettingsConfig> {
   const resp = await authFetch(`${GATEWAY_URL}/api/user/settings`);
-  if (!resp.ok) throw new Error(`Failed to fetch user settings: ${resp.status}`);
+  if (!resp.ok)
+    throw new Error(`Failed to fetch user settings: ${resp.status}`);
   return resp.json();
 }
 
-export async function saveUserSettings(settings: UserSettingsConfig): Promise<{ status: string }> {
+export async function saveUserSettings(
+  settings: UserSettingsConfig,
+): Promise<{ status: string }> {
   const resp = await authFetch(`${GATEWAY_URL}/api/user/settings`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/merge-patch+json' },
+    method: "PATCH",
+    headers: { "Content-Type": "application/merge-patch+json" },
     body: JSON.stringify(settings),
   });
   if (!resp.ok) throw new Error(`Failed to save user settings: ${resp.status}`);
@@ -85,17 +106,20 @@ export async function createProject(data: {
   targetDate: string;
 }): Promise<SDLCProject> {
   const resp = await authFetch(`${GATEWAY_URL}/api/project`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify(data),
   });
   if (!resp.ok) throw new Error(`Failed to create project: ${resp.status}`);
   return resp.json();
 }
 
-export async function patchProject(id: string, patch: Partial<SDLCProject>): Promise<SDLCProject> {
+export async function patchProject(
+  id: string,
+  patch: Partial<SDLCProject>,
+): Promise<SDLCProject> {
   const resp = await authFetch(`${GATEWAY_URL}/api/project/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/merge-patch+json' },
+    method: "PATCH",
+    headers: { "Content-Type": "application/merge-patch+json" },
     body: JSON.stringify(patch),
   });
   if (!resp.ok) throw new Error(`Failed to update project: ${resp.status}`);
@@ -103,53 +127,121 @@ export async function patchProject(id: string, patch: Partial<SDLCProject>): Pro
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/project/${id}`, { method: 'DELETE' });
+  const resp = await authFetch(`${GATEWAY_URL}/api/project/${id}`, {
+    method: "DELETE",
+  });
   if (!resp.ok) throw new Error(`Failed to delete project: ${resp.status}`);
 }
 
-export async function getDocuments(projectId: string, docType?: string): Promise<Document[]> {
+export async function getDocuments(
+  projectId: string,
+  docType?: string,
+): Promise<Document[]> {
   const params = new URLSearchParams();
-  params.set('projectId', projectId);
-  if (docType) params.set('docType', docType);
-  const resp = await authFetch(`${GATEWAY_URL}/api/document?${params.toString()}`);
+  params.set("projectId", projectId);
+  if (docType) params.set("docType", docType);
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/document?${params.toString()}`,
+  );
   if (!resp.ok) throw new Error(`Failed to fetch documents: ${resp.status}`);
   return resp.json();
 }
 
 export async function getDocumentSteps(docId: string): Promise<DocumentStep[]> {
   const resp = await authFetch(`${GATEWAY_URL}/api/document/${docId}/step`);
-  if (!resp.ok) throw new Error(`Failed to fetch document steps: ${resp.status}`);
+  if (!resp.ok)
+    throw new Error(`Failed to fetch document steps: ${resp.status}`);
   return resp.json();
 }
 
-export async function getStepContent(docId: string, stepId: number): Promise<DocumentStep> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/document/${docId}/step/${stepId}`);
+export async function getStepContent(
+  docId: string,
+  stepId: number,
+): Promise<DocumentStep> {
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/document/${docId}/step/${stepId}`,
+  );
   if (!resp.ok) throw new Error(`Failed to fetch step content: ${resp.status}`);
   return resp.json();
 }
 
-export async function patchStep(docId: string, stepId: number, patch: { content?: string; status?: string }): Promise<DocumentStep> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/document/${docId}/step/${stepId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/merge-patch+json' },
-    body: JSON.stringify(patch),
-  });
+export async function patchStep(
+  docId: string,
+  stepId: number,
+  patch: { content?: string; status?: string },
+): Promise<DocumentStep> {
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/document/${docId}/step/${stepId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/merge-patch+json" },
+      body: JSON.stringify(patch),
+    },
+  );
   if (!resp.ok) throw new Error(`Failed to save step content: ${resp.status}`);
   return resp.json();
 }
 
-export async function mergeDocument(docId: string): Promise<{ status: string; sections: number; ids: number; files: Record<string, string> }> {
+export async function mergeDocument(docId: string): Promise<{
+  status: string;
+  sections: number;
+  ids: number;
+  files: Record<string, string>;
+}> {
   const resp = await authFetch(`${GATEWAY_URL}/api/document/${docId}/merge`, {
-    method: 'POST',
+    method: "POST",
   });
   if (!resp.ok) throw new Error(`Merge failed: ${resp.status}`);
   return resp.json();
 }
 
-export async function approveStep(docId: string, stepId: number): Promise<{ status: string; nextStep: number }> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/document/${docId}/step/${stepId}/approve`, {
-    method: 'POST',
-  });
+export async function generateBacklog(docId: string): Promise<{
+  status: string;
+  docId: string;
+  projectId: string;
+  path: string;
+  summary: Record<string, unknown>;
+  output: string;
+}> {
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/document/${docId}/generate-backlog`,
+    {
+      method: "POST",
+    },
+  );
+  if (!resp.ok) throw new Error(`Backlog generation failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function generateBacklogFE(docId: string): Promise<{
+  status: string;
+  docId: string;
+  projectId: string;
+  path: string;
+  summary: Record<string, unknown>;
+  output: string;
+}> {
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/document/${docId}/generate-backlog-fe`,
+    {
+      method: "POST",
+    },
+  );
+  if (!resp.ok)
+    throw new Error(`Frontend backlog generation failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function approveStep(
+  docId: string,
+  stepId: number,
+): Promise<{ status: string; nextStep: number }> {
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/document/${docId}/step/${stepId}/approve`,
+    {
+      method: "POST",
+    },
+  );
   if (!resp.ok) throw new Error(`Failed to approve step: ${resp.status}`);
   return resp.json();
 }
@@ -164,12 +256,14 @@ export interface GenerateSectionRequest {
 }
 
 export interface ValidationFinding {
-  type: 'BLOCKING' | 'WARNING' | 'INFO';
+  type: "BLOCKING" | "WARNING" | "INFO";
   message: string;
   rule: string;
 }
 
-export async function generateSection(req: GenerateSectionRequest): Promise<ReadableStream<Uint8Array>> {
+export async function generateSection(
+  req: GenerateSectionRequest,
+): Promise<ReadableStream<Uint8Array>> {
   return authFetchStream(`${GATEWAY_URL}/api/agent/generate-section`, req);
 }
 
@@ -185,9 +279,12 @@ export interface StartWorkflowRequest {
   inputDocuments?: string[];
   qualityChecks?: string[];
   agentId?: string;
+  docType?: string;
 }
 
-export async function startWorkflow(req: StartWorkflowRequest): Promise<ReadableStream<Uint8Array>> {
+export async function startWorkflow(
+  req: StartWorkflowRequest,
+): Promise<ReadableStream<Uint8Array>> {
   return authFetchStream(`${GATEWAY_URL}/api/agent/workflow/start`, req);
 }
 
@@ -201,25 +298,32 @@ export async function resumeWorkflow(
 
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      return await authFetchStream(`${GATEWAY_URL}/api/agent/workflow/${workflowId}/resume`, { userResponse });
+      return await authFetchStream(
+        `${GATEWAY_URL}/api/agent/workflow/${workflowId}/resume`,
+        { userResponse },
+      );
     } catch (err) {
       lastError = err as Error;
-      const message = lastError.message || '';
+      const message = lastError.message || "";
       const isNetworkError =
-        message.includes('network') ||
-        message.includes('ERR_NETWORK') ||
-        message.includes('failed to fetch') ||
-        message.includes('aborted');
+        message.includes("network") ||
+        message.includes("ERR_NETWORK") ||
+        message.includes("failed to fetch") ||
+        message.includes("aborted");
 
       if (!isNetworkError || attempt === retries - 1) {
         throw lastError;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+      await new Promise((resolve) =>
+        setTimeout(resolve, delayMs * (attempt + 1)),
+      );
     }
   }
 
-  throw lastError || new Error(`resumeWorkflow failed after ${retries} attempts`);
+  throw (
+    lastError || new Error(`resumeWorkflow failed after ${retries} attempts`)
+  );
 }
 
 export async function getWorkflow(workflowId: string): Promise<{
@@ -231,14 +335,20 @@ export async function getWorkflow(workflowId: string): Promise<{
   state: any;
   status: string;
 }> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/agent/workflow/${workflowId}`);
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/agent/workflow/${workflowId}`,
+  );
   if (!resp.ok) throw new Error(`Failed to fetch workflow: ${resp.status}`);
   return resp.json();
 }
 
-export async function createDocument(data: { projectId: string; docType: string; totalSteps?: number }): Promise<Document> {
+export async function createDocument(data: {
+  projectId: string;
+  docType: string;
+  totalSteps?: number;
+}): Promise<Document> {
   const resp = await authFetch(`${GATEWAY_URL}/api/document`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify(data),
   });
   if (!resp.ok) throw new Error(`Failed to create document: ${resp.status}`);
@@ -258,23 +368,31 @@ export interface Attachment {
 }
 
 export async function getAttachments(projectId: string): Promise<Attachment[]> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/attachment?projectId=${encodeURIComponent(projectId)}`);
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/attachment?projectId=${encodeURIComponent(projectId)}`,
+  );
   if (!resp.ok) throw new Error(`Failed to fetch attachments: ${resp.status}`);
   return resp.json();
 }
 
 export async function downloadAttachment(
   attachmentId: string,
-  metadata?: { name?: string; mimeType?: string }
+  metadata?: { name?: string; mimeType?: string },
 ): Promise<{ content: string; name: string; mimeType?: string }> {
-  const resp = await authFetch(`${GATEWAY_URL}/api/attachment/${encodeURIComponent(attachmentId)}`);
-  if (!resp.ok) throw new Error(`Failed to download attachment: ${resp.status}`);
-  const headerName = resp.headers.get('Content-Disposition')?.match(/filename="?([^";]+)"?/)?.[1];
-  const name = metadata?.name || headerName || 'download';
+  const resp = await authFetch(
+    `${GATEWAY_URL}/api/attachment/${encodeURIComponent(attachmentId)}`,
+  );
+  if (!resp.ok)
+    throw new Error(`Failed to download attachment: ${resp.status}`);
+  const headerName = resp.headers
+    .get("Content-Disposition")
+    ?.match(/filename="?([^";]+)"?/)?.[1];
+  const name = metadata?.name || headerName || "download";
   const content = await resp.text();
   return {
     content,
     name,
-    mimeType: metadata?.mimeType || resp.headers.get('Content-Type') || undefined,
+    mimeType:
+      metadata?.mimeType || resp.headers.get("Content-Type") || undefined,
   };
 }

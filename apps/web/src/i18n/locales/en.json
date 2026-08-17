@@ -187,8 +187,12 @@
     "brsAgentDesc": "Generates Business Requirement Specs",
     "srdAgent": "srd-agent",
     "srdAgentDesc": "Generates SRS/SDD & Implementation Backlog",
+    "srsFeAgent": "srs-fe-agent",
+    "srsFeAgentDesc": "Generates Frontend SRS",
     "testcaseAgent": "testcase-agent",
     "testcaseAgentDesc": "Generates Test Cases & Traceability",
+    "tcFeAgent": "tc-fe-agent",
+    "tcFeAgentDesc": "Generates Frontend Test Cases & Traceability",
     "brsAgents": "BRS Interactive Workflow Agents",
     "brsAgentsDesc": "Per-agent LLM config for the interactive BRS workflow",
     "brsOrchestrator": "BRS Orchestrator",
@@ -240,7 +244,9 @@
     "general": "general (default)",
     "brsAgent": "brs-agent (BRD generation)",
     "srdAgent": "srd-agent (SRD generation)",
-    "testcaseAgent": "testcase-agent (Test Cases)"
+    "srsFeAgent": "srs-fe-agent (SRS-FE generation)",
+    "testcaseAgent": "testcase-agent (Test Cases)",
+    "tcFeAgent": "tc-fe-agent (TC-FE generation)"
   },
   "status": {
     "NOT_STARTED": "Not Started",

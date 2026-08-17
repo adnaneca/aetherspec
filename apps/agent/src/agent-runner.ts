@@ -1,10 +1,14 @@
-import { Agent } from '@mastra/core/agent';
-import { getCachedAdminConfig, type AdminProvider, type AdminSettings } from './admin-config.js';
-import { getOrCreateBRSAgent, BRS_AGENT_IDS } from './agents.js';
-import { logger } from './logger.js';
+import { Agent } from "@mastra/core/agent";
+import {
+  getCachedAdminConfig,
+  type AdminProvider,
+  type AdminSettings,
+} from "./admin-config.js";
+import { getOrCreateBRSAgent, BRS_AGENT_IDS } from "./agents.js";
+import { logger } from "./logger.js";
 
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: "system" | "user" | "assistant";
   content: string;
 }
 
@@ -29,7 +33,7 @@ export const AGENT_INSTRUCTIONS: Record<string, string> = {
 You help generate and review BRD, SRD, and Test Case documents.
 Be concise, professional, and use business language (no technical jargon).`,
 
-  'brs-agent': `You are the BRS Agent (Business Requirements Specification Agent) in the AetherSpec platform.
+  "brs-agent": `You are the BRS Agent (Business Requirements Specification Agent) in the AetherSpec platform.
 
 Your job is to generate BRS sections following the Cognia v2.0 framework.
 
@@ -73,20 +77,27 @@ Generate ONLY the section content as Markdown. Start with the section heading (#
 - Section 10 (Risks): Assign RISK-01, RISK-02, ...
 - Other sections: No IDs assigned`,
 
-  'srd-agent': `You are the SRD Agent (Software Requirements Specification & System Design Agent) in the AetherSpec platform.
+  "srd-agent": `You are the SRD Agent (Software Requirements Specification & System Design Agent) in the AetherSpec platform.
 Your job is to generate SRS/SDD sections including functional requirements, non-functional requirements, interface definitions, data design, and architecture decisions.
 You use SHALL statements for functional requirements and map them to BR-xxx source requirements.
 You can generate Mermaid diagrams (C4, ERD, sequence) when asked.
 Be thorough but concise. Use technical language appropriate for architects and developers.`,
 
-  'testcase-agent': `You are the Test Case Agent in the AetherSpec platform.
+  "testcase-agent": `You are the Test Case Agent in the AetherSpec platform.
 Your job is to generate test cases and requirements traceability matrices.
 You write test cases in Gherkin format (Given/When/Then).
 You map each test case to its source requirement (TC-xxx → SRD AC-xxx → BR-xxx).
 Be precise and cover positive, negative, and edge cases.`,
+
+  "tc-fe-agent": `You are the TC-FE Agent (Frontend Test Case Agent) in the AetherSpec platform.
+Your job is to generate frontend test cases and requirements traceability matrices.
+You write test cases in Gherkin format (Given/When/Then).
+You map each test case to its source requirement (TC-FE-xxx → SR-FE-xxx → BR-xxx).
+You cover UI/UX, accessibility (WCAG 2.1 AA), browser compatibility (Chrome, Firefox, Safari, Edge), and frontend interactions.
+Be precise and cover positive, negative, and edge cases.`,
 };
 
-const DEFAULT_MODEL = 'ollama/glm-5.2';
+const DEFAULT_MODEL = "ollama/glm-5.2";
 
 /**
  * Resolves which model to use for a given agentId from the admin config.
@@ -94,9 +105,15 @@ const DEFAULT_MODEL = 'ollama/glm-5.2';
  */
 function resolveModel(agentId: string, config: AdminSettings): string {
   const modelMap: Record<string, string | undefined> = {
-    'brs-agent': config.agentModels['brs-agent'] ?? config.agentModels.brsAgentModel,
-    'srd-agent': config.agentModels['srd-agent'] ?? config.agentModels.srsAgentModel,
-    'testcase-agent': config.agentModels['testcase-agent'] ?? config.agentModels.testCaseAgentModel,
+    "brs-agent":
+      config.agentModels["brs-agent"] ?? config.agentModels.brsAgentModel,
+    "srd-agent":
+      config.agentModels["srd-agent"] ?? config.agentModels.srsAgentModel,
+    "testcase-agent":
+      config.agentModels["testcase-agent"] ??
+      config.agentModels.testCaseAgentModel,
+    "tc-fe-agent":
+      config.agentModels["tc-fe-agent"] ?? config.agentModels.tcFeAgentModel,
   };
   return modelMap[agentId] || DEFAULT_MODEL;
 }
@@ -105,17 +122,17 @@ function resolveModel(agentId: string, config: AdminSettings): string {
  * Finds the enabled Ollama provider from admin config.
  */
 function resolveOllamaProvider(config: AdminSettings): AdminProvider | null {
-  const ollama = config.providers.find((p) => p.id === 'ollama' && p.enabled);
+  const ollama = config.providers.find((p) => p.id === "ollama" && p.enabled);
   if (ollama && ollama.apiKey) {
     return ollama;
   }
   // Fallback to env vars
   return {
-    id: 'ollama',
-    name: 'Ollama Cloud',
+    id: "ollama",
+    name: "Ollama Cloud",
     enabled: true,
-    apiKey: process.env.OLLAMA_API_KEY || '',
-    baseUrl: process.env.OLLAMA_BASE_URL || 'https://ollama.com',
+    apiKey: process.env.OLLAMA_API_KEY || "",
+    baseUrl: process.env.OLLAMA_BASE_URL || "https://ollama.com",
   };
 }
 
@@ -124,7 +141,7 @@ function resolveOllamaProvider(config: AdminSettings): AdminProvider | null {
  * "ollama/glm-5.2" → "glm-5.2"
  */
 function stripProviderPrefix(model: string): string {
-  const slashIndex = model.indexOf('/');
+  const slashIndex = model.indexOf("/");
   return slashIndex >= 0 ? model.substring(slashIndex + 1) : model;
 }
 
@@ -133,11 +150,11 @@ function stripProviderPrefix(model: string): string {
  * Ollama Cloud exposes OpenAI compatibility at https://ollama.com/v1
  */
 function toOpenAICompatibleUrl(baseUrl?: string): string {
-  if (!baseUrl || baseUrl === 'https://ollama.com') {
-    return 'https://ollama.com/v1';
+  if (!baseUrl || baseUrl === "https://ollama.com") {
+    return "https://ollama.com/v1";
   }
-  const normalized = baseUrl.replace(/\/+$/, '');
-  if (normalized.endsWith('/v1')) {
+  const normalized = baseUrl.replace(/\/+$/, "");
+  if (normalized.endsWith("/v1")) {
     return normalized;
   }
   return `${normalized}/v1`;
@@ -157,7 +174,10 @@ function getCacheKey(agentId: string, model: string, apiKey: string): string {
  * Creates or retrieves a cached Mastra Agent instance.
  * The agent is configured with the model and credentials from admin config.
  */
-function getOrCreateAgent(agentId: string, config: AdminSettings): Agent | null {
+function getOrCreateAgent(
+  agentId: string,
+  config: AdminSettings,
+): Agent | null {
   // Delegate to the BRS workflow agent factory for interactive BRS agents (WP-03).
   if (BRS_AGENT_IDS.includes(agentId as any)) {
     return getOrCreateBRSAgent(agentId as any);
@@ -165,7 +185,7 @@ function getOrCreateAgent(agentId: string, config: AdminSettings): Agent | null 
 
   const ollama = resolveOllamaProvider(config);
   if (!ollama || !ollama.apiKey) {
-    logger.error('no Ollama provider configured');
+    logger.error("no Ollama provider configured");
     return null;
   }
 
@@ -175,7 +195,7 @@ function getOrCreateAgent(agentId: string, config: AdminSettings): Agent | null 
 
   const cached = agentCache.get(cacheKey);
   if (cached) {
-    logger.debug('using cached Mastra agent', { agentId, model, cacheKey });
+    logger.debug("using cached Mastra agent", { agentId, model, cacheKey });
     return cached;
   }
 
@@ -187,14 +207,19 @@ function getOrCreateAgent(agentId: string, config: AdminSettings): Agent | null 
   }
 
   const openAiUrl = toOpenAICompatibleUrl(ollama.baseUrl);
-  logger.info('creating new Mastra agent', { agentId, model, baseUrl: openAiUrl, cacheKey });
+  logger.info("creating new Mastra agent", {
+    agentId,
+    model,
+    baseUrl: openAiUrl,
+    cacheKey,
+  });
 
   const agent = new Agent({
     id: agentId,
     name: agentId,
-    instructions: AGENT_INSTRUCTIONS[agentId] || AGENT_INSTRUCTIONS['general'],
+    instructions: AGENT_INSTRUCTIONS[agentId] || AGENT_INSTRUCTIONS["general"],
     model: {
-      providerId: 'openai-compatible',
+      providerId: "openai-compatible",
       modelId: model,
       url: openAiUrl,
       apiKey: ollama.apiKey,
@@ -217,35 +242,37 @@ type StreamPart = {
  * Extracts the text delta or error from a Mastra stream part.
  * Handles the shapes emitted by different Mastra core versions.
  */
-function extractStreamEvent(part: StreamPart): { delta: string } | { error: string } | null {
-  if (typeof part === 'string') {
+function extractStreamEvent(
+  part: StreamPart,
+): { delta: string } | { error: string } | null {
+  if (typeof part === "string") {
     return { delta: part };
   }
 
   // Mastra 1.56 fullStream error events
-  if (part?.type === 'error' && part.payload?.error) {
+  if (part?.type === "error" && part.payload?.error) {
     const err = part.payload.error;
-    const message = err?.message || err?.text || 'LLM API error';
+    const message = err?.message || err?.text || "LLM API error";
     return { error: message };
   }
 
   // Mastra 1.56 fullStream events: { type: 'text-delta', payload: { text: '...' } }
-  if (part?.type === 'text-delta') {
+  if (part?.type === "text-delta") {
     const text = part.payload?.text ?? part.textDelta ?? part.delta ?? null;
     if (text) return { delta: text };
   }
 
   // Fallback shapes
-  if (part?.type === 'text' && typeof part.text === 'string') {
+  if (part?.type === "text" && typeof part.text === "string") {
     return { delta: part.text };
   }
-  if (typeof part?.textDelta === 'string') {
+  if (typeof part?.textDelta === "string") {
     return { delta: part.textDelta };
   }
-  if (typeof part?.delta === 'string') {
+  if (typeof part?.delta === "string") {
     return { delta: part.delta };
   }
-  if (typeof part?.text === 'string') {
+  if (typeof part?.text === "string") {
     return { delta: part.text };
   }
 
@@ -259,7 +286,9 @@ function extractStreamEvent(part: StreamPart): { delta: string } | { error: stri
 export function buildGenerationPrompt(context: any): string {
   const parts: string[] = [];
 
-  parts.push(`## Section to Generate: ${context.sectionId} — ${context.sectionName}\n`);
+  parts.push(
+    `## Section to Generate: ${context.sectionId} — ${context.sectionName}\n`,
+  );
 
   if (context.sectionGuide) {
     parts.push(`## Section Guide\n\n${context.sectionGuide}\n`);
@@ -290,13 +319,15 @@ export function buildGenerationPrompt(context: any): string {
     parts.push(`## Existing Draft to Revise\n\n${context.existingDraft}\n`);
   }
 
-  parts.push(`## Your Task\n\nGenerate the complete section content as Markdown. Follow the section guide structure. Use business language only. Assign IDs where applicable. Output ONLY the Markdown content — no commentary.\n`);
+  parts.push(
+    `## Your Task\n\nGenerate the complete section content as Markdown. Follow the section guide structure. Use business language only. Assign IDs where applicable. Output ONLY the Markdown content — no commentary.\n`,
+  );
 
-  return parts.join('\n---\n\n');
+  return parts.join("\n---\n\n");
 }
 
 export interface ValidationFinding {
-  type: 'BLOCKING' | 'WARNING' | 'INFO';
+  type: "BLOCKING" | "WARNING" | "INFO";
   message: string;
   rule: string;
 }
@@ -336,30 +367,81 @@ export function selfValidate(
   generatedContent: string,
 ): ValidationFinding[] {
   const rawFindings: ValidationFinding[] = [];
-  const content = generatedContent || '';
+  const content = generatedContent || "";
 
   // ── Check 1: Business Language ──
   const forbiddenTerms: { term: string; reason: string }[] = [
-    { term: 'the system shall', reason: 'SRS pattern. Use "the business will" or describe the capability directly.' },
-    { term: 'shall', reason: 'SRS language (RFC 2119). Use "will" for mandatory or "may" for optional.' },
-    { term: 'api', reason: 'Technical term. Describe the business capability instead.' },
-    { term: 'database', reason: 'Technical term. Use "business records" or describe the data.' },
-    { term: 'microservice', reason: 'Technical term. Use "modular service" or describe the business function.' },
-    { term: 'rest', reason: 'Technical term. Describe the integration need at business level.' },
-    { term: 'soap', reason: 'Technical term. Describe the integration need at business level.' },
-    { term: 'graphql', reason: 'Technical term. Describe the integration need at business level.' },
-    { term: 'kubernetes', reason: 'Technical term. Describe the deployment requirement at business level.' },
-    { term: 'docker', reason: 'Technical term. Describe the deployment requirement at business level.' },
-    { term: 'postgresql', reason: 'Technical term. Describe data storage needs at business level.' },
-    { term: 'mysql', reason: 'Technical term. Describe data storage needs at business level.' },
-    { term: 'mongodb', reason: 'Technical term. Describe data storage needs at business level.' },
+    {
+      term: "the system shall",
+      reason:
+        'SRS pattern. Use "the business will" or describe the capability directly.',
+    },
+    {
+      term: "shall",
+      reason:
+        'SRS language (RFC 2119). Use "will" for mandatory or "may" for optional.',
+    },
+    {
+      term: "api",
+      reason: "Technical term. Describe the business capability instead.",
+    },
+    {
+      term: "database",
+      reason: 'Technical term. Use "business records" or describe the data.',
+    },
+    {
+      term: "microservice",
+      reason:
+        'Technical term. Use "modular service" or describe the business function.',
+    },
+    {
+      term: "rest",
+      reason:
+        "Technical term. Describe the integration need at business level.",
+    },
+    {
+      term: "soap",
+      reason:
+        "Technical term. Describe the integration need at business level.",
+    },
+    {
+      term: "graphql",
+      reason:
+        "Technical term. Describe the integration need at business level.",
+    },
+    {
+      term: "kubernetes",
+      reason:
+        "Technical term. Describe the deployment requirement at business level.",
+    },
+    {
+      term: "docker",
+      reason:
+        "Technical term. Describe the deployment requirement at business level.",
+    },
+    {
+      term: "postgresql",
+      reason: "Technical term. Describe data storage needs at business level.",
+    },
+    {
+      term: "mysql",
+      reason: "Technical term. Describe data storage needs at business level.",
+    },
+    {
+      term: "mongodb",
+      reason: "Technical term. Describe data storage needs at business level.",
+    },
   ];
 
   // Track matched ranges to avoid overlapping findings (e.g., "the system shall" + "shall").
-  const matchedRanges: Array<{ start: number; end: number; finding: ValidationFinding }> = [];
+  const matchedRanges: Array<{
+    start: number;
+    end: number;
+    finding: ValidationFinding;
+  }> = [];
 
   for (const { term, reason } of forbiddenTerms) {
-    const regex = new RegExp(`(?<!\\w)${escapeRegex(term)}(?!\\w)`, 'gi');
+    const regex = new RegExp(`(?<!\\w)${escapeRegex(term)}(?!\\w)`, "gi");
     let match: RegExpExecArray | null;
     while ((match = regex.exec(content)) !== null) {
       const start = match.index;
@@ -375,9 +457,9 @@ export function selfValidate(
       if (overlaps) continue;
 
       const finding: ValidationFinding = {
-        type: 'BLOCKING',
+        type: "BLOCKING",
         message: `Forbidden term "${match[0]}" found. ${reason}`,
-        rule: 'business-language',
+        rule: "business-language",
       };
       rawFindings.push(finding);
       matchedRanges.push({ start, end, finding });
@@ -389,22 +471,23 @@ export function selfValidate(
   const subsectionMatches = content.match(/^#{2,3}\s+.+$/gm);
   if (!subsectionMatches || subsectionMatches.length < 1) {
     rawFindings.push({
-      type: 'WARNING',
+      type: "WARNING",
       message: `Section "${sectionName}" appears to have no subsections (## or ### headings). Check the section guide for required subsections.`,
-      rule: 'subsections-complete',
+      rule: "subsections-complete",
     });
   }
 
   // ── Check 3: MoSCoW Priorities (Section 5 only) ──
-  if (sectionId === '5') {
+  if (sectionId === "5") {
     const brMatches = content.match(/\bBR-\d+\b/g);
     if (brMatches && brMatches.length > 0) {
       const hasPriorityColumn = /priority/i.test(content);
       if (!hasPriorityColumn) {
         rawFindings.push({
-          type: 'BLOCKING',
-          message: 'Requirements table is missing a Priority column. All BR-xxx must have MoSCoW priority (Must/Should/Could/Won\'t Have).',
-          rule: 'moscow',
+          type: "BLOCKING",
+          message:
+            "Requirements table is missing a Priority column. All BR-xxx must have MoSCoW priority (Must/Should/Could/Won't Have).",
+          rule: "moscow",
         });
       } else {
         const tableRows = content.match(/\|.*BR-\d+.*\|/g);
@@ -415,11 +498,11 @@ export function selfValidate(
             const hasCould = /could\s*have/i.test(row);
             const hasWont = /won.?t\s*have/i.test(row);
             if (!hasMust && !hasShould && !hasCould && !hasWont) {
-              const brId = row.match(/\bBR-\d+\b/)?.[0] || 'unknown';
+              const brId = row.match(/\bBR-\d+\b/)?.[0] || "unknown";
               rawFindings.push({
-                type: 'BLOCKING',
+                type: "BLOCKING",
                 message: `${brId} is missing a MoSCoW priority (Must/Should/Could/Won't Have).`,
-                rule: 'moscow',
+                rule: "moscow",
               });
             }
           }
@@ -433,28 +516,35 @@ export function selfValidate(
       const totalPriorities = mustCount + shouldCount + couldCount + wontCount;
       if (totalPriorities > 0 && mustCount / totalPriorities > 0.7) {
         rawFindings.push({
-          type: 'WARNING',
+          type: "WARNING",
           message: `${Math.round((mustCount / totalPriorities) * 100)}% of requirements are "Must Have". Consider reprioritizing — too many Must Haves dilutes the priority signal.`,
-          rule: 'moscow',
+          rule: "moscow",
         });
       }
     }
   }
 
   // ── Check 4: Traceability (Sections 5, 6, 8, 10) ──
-  const traceabilitySections = ['5', '6', '8', '10'];
+  const traceabilitySections = ["5", "6", "8", "10"];
   if (traceabilitySections.includes(sectionId)) {
-    const idPrefix = sectionId === '5' ? 'BR' : sectionId === '6' ? 'CONST' : sectionId === '8' ? 'ASSUMP' : 'RISK';
-    const idRegex = new RegExp(`\\b${idPrefix}[-A-Z]*\\d+\\b`, 'g');
+    const idPrefix =
+      sectionId === "5"
+        ? "BR"
+        : sectionId === "6"
+          ? "CONST"
+          : sectionId === "8"
+            ? "ASSUMP"
+            : "RISK";
+    const idRegex = new RegExp(`\\b${idPrefix}[-A-Z]*\\d+\\b`, "g");
     const idMatches = content.match(idRegex);
 
     if (idMatches && idMatches.length > 0) {
       const hasSourceColumn = /source/i.test(content);
       if (!hasSourceColumn) {
         rawFindings.push({
-          type: 'BLOCKING',
+          type: "BLOCKING",
           message: `Missing "Source" column. Every ${idPrefix}-xxx must trace to a source (Problem Statement, Business Objective, Stakeholder Interview, etc.).`,
-          rule: 'traceability',
+          rule: "traceability",
         });
       }
     }
@@ -470,20 +560,22 @@ export function selfValidate(
   for (const pattern of placeholderPatterns) {
     if (pattern.test(content)) {
       rawFindings.push({
-        type: 'WARNING',
-        message: 'Content contains placeholder text (e.g., [TBD], [insert...]). Replace with actual content before approving.',
-        rule: 'no-placeholders',
+        type: "WARNING",
+        message:
+          "Content contains placeholder text (e.g., [TBD], [insert...]). Replace with actual content before approving.",
+        rule: "no-placeholders",
       });
       break;
     }
   }
 
   // ── Check 6: Section Metadata Present ──
-  if (!content.includes('<!--') || !content.includes('Section Metadata')) {
+  if (!content.includes("<!--") || !content.includes("Section Metadata")) {
     rawFindings.push({
-      type: 'WARNING',
-      message: 'Section metadata HTML comment is missing. Add <!-- Section Metadata: ... --> at the top.',
-      rule: 'metadata-present',
+      type: "WARNING",
+      message:
+        "Section metadata HTML comment is missing. Add <!-- Section Metadata: ... --> at the top.",
+      rule: "metadata-present",
     });
   }
 
@@ -500,31 +592,36 @@ export function selfValidate(
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&");
 }
 
 /**
  * Runs a streaming chat completion through the Mastra Agent.
  * Calls the callbacks as tokens arrive.
  */
-export async function runAgentStream(request: StreamRequest, callbacks: StreamCallbacks): Promise<void> {
+export async function runAgentStream(
+  request: StreamRequest,
+  callbacks: StreamCallbacks,
+): Promise<void> {
   const config = getCachedAdminConfig();
 
   if (!config) {
-    callbacks.onError('Admin config not loaded yet. Try again in a moment.');
+    callbacks.onError("Admin config not loaded yet. Try again in a moment.");
     return;
   }
 
   const agent = getOrCreateAgent(request.agentId, config);
   if (!agent) {
-    callbacks.onError('Ollama provider not configured. Set the API key in Admin Settings.');
+    callbacks.onError(
+      "Ollama provider not configured. Set the API key in Admin Settings.",
+    );
     return;
   }
 
   const fullModel = resolveModel(request.agentId, config);
   const model = stripProviderPrefix(fullModel);
 
-  logger.info('starting Mastra agent stream', {
+  logger.info("starting Mastra agent stream", {
     agentId: request.agentId,
     model,
   });
@@ -535,7 +632,7 @@ export async function runAgentStream(request: StreamRequest, callbacks: StreamCa
       content: m.content,
     })),
     {
-      role: 'user',
+      role: "user",
       content: request.message,
     },
   ];
@@ -546,14 +643,14 @@ export async function runAgentStream(request: StreamRequest, callbacks: StreamCa
     let totalTokens = 0;
 
     for await (const part of streamResult.fullStream) {
-      if (part?.type === 'finish') {
+      if (part?.type === "finish") {
         break;
       }
 
       const event = extractStreamEvent(part);
       if (!event) continue;
 
-      if ('error' in event) {
+      if ("error" in event) {
         callbacks.onError(event.error);
         return;
       }
@@ -563,10 +660,13 @@ export async function runAgentStream(request: StreamRequest, callbacks: StreamCa
     }
 
     callbacks.onDone(totalTokens);
-    logger.info('Mastra agent stream complete', { agentId: request.agentId, tokens: totalTokens });
+    logger.info("Mastra agent stream complete", {
+      agentId: request.agentId,
+      tokens: totalTokens,
+    });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    logger.error('Mastra agent stream failed', {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    logger.error("Mastra agent stream failed", {
       agentId: request.agentId,
       error: message,
       stack: err instanceof Error ? err.stack : undefined,

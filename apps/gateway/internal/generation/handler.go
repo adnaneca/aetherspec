@@ -45,6 +45,7 @@ type GenerateRequest struct {
 	DocID     string `json:"docId"`
 	StepID    string `json:"stepId"`
 	AgentID   string `json:"agentId"`
+	DocType   string `json:"docType"`
 }
 
 // generateSection handles the BRS section generation SSE endpoint.
@@ -58,6 +59,9 @@ func (h *Handler) generateSection(c *fiber.Ctx) error {
 	}
 	if req.AgentID == "" {
 		req.AgentID = "brs-agent"
+	}
+	if req.DocType == "" {
+		req.DocType = docTypeFromAgentID(req.AgentID)
 	}
 
 	h.log.Info("generate-section request",
@@ -84,12 +88,13 @@ func (h *Handler) generateSection(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "step not found"})
 	}
 
-	// ── 2. Load sections.yaml to resolve guide and quality checks ──
-	sectionGuide, sectionChecks, err := h.resolveSectionConfig(stepNum)
+	// ── 2. Load sections.yaml to resolve guide, quality checks, and upstream mapping ──
+	sectionGuide, sectionChecks, _, brsUpstreamIDs, srsUpstreamIDs, err := h.resolveSectionConfig(req.DocType, stepNum)
 	if err != nil {
 		h.log.Warn("section config resolution failed", zap.Error(err))
 		// Fallback: try direct prefix lookup for guide
-		sectionGuide, _ = h.fetchFromMinIOByPrefix(h.cfg.MinIO.TemplateBucket, fmt.Sprintf("section-guides/%02d-", stepNum))
+		prefix := templatePrefix(req.DocType)
+		sectionGuide, _ = h.fetchFromMinIOByPrefix(h.cfg.MinIO.TemplateBucket, fmt.Sprintf("%ssection-guides/%02d-", prefix, stepNum))
 		sectionChecks = []string{}
 	}
 
@@ -98,6 +103,23 @@ func (h *Handler) generateSection(c *fiber.Ctx) error {
 	if err != nil {
 		h.log.Warn("failed to fetch dependencies", zap.Error(err))
 		dependencies = []string{}
+	}
+
+	// ── 3b. Fetch upstream BRS/SRS sections when generating SRD or TC ──
+	var upstreamSections []string
+	if req.DocType == "srs" && len(brsUpstreamIDs) > 0 {
+		upstreamSections, err = h.fetchUpstreamBRS(c.Context(), req.ProjectID, brsUpstreamIDs)
+		if err != nil {
+			h.log.Warn("failed to fetch upstream BRS sections", zap.Error(err))
+			upstreamSections = []string{}
+		}
+	}
+	if req.DocType == "testcase" {
+		brsUpstream, srsUpstream, err := h.fetchUpstreamBRSAndSRS(c.Context(), req.ProjectID, brsUpstreamIDs, srsUpstreamIDs)
+		if err != nil {
+			h.log.Warn("failed to fetch upstream BRS+SRS sections", zap.Error(err))
+		}
+		upstreamSections = append(brsUpstream, srsUpstream...)
 	}
 
 	// ── 4. Fetch input documents from MinIO ──
@@ -122,17 +144,19 @@ func (h *Handler) generateSection(c *fiber.Ctx) error {
 
 	// ── 7. Assemble context for the Mastra agent ──
 	agentPayload := map[string]interface{}{
-		"sectionId":      req.StepID,
-		"sectionName":    stepName,
-		"sectionGuide":   sectionGuide,
-		"dependencies":   dependencies,
-		"inputDocs":      inputDocs,
-		"qualityChecks":  qualityChecks,
-		"existingDraft":  existingDraft,
-		"agentId":        req.AgentID,
-		"projectId":      req.ProjectID,
-		"docId":          req.DocID,
-		"minioPath":      minioPath,
+		"sectionId":        req.StepID,
+		"sectionName":      stepName,
+		"sectionGuide":     sectionGuide,
+		"dependencies":     dependencies,
+		"upstreamSections": upstreamSections,
+		"inputDocs":        inputDocs,
+		"qualityChecks":    qualityChecks,
+		"existingDraft":    existingDraft,
+		"agentId":          req.AgentID,
+		"projectId":        req.ProjectID,
+		"docId":            req.DocID,
+		"minioPath":        minioPath,
+		"docType":          req.DocType,
 	}
 
 	payloadBytes, err := json.Marshal(agentPayload)
@@ -171,10 +195,31 @@ func (h *Handler) generateSection(c *fiber.Ctx) error {
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
 		defer resp.Body.Close()
 		buf := make([]byte, 4096)
+		heartbeat := time.NewTicker(15 * time.Second)
+		defer heartbeat.Stop()
+		lastFlush := time.Now()
+
 		for {
+			select {
+			case <-heartbeat.C:
+				if time.Since(lastFlush) >= 15*time.Second {
+					if _, writeErr := w.Write([]byte(":heartbeat\n\n")); writeErr != nil {
+						h.log.Warn("client heartbeat write failed", zap.Error(writeErr))
+						return
+					}
+					if flushErr := w.Flush(); flushErr != nil {
+						h.log.Warn("client heartbeat flush failed", zap.Error(flushErr))
+						return
+					}
+					lastFlush = time.Now()
+				}
+			default:
+			}
+
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
 				w.Write(buf[:n])
+				lastFlush = time.Now()
 				w.Flush()
 			}
 			if err != nil {
@@ -186,21 +231,34 @@ func (h *Handler) generateSection(c *fiber.Ctx) error {
 	return nil
 }
 
+// templatePrefix returns the MinIO prefix for the requested docType's Cognia config.
+func templatePrefix(docType string) string {
+	switch docType {
+	case "srs":
+		return "srs-be/"
+	case "testcase":
+		return "testcase/"
+	default:
+		return ""
+	}
+}
+
 // resolveSectionConfig reads sections.yaml and returns the section guide markdown
-// content and the list of quality check IDs for the section.
-func (h *Handler) resolveSectionConfig(sectionNum int) (guide string, checks []string, err error) {
+// content, the list of quality check IDs, the upstream BRS section IDs, and the upstream SRS section IDs for the section.
+func (h *Handler) resolveSectionConfig(docType string, sectionNum int) (guide string, checks []string, upstream []int, upstreamBRS []int, upstreamSRS []int, err error) {
 	ctx := context.Background()
 	bucket := h.cfg.MinIO.TemplateBucket
+	prefix := templatePrefix(docType)
 
-	obj, err := h.minioClient.GetObject(ctx, bucket, "sections.yaml", minio.GetObjectOptions{})
+	obj, err := h.minioClient.GetObject(ctx, bucket, prefix+"sections.yaml", minio.GetObjectOptions{})
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, nil, nil, err
 	}
 	defer obj.Close()
 
 	content, err := io.ReadAll(obj)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, nil, nil, err
 	}
 
 	var data struct {
@@ -209,23 +267,105 @@ func (h *Handler) resolveSectionConfig(sectionNum int) (guide string, checks []s
 			Name          string   `yaml:"name"`
 			Guide         string   `yaml:"guide"`
 			QualityChecks []string `yaml:"quality_checks"`
+			Upstream      []int    `yaml:"upstream"`
+			UpstreamBRS   []int    `yaml:"upstream_brs"`
+			UpstreamSRS   []int    `yaml:"upstream_srs"`
 		} `yaml:"sections"`
 	}
 	if err := yaml.Unmarshal(content, &data); err != nil {
-		return "", nil, err
+		return "", nil, nil, nil, nil, err
 	}
 
 	for _, s := range data.Sections {
 		if s.ID == sectionNum {
 			guideContent := ""
 			if s.Guide != "" {
-				guideContent, _ = h.fetchObject(ctx, bucket, s.Guide)
+				guideKey := s.Guide
+				if !strings.HasPrefix(guideKey, prefix) {
+					guideKey = prefix + guideKey
+				}
+				guideContent, _ = h.fetchObject(ctx, bucket, guideKey)
 			}
-			return guideContent, s.QualityChecks, nil
+			return guideContent, s.QualityChecks, s.Upstream, s.UpstreamBRS, s.UpstreamSRS, nil
 		}
 	}
 
-	return "", nil, fmt.Errorf("section %d not found in sections.yaml", sectionNum)
+	return "", nil, nil, nil, nil, fmt.Errorf("section %d not found in sections.yaml", sectionNum)
+}
+
+// fetchUpstreamBRSAndSRS fetches approved upstream BRS and SRS-BE sections for TC generation.
+func (h *Handler) fetchUpstreamBRSAndSRS(ctx context.Context, projectID string, upstreamBRS, upstreamSRS []int) ([]string, []string, error) {
+	var brsContents []string
+	var srsContents []string
+	if len(upstreamBRS) > 0 {
+		contents, err := h.fetchUpstreamSections(ctx, projectID, "brs", upstreamBRS)
+		if err != nil {
+			return nil, nil, fmt.Errorf("BRS upstream: %w", err)
+		}
+		brsContents = contents
+	}
+	if len(upstreamSRS) > 0 {
+		contents, err := h.fetchUpstreamSections(ctx, projectID, "srs", upstreamSRS)
+		if err != nil {
+			return nil, nil, fmt.Errorf("SRS upstream: %w", err)
+		}
+		srsContents = contents
+	}
+	return brsContents, srsContents, nil
+}
+
+// fetchUpstreamSections fetches approved upstream section contents for a given doc type and section numbers.
+func (h *Handler) fetchUpstreamSections(ctx context.Context, projectID, upstreamDocType string, sectionNums []int) ([]string, error) {
+	var upstreamDocID string
+	err := h.pool.QueryRow(ctx,
+		`SELECT id FROM documents WHERE project_id = $1 AND doc_type = $2 LIMIT 1`,
+		projectID, upstreamDocType,
+	).Scan(&upstreamDocID)
+	if err != nil {
+		return nil, fmt.Errorf("no %s document found: %w", upstreamDocType, err)
+	}
+
+	wanted := make(map[int]bool)
+	for _, id := range sectionNums {
+		wanted[id] = true
+	}
+
+	rows, err := h.pool.Query(ctx,
+		`SELECT minio_path, step_number, status FROM document_steps WHERE document_id = $1 ORDER BY step_number`,
+		upstreamDocID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contents []string
+	for rows.Next() {
+		var minioPath string
+		var stepNum int
+		var status string
+		if err := rows.Scan(&minioPath, &stepNum, &status); err != nil {
+			continue
+		}
+		if !wanted[stepNum] {
+			continue
+		}
+		if status != "SIGNED_OFF" {
+			return nil, fmt.Errorf("upstream %s section %d is not signed off", upstreamDocType, stepNum)
+		}
+
+		bucket, key, ok := splitMinioPath(minioPath)
+		if !ok {
+			continue
+		}
+		content, err := h.fetchObject(ctx, bucket, key)
+		if err != nil {
+			h.log.Warn("failed to fetch upstream section", zap.String("docType", upstreamDocType), zap.String("path", minioPath), zap.Error(err))
+			continue
+		}
+		contents = append(contents, fmt.Sprintf("--- %s Section %d ---\n%s", strings.ToUpper(upstreamDocType), stepNum, content))
+	}
+
+	return contents, rows.Err()
 }
 
 // fetchObject returns the content of a MinIO object as string.
@@ -271,7 +411,7 @@ func (h *Handler) fetchFromMinIOByPrefix(bucket, prefix string) (string, error) 
 func (h *Handler) fetchDependencySections(ctx context.Context, docID string, currentStepNum int) ([]string, error) {
 	rows, err := h.pool.Query(ctx,
 		`SELECT minio_path FROM document_steps
-		 WHERE document_id = $1 AND status = 'APPROVED' AND step_number < $2
+		 WHERE document_id = $1 AND status = 'SIGNED_OFF' AND step_number < $2
 		 ORDER BY step_number`,
 		docID, currentStepNum)
 	if err != nil {
@@ -300,6 +440,72 @@ func (h *Handler) fetchDependencySections(ctx context.Context, docID string, cur
 	}
 
 	return contents, nil
+}
+
+// fetchUpstreamBRS returns approved BRS section contents from the same project
+// for the requested upstream section IDs. It looks up the BRS document for the
+// project and fetches the SIGNED_OFF sections whose step_number matches the IDs.
+func (h *Handler) fetchUpstreamBRS(ctx context.Context, projectID string, upstreamIDs []int) ([]string, error) {
+	var brsDocID string
+	err := h.pool.QueryRow(ctx,
+		`SELECT id FROM documents WHERE project_id = $1 AND doc_type = 'brs' LIMIT 1`,
+		projectID,
+	).Scan(&brsDocID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := h.pool.Query(ctx,
+		`SELECT minio_path, step_number FROM document_steps
+		 WHERE document_id = $1 AND status = 'SIGNED_OFF'
+		 ORDER BY step_number`,
+		brsDocID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	wanted := make(map[int]bool)
+	for _, id := range upstreamIDs {
+		wanted[id] = true
+	}
+
+	var contents []string
+	for rows.Next() {
+		var minioPath string
+		var stepNum int
+		if err := rows.Scan(&minioPath, &stepNum); err != nil {
+			continue
+		}
+		if !wanted[stepNum] {
+			continue
+		}
+
+		bucket, key, ok := splitMinioPath(minioPath)
+		if !ok {
+			continue
+		}
+
+		content, err := h.fetchObject(ctx, bucket, key)
+		if err != nil {
+			h.log.Warn("failed to fetch upstream BRS section", zap.String("path", minioPath), zap.Error(err))
+			continue
+		}
+		contents = append(contents, content)
+	}
+
+	return contents, rows.Err()
+}
+
+// docTypeFromAgentID infers the document type from the agent identifier.
+func docTypeFromAgentID(agentID string) string {
+	if strings.HasPrefix(agentID, "srd-") {
+		return "srs"
+	}
+	if strings.HasPrefix(agentID, "brs-") {
+		return "brs"
+	}
+	return "brs"
 }
 
 // fetchInputDocuments fetches text files in the project's input/ folder.

@@ -171,7 +171,9 @@ func (h *Handler) createProject(c *fiber.Ctx) error {
 	defaultPipeline := map[string]interface{}{
 		"brs":      map[string]interface{}{"status": "NOT_STARTED", "currentStep": 1, "totalSteps": 11},
 		"srs":      map[string]interface{}{"status": "NOT_STARTED", "currentStep": 1, "totalSteps": 11},
+		"srs-fe":   map[string]interface{}{"status": "NOT_STARTED", "currentStep": 1, "totalSteps": 11},
 		"testcase": map[string]interface{}{"status": "NOT_STARTED", "currentStep": 1, "totalSteps": 3},
+		"tc-fe":    map[string]interface{}{"status": "NOT_STARTED", "currentStep": 1, "totalSteps": 3},
 	}
 	pipelineJSON, _ := json.Marshal(defaultPipeline)
 	href := fmt.Sprintf("/api/project/%s", projectID)
@@ -193,17 +195,19 @@ func (h *Handler) createProject(c *fiber.Ctx) error {
 	if err := minioHelper.EnsureBucket(h.minioClient, ctx, projectID); err != nil {
 		h.log.Error("minio bucket creation failed", zap.Error(err), zap.String("bucket", projectID))
 	} else {
-		for _, folder := range []string{"input", "brs", "srs", "testcase", "output"} {
+		for _, folder := range []string{"input", "brs", "srs", "srs-fe", "testcase", "tc-fe", "output"} {
 			h.minioClient.PutObject(ctx, projectID, folder+"/.keep",
 				strings.NewReader("# placeholder"), 13,
 				minio.PutObjectOptions{ContentType: "text/plain"})
 		}
 	}
 
-	// Seed BRS document and steps.
+	// Seed documents and steps.
 	h.seedDocumentAndSteps(c.Context(), projectID, "brs", 11)
 	h.seedDocumentAndSteps(c.Context(), projectID, "srs", 11)
+	h.seedDocumentAndSteps(c.Context(), projectID, "srs-fe", 11)
 	h.seedDocumentAndSteps(c.Context(), projectID, "testcase", 3)
+	h.seedDocumentAndSteps(c.Context(), projectID, "tc-fe", 3)
 
 	h.log.Info("project created", zap.String("id", projectID), zap.String("name", body.Name))
 
@@ -400,6 +404,15 @@ func (h *Handler) seedDocumentAndSteps(ctx context.Context, projectID, docType s
 	testcaseSections := []string{
 		"Test Strategy", "Test Scenarios", "Test Cases",
 	}
+	srsfeSections := []string{
+		"Introduction", "Frontend Functional Requirements", "Non-Functional Requirements",
+		"UI/UX Requirements", "Interaction Requirements", "Frontend Constraints",
+		"Frontend Business Rules & Client Validation", "Assumptions & Dependencies",
+		"Acceptance Criteria", "Risks", "Appendices",
+	}
+	tcfeSections := []string{
+		"Executive Summary & Coverage", "Module Test Cases with Gherkin", "Requirements Traceability Matrix",
+	}
 
 	var sections []string
 	switch docType {
@@ -407,8 +420,12 @@ func (h *Handler) seedDocumentAndSteps(ctx context.Context, projectID, docType s
 		sections = brsSections
 	case "srs":
 		sections = srsSections
+	case "srs-fe":
+		sections = srsfeSections
 	case "testcase":
 		sections = testcaseSections
+	case "tc-fe":
+		sections = tcfeSections
 	}
 
 	for i, name := range sections {

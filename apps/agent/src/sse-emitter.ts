@@ -1,5 +1,5 @@
-import type { ServerResponse } from 'node:http';
-import type { WorkflowCallbacks, WorkflowStep } from './workflow.js';
+import type { ServerResponse } from "node:http";
+import type { WorkflowCallbacks, WorkflowStep } from "./workflow.js";
 
 export function createSSECallbacks(res: ServerResponse): WorkflowCallbacks {
   let ended = false;
@@ -25,42 +25,56 @@ export function createSSECallbacks(res: ServerResponse): WorkflowCallbacks {
 
   return {
     onStatus: (step: WorkflowStep, agent: string, message: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'status', step, agent, message })}\n\n`);
+      safeWrite(
+        `data: ${JSON.stringify({ type: "status", step, agent, message })}\n\n`,
+      );
     },
     onToken: (delta: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'token', delta })}\n\n`);
+      safeWrite(`data: ${JSON.stringify({ type: "token", delta })}\n\n`);
     },
     onQuestion: (questions: string[], agent: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'question', agent, questions })}\n\n`);
+      safeWrite(
+        `data: ${JSON.stringify({ type: "question", agent, questions })}\n\n`,
+      );
     },
     onSuggestions: (suggestions: any[], agent: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'suggestions', agent, suggestions })}\n\n`);
+      safeWrite(
+        `data: ${JSON.stringify({ type: "suggestions", agent, suggestions })}\n\n`,
+      );
     },
     onOptions: (options: any[], agent: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'options', agent, options })}\n\n`);
+      safeWrite(
+        `data: ${JSON.stringify({ type: "options", agent, options })}\n\n`,
+      );
     },
     onFixes: (fixes: any[], agent: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'fixes', agent, fixes })}\n\n`);
+      safeWrite(`data: ${JSON.stringify({ type: "fixes", agent, fixes })}\n\n`);
     },
     onReview: (sectionTitle: string, summary: any) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'review', sectionTitle, summary })}\n\n`);
+      safeWrite(
+        `data: ${JSON.stringify({ type: "review", sectionTitle, summary })}\n\n`,
+      );
     },
     onFindings: (findings: any[]) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'findings', findings })}\n\n`);
+      safeWrite(`data: ${JSON.stringify({ type: "findings", findings })}\n\n`);
     },
     onFindingsRaw: (findings: any[], agent: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'findings_raw', findings, agent })}\n\n`);
+      safeWrite(
+        `data: ${JSON.stringify({ type: "findings_raw", findings, agent })}\n\n`,
+      );
     },
     onPaused: async (step: WorkflowStep, waitingFor: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'paused', step, waitingFor })}\n\n`);
+      safeWrite(
+        `data: ${JSON.stringify({ type: "paused", step, waitingFor })}\n\n`,
+      );
       safeEnd();
     },
     onDone: (tokensUsed: number) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'done', tokensUsed })}\n\n`);
+      safeWrite(`data: ${JSON.stringify({ type: "done", tokensUsed })}\n\n`);
       safeEnd();
     },
     onError: (error: string) => {
-      safeWrite(`data: ${JSON.stringify({ type: 'error', error })}\n\n`);
+      safeWrite(`data: ${JSON.stringify({ type: "error", error })}\n\n`);
       safeEnd();
     },
   };

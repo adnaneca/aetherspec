@@ -1,4 +1,4 @@
-import type { KeycloakUser } from './keycloak';
+import type { KeycloakUser } from "./keycloak";
 
 interface AuthState {
   isAuthenticated: boolean;

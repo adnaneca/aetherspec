@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+.turbo
+coverage
+*.log
+pnpm-lock.yaml
+infra/docker-compose/data/
+__pycache__
+.git
+apps/web/test-results
+apps/agent/smoke
+apps/web/scripts
+apps/web/src/styles

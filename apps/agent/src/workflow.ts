@@ -1,25 +1,25 @@
-import { Agent } from '@mastra/core/agent';
-import { logger } from './logger.js';
-import { runAgentStream } from './agent-runner.js';
-import { selfValidate } from './agent-runner.js';
-import { updateWorkflowState, createWorkflow } from './workflow-store.js';
+import { Agent } from "@mastra/core/agent";
+import { logger } from "./logger.js";
+import { runAgentStream } from "./agent-runner.js";
+import { selfValidate } from "./agent-runner.js";
+import { updateWorkflowState, createWorkflow } from "./workflow-store.js";
 
 // ── Types ──
 
 export type WorkflowStep =
-  | 'relevance'
-  | 'generate_questions'
-  | 'negotiate_answers'
-  | 'direct_writer'
-  | 'expectations'
-  | 'suggest'
-  | 'generate'
-  | 'validate'
-  | 'negotiate_fixes'
-  | 'direct_validator'
-  | 'fix'
-  | 'review'
-  | 'done';
+  | "relevance"
+  | "generate_questions"
+  | "negotiate_answers"
+  | "direct_writer"
+  | "expectations"
+  | "suggest"
+  | "generate"
+  | "validate"
+  | "negotiate_fixes"
+  | "direct_validator"
+  | "fix"
+  | "review"
+  | "done";
 
 export interface WorkflowState {
   currentStep: WorkflowStep;
@@ -28,10 +28,10 @@ export interface WorkflowState {
   answers: {
     applicable: boolean | null;
     discover: Record<string, string>;
-    discoverMode?: 'negotiated' | 'direct';
+    discoverMode?: "negotiated" | "direct";
     expectations: string;
     structureChoice: string;
-    validationMode?: 'negotiated' | 'direct';
+    validationMode?: "negotiated" | "direct";
   };
   negotiatedAnswers: Array<{
     questionId: string;
@@ -69,6 +69,7 @@ export interface WorkflowContext {
   sectionName?: string;
   sectionGuide: string;
   dependencySections: string[];
+  upstreamSections?: string[];
   inputDocuments: string[];
   qualityChecks: string[];
   project?: {
@@ -110,27 +111,31 @@ export class BRSWorkflow {
   private context: WorkflowContext;
   private callbacks: WorkflowCallbacks;
 
-  constructor(agents: AgentMap, context: WorkflowContext, callbacks: WorkflowCallbacks) {
+  constructor(
+    agents: AgentMap,
+    context: WorkflowContext,
+    callbacks: WorkflowCallbacks,
+  ) {
     this.agents = agents;
     // Suppress TS6133: agents are used indirectly by the callAgent helper.
     void this.agents;
     this.context = context;
     this.callbacks = callbacks;
     this.state = {
-      currentStep: 'relevance',
+      currentStep: "relevance",
       sectionId: context.stepId,
-      sectionName: context.sectionName || '',
+      sectionName: context.sectionName || "",
       answers: {
         applicable: null,
         discover: {},
-        discoverMode: 'negotiated',
-        expectations: '',
-        structureChoice: '',
-        validationMode: 'negotiated',
+        discoverMode: "negotiated",
+        expectations: "",
+        structureChoice: "",
+        validationMode: "negotiated",
       },
       negotiatedAnswers: [],
       pendingQuestions: [],
-      draft: '',
+      draft: "",
       revisionCount: 0,
       findings: [],
       negotiatedFixes: [],
@@ -162,7 +167,7 @@ export class BRSWorkflow {
   // ── Main execution loop ──
 
   async run() {
-    logger.info('Starting BRS workflow', {
+    logger.info("Starting BRS workflow", {
       workflowId: this.context.workflowId,
       step: this.state.sectionId,
     });
@@ -172,7 +177,7 @@ export class BRSWorkflow {
       this.context.projectId,
       this.context.docId,
       this.context.stepId,
-      'brs-orchestrator',
+      "brs-orchestrator",
       this.state,
     );
 
@@ -187,7 +192,7 @@ export class BRSWorkflow {
 
   async resume(userResponse: any) {
     this.context.userResponse = userResponse;
-    logger.info('Resuming BRS workflow', {
+    logger.info("Resuming BRS workflow", {
       workflowId: this.context.workflowId,
       step: this.state.currentStep,
       response: userResponse,
@@ -195,28 +200,28 @@ export class BRSWorkflow {
 
     try {
       switch (this.state.currentStep) {
-        case 'relevance':
+        case "relevance":
           await this.handleRelevanceResponse();
           break;
-        case 'negotiate_answers':
+        case "negotiate_answers":
           await this.handleNegotiateAnswersResponse();
           break;
-        case 'direct_writer':
+        case "direct_writer":
           await this.handleDirectWriterResponse();
           break;
-        case 'expectations':
+        case "expectations":
           await this.handleExpectationsResponse();
           break;
-        case 'suggest':
+        case "suggest":
           await this.handleSuggestResponse();
           break;
-        case 'negotiate_fixes':
+        case "negotiate_fixes":
           await this.handleNegotiateFixesResponse();
           break;
-        case 'direct_validator':
+        case "direct_validator":
           await this.handleDirectValidatorResponse();
           break;
-        case 'review':
+        case "review":
           await this.handleReviewResponse();
           break;
         default:
@@ -227,15 +232,17 @@ export class BRSWorkflow {
     } finally {
       // Always emit a terminal event so the client sees the workflow is no longer running.
       // onError already calls safeEnd(), but if the switch did nothing we still need closure.
-      if (this.state.currentStep !== 'relevance' &&
-          this.state.currentStep !== 'generate_questions' &&
-          this.state.currentStep !== 'negotiate_answers' &&
-          this.state.currentStep !== 'direct_writer' &&
-          this.state.currentStep !== 'expectations' &&
-          this.state.currentStep !== 'suggest' &&
-          this.state.currentStep !== 'negotiate_fixes' &&
-          this.state.currentStep !== 'direct_validator' &&
-          this.state.currentStep !== 'review') {
+      if (
+        this.state.currentStep !== "relevance" &&
+        this.state.currentStep !== "generate_questions" &&
+        this.state.currentStep !== "negotiate_answers" &&
+        this.state.currentStep !== "direct_writer" &&
+        this.state.currentStep !== "expectations" &&
+        this.state.currentStep !== "suggest" &&
+        this.state.currentStep !== "negotiate_fixes" &&
+        this.state.currentStep !== "direct_validator" &&
+        this.state.currentStep !== "review"
+      ) {
         this.callbacks.onDone(0);
       }
     }
@@ -243,11 +250,14 @@ export class BRSWorkflow {
 
   // ── Persistence helper ──
 
-  private async persist(status: 'active' | 'paused' | 'completed' | 'terminated' | 'error' = 'paused') {
+  private async persist(
+    status:
+      "active" | "paused" | "completed" | "terminated" | "error" = "paused",
+  ) {
     try {
       await updateWorkflowState(this.context.workflowId, this.state, status);
     } catch (err) {
-      logger.error('failed to persist workflow state', {
+      logger.error("failed to persist workflow state", {
         workflowId: this.context.workflowId,
         error: (err as Error).message,
       });
@@ -257,77 +267,100 @@ export class BRSWorkflow {
 
   private async pause(step: WorkflowStep, waitingFor: string) {
     this.state.currentStep = step;
-    await this.persist('paused');
+    await this.persist("paused");
     await this.callbacks.onPaused(step, waitingFor);
   }
 
   // ── Step: Relevance Check ──
 
   private async stepRelevance() {
-    this.state.currentStep = 'relevance';
-    this.callbacks.onStatus('relevance', 'brs-orchestrator', 'Checking section relevance...');
+    this.state.currentStep = "relevance";
+    this.callbacks.onStatus(
+      "relevance",
+      "brs-orchestrator",
+      "Checking section relevance...",
+    );
 
     const questions = [
       `Section ${this.state.sectionId} is "${this.state.sectionName}". Is this section applicable to your BRS? (YES/NO)`,
     ];
 
-    this.callbacks.onQuestion(questions, 'brs-orchestrator');
-    await this.pause('relevance', 'user_answer');
+    this.callbacks.onQuestion(questions, "brs-orchestrator");
+    await this.pause("relevance", "user_answer");
   }
 
   private async handleRelevanceResponse() {
-    const response = (this.context.userResponse || '').toString().toUpperCase().trim();
+    const response = (this.context.userResponse || "")
+      .toString()
+      .toUpperCase()
+      .trim();
 
-    if (response === 'NO' || response === 'N') {
+    if (response === "NO" || response === "N") {
       this.state.answers.applicable = false;
-      await this.persist('terminated');
-      this.callbacks.onStatus('done', 'brs-orchestrator', 'Section marked as NOT APPLICABLE');
+      await this.persist("terminated");
+      this.callbacks.onStatus(
+        "done",
+        "brs-orchestrator",
+        "Section marked as NOT APPLICABLE",
+      );
       this.callbacks.onDone(0);
       return;
     }
 
     this.state.answers.applicable = true;
-    this.callbacks.onStatus('generate_questions', 'brs-orchestrator', 'Starting discovery...');
+    this.callbacks.onStatus(
+      "generate_questions",
+      "brs-orchestrator",
+      "Starting discovery...",
+    );
     await this.stepGenerateQuestions();
   }
 
   // ── Step: Generate Questions (internal) ──
 
   private async stepGenerateQuestions() {
-    this.state.currentStep = 'generate_questions';
-    this.callbacks.onStatus('generate_questions', 'brs-writer', 'Generating questions...');
+    this.state.currentStep = "generate_questions";
+    this.callbacks.onStatus(
+      "generate_questions",
+      "brs-writer",
+      "Generating questions...",
+    );
     this.state.agentCalls.writer++;
 
     const prompt = this.buildGenerateQuestionsPrompt();
-    const response = await this.callAgent('writer', prompt, false);
+    const response = await this.callAgent("writer", prompt, false);
     const questions = this.parseQuestions(response);
 
     this.state.pendingQuestions = questions;
-    this.callbacks.onStatus('negotiate_answers', 'brs-negotiator', 'Negotiating answers...');
+    this.callbacks.onStatus(
+      "negotiate_answers",
+      "brs-negotiator",
+      "Negotiating answers...",
+    );
     await this.stepNegotiateAnswers();
   }
 
   // ── Step: Negotiate Answers ──
 
   private async stepNegotiateAnswers() {
-    this.state.currentStep = 'negotiate_answers';
+    this.state.currentStep = "negotiate_answers";
     this.state.agentCalls.negotiator++;
 
     const prompt = this.buildNegotiateAnswersPrompt();
-    const response = await this.callAgent('negotiator', prompt, false);
+    const response = await this.callAgent("negotiator", prompt, false);
     const suggestions = this.parseSuggestions(response);
 
-    this.callbacks.onSuggestions(suggestions, 'brs-negotiator');
-    await this.pause('negotiate_answers', 'user_review_suggestions');
+    this.callbacks.onSuggestions(suggestions, "brs-negotiator");
+    await this.pause("negotiate_answers", "user_review_suggestions");
   }
 
   private async handleNegotiateAnswersResponse() {
     const userResponse = this.context.userResponse || {};
 
-    if (userResponse.action === 'direct_writer_access') {
-      this.state.answers.discoverMode = 'direct';
-      this.callbacks.onQuestion(this.state.pendingQuestions, 'brs-writer');
-      await this.pause('direct_writer', 'user_answers');
+    if (userResponse.action === "direct_writer_access") {
+      this.state.answers.discoverMode = "direct";
+      this.callbacks.onQuestion(this.state.pendingQuestions, "brs-writer");
+      await this.pause("direct_writer", "user_answers");
       return;
     }
 
@@ -340,114 +373,155 @@ export class BRSWorkflow {
     this.state.negotiatedAnswers = reviewedAnswers.map((a: any) => ({
       questionId: a.questionId,
       question: a.question,
-      suggested: a.status === 'rejected' ? '' : a.answer,
-      accepted: a.status === 'accepted',
-      modified: a.status === 'modified' ? a.answer : '',
-      rejected: a.status === 'rejected',
+      suggested: a.status === "rejected" ? "" : a.answer,
+      accepted: a.status === "accepted",
+      modified: a.status === "modified" ? a.answer : "",
+      rejected: a.status === "rejected",
       final: a.answer,
     }));
 
-    this.callbacks.onStatus('expectations', 'brs-orchestrator', 'Asking about expectations...');
+    this.callbacks.onStatus(
+      "expectations",
+      "brs-orchestrator",
+      "Asking about expectations...",
+    );
     await this.stepExpectations();
   }
 
   private async handleDirectWriterResponse() {
     const answers = this.context.userResponse || {};
     this.state.answers.discover = answers;
-    this.state.answers.discoverMode = 'direct';
+    this.state.answers.discoverMode = "direct";
 
-    this.state.negotiatedAnswers = Object.entries(answers).map(([questionId, final]) => ({
-      questionId,
-      question: this.state.pendingQuestions.find((_, i) => `Q${i + 1}` === questionId) || questionId,
-      suggested: final as string,
-      accepted: true,
-      modified: final as string,
-      final: final as string,
-    }));
+    this.state.negotiatedAnswers = Object.entries(answers).map(
+      ([questionId, final]) => ({
+        questionId,
+        question:
+          this.state.pendingQuestions.find(
+            (_, i) => `Q${i + 1}` === questionId,
+          ) || questionId,
+        suggested: final as string,
+        accepted: true,
+        modified: final as string,
+        final: final as string,
+      }),
+    );
 
-    this.callbacks.onStatus('expectations', 'brs-orchestrator', 'Asking about expectations...');
+    this.callbacks.onStatus(
+      "expectations",
+      "brs-orchestrator",
+      "Asking about expectations...",
+    );
     await this.stepExpectations();
   }
 
   // ── Step: Expectations ──
 
   private async stepExpectations() {
-    this.state.currentStep = 'expectations';
+    this.state.currentStep = "expectations";
 
     const questions = [
-      'What are your specific expectations for this section?',
-      'Any must-have content?',
-      'Any specific constraints or preferences?',
+      "What are your specific expectations for this section?",
+      "Any must-have content?",
+      "Any specific constraints or preferences?",
     ];
 
-    this.callbacks.onQuestion(questions, 'brs-orchestrator');
-    await this.pause('expectations', 'user_expectations');
+    this.callbacks.onQuestion(questions, "brs-orchestrator");
+    await this.pause("expectations", "user_expectations");
   }
 
   private async handleExpectationsResponse() {
-    this.state.answers.expectations = (this.context.userResponse || '').toString();
-    this.callbacks.onStatus('suggest', 'brs-writer', 'Suggesting structure options...');
+    this.state.answers.expectations = (
+      this.context.userResponse || ""
+    ).toString();
+    this.callbacks.onStatus(
+      "suggest",
+      "brs-writer",
+      "Suggesting structure options...",
+    );
     await this.stepSuggest();
   }
 
   // ── Step: Suggest ──
 
   private async stepSuggest() {
-    this.state.currentStep = 'suggest';
+    this.state.currentStep = "suggest";
     this.state.agentCalls.writer++;
 
     const prompt = this.buildSuggestPrompt();
-    const response = await this.callAgent('writer', prompt, false);
+    const response = await this.callAgent("writer", prompt, false);
     const options = this.parseOptions(response);
 
-    this.callbacks.onOptions(options, 'brs-writer');
-    await this.pause('suggest', 'user_structure_choice');
+    this.callbacks.onOptions(options, "brs-writer");
+    await this.pause("suggest", "user_structure_choice");
   }
 
   private async handleSuggestResponse() {
-    this.state.answers.structureChoice = (this.context.userResponse || 'A').toString();
-    this.callbacks.onStatus('generate', 'brs-writer', 'Generating section content...');
+    this.state.answers.structureChoice = (
+      this.context.userResponse || "A"
+    ).toString();
+    this.callbacks.onStatus(
+      "generate",
+      "brs-writer",
+      "Generating section content...",
+    );
     await this.stepGenerate();
   }
 
   // ── Step: Generate ──
 
   private async stepGenerate() {
-    this.state.currentStep = 'generate';
+    this.state.currentStep = "generate";
     this.state.agentCalls.writer++;
 
     const prompt = this.buildGeneratePrompt();
-    const response = await this.callAgent('writer', prompt, true);
+    const response = await this.callAgent("writer", prompt, true);
     this.state.draft = response;
 
-    this.callbacks.onStatus('validate', 'brs-validator', 'Running quality checks...');
+    this.callbacks.onStatus(
+      "validate",
+      "brs-validator",
+      "Running quality checks...",
+    );
     await this.stepValidate();
   }
 
   // ── Step: Validate ──
 
   private async stepValidate() {
-    this.state.currentStep = 'validate';
+    this.state.currentStep = "validate";
     this.state.agentCalls.validator++;
 
     const prompt = this.buildValidatePrompt();
-    const response = await this.callAgent('validator', prompt, false);
+    const response = await this.callAgent("validator", prompt, false);
     let findings = this.parseFindings(response);
 
     if (findings.length === 0) {
-      findings = selfValidate(this.state.sectionId.toString(), this.state.sectionName, this.state.draft);
+      findings = selfValidate(
+        this.state.sectionId.toString(),
+        this.state.sectionName,
+        this.state.draft,
+      );
     }
 
     this.state.findings = findings;
     this.callbacks.onFindings(findings);
 
-    const hasBlocking = findings.some((f: any) => f.type === 'BLOCKING');
+    const hasBlocking = findings.some((f: any) => f.type === "BLOCKING");
 
     if (hasBlocking) {
-      this.callbacks.onStatus('negotiate_fixes', 'brs-negotiator', 'Proposing fixes for findings...');
+      this.callbacks.onStatus(
+        "negotiate_fixes",
+        "brs-negotiator",
+        "Proposing fixes for findings...",
+      );
       await this.stepNegotiateFixes();
     } else {
-      this.callbacks.onStatus('review', 'brs-orchestrator', 'Presenting draft for review...');
+      this.callbacks.onStatus(
+        "review",
+        "brs-orchestrator",
+        "Presenting draft for review...",
+      );
       await this.stepReview();
     }
   }
@@ -455,25 +529,25 @@ export class BRSWorkflow {
   // ── Step: Negotiate Fixes ──
 
   private async stepNegotiateFixes() {
-    this.state.currentStep = 'negotiate_fixes';
+    this.state.currentStep = "negotiate_fixes";
     this.state.agentCalls.negotiator++;
 
     const prompt = this.buildNegotiateFixesPrompt();
-    const response = await this.callAgent('negotiator', prompt, false);
+    const response = await this.callAgent("negotiator", prompt, false);
     const fixes = this.parseFixes(response);
 
     this.state.negotiatedFixes = fixes;
-    this.callbacks.onFixes(fixes, 'brs-negotiator');
-    await this.pause('negotiate_fixes', 'user_review_fixes');
+    this.callbacks.onFixes(fixes, "brs-negotiator");
+    await this.pause("negotiate_fixes", "user_review_fixes");
   }
 
   private async handleNegotiateFixesResponse() {
     const userResponse = this.context.userResponse || {};
 
-    if (userResponse.action === 'direct_validator_access') {
-      this.state.answers.validationMode = 'direct';
-      this.callbacks.onFindingsRaw(this.state.findings, 'brs-validator');
-      await this.pause('direct_validator', 'user_review_findings');
+    if (userResponse.action === "direct_validator_access") {
+      this.state.answers.validationMode = "direct";
+      this.callbacks.onFindingsRaw(this.state.findings, "brs-validator");
+      await this.pause("direct_validator", "user_review_findings");
       return;
     }
 
@@ -488,34 +562,44 @@ export class BRSWorkflow {
       finding: f.finding,
       proposedFix: f.proposedFix,
       autoFixable: !!f.autoFixable,
-      accepted: f.status !== 'skipped' && (f.accepted || f.status === 'accepted' || f.status === 'modified'),
+      accepted:
+        f.status !== "skipped" &&
+        (f.accepted || f.status === "accepted" || f.status === "modified"),
     }));
 
     const acceptedFixes = this.state.negotiatedFixes.filter((f) => f.accepted);
 
     if (acceptedFixes.length > 0) {
-      this.callbacks.onStatus('fix', 'brs-writer', 'Applying fixes...');
+      this.callbacks.onStatus("fix", "brs-writer", "Applying fixes...");
       await this.stepFix();
     } else {
-      this.callbacks.onStatus('review', 'brs-orchestrator', 'Presenting draft for review...');
+      this.callbacks.onStatus(
+        "review",
+        "brs-orchestrator",
+        "Presenting draft for review...",
+      );
       await this.stepReview();
     }
   }
 
   private async handleDirectValidatorResponse() {
     const userResponse = this.context.userResponse || {};
-    const decisions = Array.isArray(userResponse) ? userResponse : (userResponse.fixes || []);
+    const decisions = Array.isArray(userResponse)
+      ? userResponse
+      : userResponse.fixes || [];
     const acceptedFindings = Array.isArray(decisions)
-      ? this.state.findings.filter((_f: any, i: number) => decisions[i]?.accepted)
+      ? this.state.findings.filter(
+          (_f: any, i: number) => decisions[i]?.accepted,
+        )
       : [];
 
-    this.state.answers.validationMode = 'direct';
+    this.state.answers.validationMode = "direct";
     this.state.findings = acceptedFindings;
 
     this.state.negotiatedFixes = acceptedFindings.map((f: any, i: number) => ({
       findingId: f.id || `F${i + 1}`,
-      finding: f.message || 'Finding',
-      proposedFix: f.message || 'Please address this finding.',
+      finding: f.message || "Finding",
+      proposedFix: f.message || "Please address this finding.",
       autoFixable: false,
       accepted: true,
     }));
@@ -523,10 +607,18 @@ export class BRSWorkflow {
     const hasAcceptedFixes = this.state.negotiatedFixes.length > 0;
 
     if (hasAcceptedFixes) {
-      this.callbacks.onStatus('fix', 'brs-writer', 'Applying selected fixes...');
+      this.callbacks.onStatus(
+        "fix",
+        "brs-writer",
+        "Applying selected fixes...",
+      );
       await this.stepFix();
     } else {
-      this.callbacks.onStatus('review', 'brs-orchestrator', 'Presenting draft for review...');
+      this.callbacks.onStatus(
+        "review",
+        "brs-orchestrator",
+        "Presenting draft for review...",
+      );
       await this.stepReview();
     }
   }
@@ -534,21 +626,25 @@ export class BRSWorkflow {
   // ── Step: Fix ──
 
   private async stepFix() {
-    this.state.currentStep = 'fix';
+    this.state.currentStep = "fix";
     this.state.agentCalls.writer++;
 
     const prompt = this.buildFixPrompt();
-    const response = await this.callAgent('writer', prompt, true);
+    const response = await this.callAgent("writer", prompt, true);
     this.state.draft = response;
 
-    this.callbacks.onStatus('validate', 'brs-validator', 'Re-checking after fixes...');
+    this.callbacks.onStatus(
+      "validate",
+      "brs-validator",
+      "Re-checking after fixes...",
+    );
     await this.stepValidate();
   }
 
   // ── Step: Review ──
 
   private async stepReview() {
-    this.state.currentStep = 'review';
+    this.state.currentStep = "review";
 
     const summary = {
       sectionId: this.state.sectionId,
@@ -558,27 +654,36 @@ export class BRSWorkflow {
       revisionCount: this.state.revisionCount,
     };
 
-    this.callbacks.onReview(`Section ${this.state.sectionId}: ${this.state.sectionName}`, summary);
-    await this.pause('review', 'user_approval');
+    this.callbacks.onReview(
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      summary,
+    );
+    await this.pause("review", "user_approval");
   }
 
   private async handleReviewResponse() {
     const response = this.context.userResponse || {};
-    const action = (response.action || '').toString().toLowerCase();
+    const action = (response.action || "").toString().toLowerCase();
 
-    if (action === 'approve' || action === 'yes') {
-      this.state.currentStep = 'done';
-      await this.persist('completed');
+    if (action === "approve" || action === "yes") {
+      this.state.currentStep = "done";
+      await this.persist("completed");
       const tokensUsed =
-        this.state.agentCalls.writer + this.state.agentCalls.negotiator + this.state.agentCalls.validator;
-      this.callbacks.onStatus('done', 'brs-orchestrator', 'Section approved and locked');
+        this.state.agentCalls.writer +
+        this.state.agentCalls.negotiator +
+        this.state.agentCalls.validator;
+      this.callbacks.onStatus(
+        "done",
+        "brs-orchestrator",
+        "Section approved and locked",
+      );
       this.callbacks.onDone(tokensUsed);
-    } else if (action === 'revise' || action === 'no') {
+    } else if (action === "revise" || action === "no") {
       this.state.revisionCount++;
 
       this.callbacks.onStatus(
-        'generate',
-        'brs-writer',
+        "generate",
+        "brs-writer",
         `Revising (revision ${this.state.revisionCount})...`,
       );
       await this.stepGenerate();
@@ -589,18 +694,21 @@ export class BRSWorkflow {
 
   // ── Agent call helper ──
 
-  private async callAgent(agentId: 'orchestrator' | 'writer' | 'negotiator' | 'validator', prompt: string, streamTokens: boolean): Promise<string> {
-    
+  private async callAgent(
+    agentId: "orchestrator" | "writer" | "negotiator" | "validator",
+    prompt: string,
+    streamTokens: boolean,
+  ): Promise<string> {
     const fullIdMap: Record<typeof agentId, string> = {
-      orchestrator: 'brs-orchestrator',
-      writer: 'brs-writer',
-      negotiator: 'brs-negotiator',
-      validator: 'brs-validator',
+      orchestrator: "brs-orchestrator",
+      writer: "brs-writer",
+      negotiator: "brs-negotiator",
+      validator: "brs-validator",
     };
     const fullId = fullIdMap[agentId];
 
     return new Promise((resolve, reject) => {
-      let fullText = '';
+      let fullText = "";
       runAgentStream(
         {
           agentId: fullId,
@@ -610,17 +718,20 @@ export class BRSWorkflow {
         {
           onToken: (delta) => {
             fullText += delta;
-            
+
             if (streamTokens) {
               this.callbacks.onToken(delta);
             }
           },
           onDone: (tokensUsed) => {
-            logger.debug('agent call complete', { agentId: fullId, tokensUsed });
+            logger.debug("agent call complete", {
+              agentId: fullId,
+              tokensUsed,
+            });
             resolve(fullText);
           },
           onError: (error) => {
-            logger.error('agent call failed', { agentId: fullId, error });
+            logger.error("agent call failed", { agentId: fullId, error });
             reject(new Error(error));
           },
         },
@@ -632,14 +743,14 @@ export class BRSWorkflow {
 
   private projectContextBlock(): string {
     const p = this.context.project;
-    if (!p) return '';
+    if (!p) return "";
     const parts = [
       `Project Name: ${p.name}`,
-      p.key ? `Project Key: ${p.key}` : '',
-      p.description ? `Project Description:\n${p.description}` : '',
-      p.targetDate ? `Target Date: ${p.targetDate}` : '',
+      p.key ? `Project Key: ${p.key}` : "",
+      p.description ? `Project Description:\n${p.description}` : "",
+      p.targetDate ? `Target Date: ${p.targetDate}` : "",
     ];
-    return parts.filter(Boolean).join('\n');
+    return parts.filter(Boolean).join("\n");
   }
 
   private buildGenerateQuestionsPrompt(): string {
@@ -647,15 +758,15 @@ export class BRSWorkflow {
     return [
       `You are generating Section ${this.state.sectionId} of a BRS document.`,
       `Section Guide:\n${this.context.sectionGuide}`,
-      projectBlock ? `Project Context:\n${projectBlock}` : '',
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
       this.context.dependencySections.length > 0
-        ? `Previously Approved Sections:\n${this.context.dependencySections.join('\n---\n')}`
-        : '',
+        ? `Previously Approved Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
       this.context.inputDocuments.length > 0
-        ? `Input Documents:\n${this.context.inputDocuments.join('\n---\n')}`
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
         : projectBlock
-          ? 'No uploaded input documents are available. Use the Project Context above.'
-          : 'No uploaded input documents or project description are available. Ask only questions that can be answered from the section guide, and phrase them so the human can answer directly.',
+          ? "No uploaded input documents are available. Use the Project Context above."
+          : "No uploaded input documents or project description are available. Ask only questions that can be answered from the section guide, and phrase them so the human can answer directly.",
       `Generate clarifying questions as a numbered list. Ask as many as needed based on the section guide — do not enforce a specific count.`,
       `Rules:`,
       `- Do NOT ask for documents that were not uploaded (e.g., charter, business case, PRD) unless they are explicitly listed in Input Documents.`,
@@ -663,7 +774,7 @@ export class BRSWorkflow {
       `- Return the questions as a numbered list.`,
     ]
       .filter(Boolean)
-      .join('\n\n---\n\n');
+      .join("\n\n---\n\n");
   }
 
   private buildNegotiateAnswersPrompt(): string {
@@ -671,12 +782,12 @@ export class BRSWorkflow {
     return [
       `You are the Negotiator. The Writer asked these questions:`,
       JSON.stringify(this.state.pendingQuestions, null, 2),
-      projectBlock ? `Project Context:\n${projectBlock}` : '',
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
       this.context.inputDocuments.length > 0
-        ? `Input Documents:\n${this.context.inputDocuments.join('\n---\n')}`
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
         : projectBlock
-          ? 'No uploaded input documents are available. Infer answers from the Project Context above.'
-          : 'No uploaded input documents or project description are available. Each answer must be a concise, plausible example or an honest statement that the user needs to supply the detail.',
+          ? "No uploaded input documents are available. Infer answers from the Project Context above."
+          : "No uploaded input documents or project description are available. Each answer must be a concise, plausible example or an honest statement that the user needs to supply the detail.",
       `Propose answers for each question.`,
       `Rules:`,
       `- If the answer is clearly supported by an input document or project description, set confidence to "high" and answer factually.`,
@@ -687,7 +798,7 @@ export class BRSWorkflow {
       `- Return JSON: {"suggestions": [{"questionId": "Q1", "question": "...", "suggestedAnswer": "...", "confidence": "high|medium|low"}]}.`,
     ]
       .filter(Boolean)
-      .join('\n\n');
+      .join("\n\n");
   }
 
   private buildSuggestPrompt(): string {
@@ -696,7 +807,7 @@ export class BRSWorkflow {
       `Suggest 2-3 structure options for this section.`,
       `Section Guide:\n${this.context.sectionGuide}`,
       `Return options as: Option A: <title> - <description>. Option B: ...`,
-    ].join('\n\n---\n\n');
+    ].join("\n\n---\n\n");
   }
 
   private buildGeneratePrompt(): string {
@@ -704,18 +815,18 @@ export class BRSWorkflow {
       `You are the BRS Writer. Generate Section ${this.state.sectionId}: ${this.state.sectionName}.`,
       `Section Guide:\n${this.context.sectionGuide}`,
       this.context.dependencySections.length > 0
-        ? `Previously Approved Sections:\n${this.context.dependencySections.join('\n---\n')}`
-        : '',
+        ? `Previously Approved Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
       this.context.inputDocuments.length > 0
-        ? `Input Documents:\n${this.context.inputDocuments.join('\n---\n')}`
-        : '',
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : "",
       `User Answers:\n${JSON.stringify(this.state.negotiatedAnswers, null, 2)}`,
       `User Expectations:\n${this.state.answers.expectations}`,
       `Selected Structure: ${this.state.answers.structureChoice}`,
       `Generate the complete section content as Markdown. Use business language. Assign IDs where applicable. Output ONLY the Markdown content — no commentary.`,
     ]
       .filter(Boolean)
-      .join('\n\n---\n\n');
+      .join("\n\n---\n\n");
   }
 
   private buildValidatePrompt(): string {
@@ -723,12 +834,14 @@ export class BRSWorkflow {
       `You are the BRS Validator. Validate the following section content:`,
       `Section ${this.state.sectionId}: ${this.state.sectionName}`,
       `Content:\n${this.state.draft}`,
-      this.context.qualityChecks.length > 0 ? `Quality Checks:\n${this.context.qualityChecks.join('\n')}` : '',
+      this.context.qualityChecks.length > 0
+        ? `Quality Checks:\n${this.context.qualityChecks.join("\n")}`
+        : "",
       `Check for: forbidden terms (SHALL, API, database), missing subsections, MoSCoW priorities, traceability, placeholders.`,
       `Return findings as JSON: {"findings": [{"type": "BLOCKING|WARNING|INFO", "message": "...", "rule": "..."}]}.`,
     ]
       .filter(Boolean)
-      .join('\n\n---\n\n');
+      .join("\n\n---\n\n");
   }
 
   private buildNegotiateFixesPrompt(): string {
@@ -737,27 +850,31 @@ export class BRSWorkflow {
       JSON.stringify(this.state.findings, null, 2),
       `Propose fixes for each finding. For forbidden terms, suggest replacements. For missing items, suggest additions.`,
       `Return fixes as JSON: {"fixes": [{"findingId": "1", "proposedFix": "...", "autoFixable": true}]}.`,
-    ].join('\n\n');
+    ].join("\n\n");
   }
 
   private buildFixPrompt(): string {
     return [
       `You are the BRS Writer. Apply these fixes to the section content:`,
-      `Accepted Fixes:\n${JSON.stringify(this.state.negotiatedFixes.filter((f) => f.accepted), null, 2)}`,
+      `Accepted Fixes:\n${JSON.stringify(
+        this.state.negotiatedFixes.filter((f) => f.accepted),
+        null,
+        2,
+      )}`,
       `Current Draft:\n${this.state.draft}`,
       `Regenerate the section with the fixes applied. Use business language. Keep IDs consistent.`,
-    ].join('\n\n---\n\n');
+    ].join("\n\n---\n\n");
   }
 
   // ── Parsers ──
 
   private parseQuestions(response: string): string[] {
-    const lines = response.split('\n');
+    const lines = response.split("\n");
     const questions: string[] = [];
     for (const line of lines) {
       const trimmed = line.trim();
-      if (trimmed.match(/^\d+[\.\)]\s/) || trimmed.endsWith('?')) {
-        questions.push(trimmed.replace(/^\d+[\.\)]\s*/, ''));
+      if (trimmed.match(/^\d+[\.\)]\s/) || trimmed.endsWith("?")) {
+        questions.push(trimmed.replace(/^\d+[\.\)]\s*/, ""));
       }
     }
     if (questions.length > 0) return questions;
@@ -770,7 +887,14 @@ export class BRSWorkflow {
       const parsed = JSON.parse(clean);
       return parsed.suggestions || [];
     } catch {
-      return [{ questionId: 'Q1', question: 'General suggestion', suggestedAnswer: response.trim(), confidence: 'medium' }];
+      return [
+        {
+          questionId: "Q1",
+          question: "General suggestion",
+          suggestedAnswer: response.trim(),
+          confidence: "medium",
+        },
+      ];
     }
   }
 
@@ -779,11 +903,21 @@ export class BRSWorkflow {
     const optionRegex = /(?:Option|option)\s+([A-C])[:\.]?\s*([^\n]+)/g;
     let match;
     while ((match = optionRegex.exec(response)) !== null) {
-      options.push({ id: match[1], name: match[2].trim(), description: match[2].trim() });
+      options.push({
+        id: match[1],
+        name: match[2].trim(),
+        description: match[2].trim(),
+      });
     }
     return options.length > 0
       ? options
-      : [{ id: 'A', name: 'Default Structure', description: 'Use the default structure from the section guide' }];
+      : [
+          {
+            id: "A",
+            name: "Default Structure",
+            description: "Use the default structure from the section guide",
+          },
+        ];
   }
 
   private parseFindings(response: string): any[] {
@@ -793,11 +927,3353 @@ export class BRSWorkflow {
       return parsed.findings || [];
     } catch {
       const findings: any[] = [];
-      const lines = response.split('\n');
+      const lines = response.split("\n");
       for (const line of lines) {
-        if (line.includes('BLOCKING') || line.includes('WARNING') || line.includes('INFO')) {
-          const type = line.includes('BLOCKING') ? 'BLOCKING' : line.includes('WARNING') ? 'WARNING' : 'INFO';
-          findings.push({ type, message: line.trim(), rule: 'unknown' });
+        if (
+          line.includes("BLOCKING") ||
+          line.includes("WARNING") ||
+          line.includes("INFO")
+        ) {
+          const type = line.includes("BLOCKING")
+            ? "BLOCKING"
+            : line.includes("WARNING")
+              ? "WARNING"
+              : "INFO";
+          findings.push({ type, message: line.trim(), rule: "unknown" });
+        }
+      }
+      return findings;
+    }
+  }
+
+  private parseFixes(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.fixes || [];
+    } catch {
+      return [];
+    }
+  }
+
+  private extractJsonFromMarkdown(response: string): string {
+    const codeBlock = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlock && codeBlock[1]) {
+      return codeBlock[1].trim();
+    }
+    return response.trim();
+  }
+}
+
+// ── SRD Workflow ──
+
+export class SRDWorkflow {
+  private agents: AgentMap;
+  private state: WorkflowState;
+  private context: WorkflowContext;
+  private callbacks: WorkflowCallbacks;
+
+  constructor(
+    agents: AgentMap,
+    context: WorkflowContext,
+    callbacks: WorkflowCallbacks,
+  ) {
+    this.agents = agents;
+    void this.agents;
+    this.context = context;
+    this.callbacks = callbacks;
+    this.state = {
+      currentStep: "relevance",
+      sectionId: context.stepId,
+      sectionName: context.sectionName || "",
+      answers: {
+        applicable: null,
+        discover: {},
+        discoverMode: "negotiated",
+        expectations: "",
+        structureChoice: "",
+        validationMode: "negotiated",
+      },
+      negotiatedAnswers: [],
+      pendingQuestions: [],
+      draft: "",
+      revisionCount: 0,
+      findings: [],
+      negotiatedFixes: [],
+      agentCalls: {
+        orchestrator: 0,
+        writer: 0,
+        negotiator: 0,
+        validator: 0,
+      },
+    };
+  }
+
+  setCallbacks(callbacks: WorkflowCallbacks) {
+    this.callbacks = callbacks;
+  }
+
+  getState(): WorkflowState {
+    return this.state;
+  }
+
+  setState(state: WorkflowState) {
+    this.state = state;
+  }
+
+  getContext(): WorkflowContext {
+    return this.context;
+  }
+
+  async run() {
+    logger.info("Starting SRD workflow", {
+      workflowId: this.context.workflowId,
+      step: this.state.sectionId,
+    });
+
+    await createWorkflow(
+      this.context.workflowId,
+      this.context.projectId,
+      this.context.docId,
+      this.context.stepId,
+      "srd-orchestrator",
+      this.state,
+    );
+
+    try {
+      await this.stepRelevance();
+    } catch (err) {
+      this.callbacks.onError((err as Error).message);
+    }
+  }
+
+  async resume(userResponse: any) {
+    this.context.userResponse = userResponse;
+    logger.info("Resuming SRD workflow", {
+      workflowId: this.context.workflowId,
+      step: this.state.currentStep,
+      response: userResponse,
+    });
+
+    try {
+      switch (this.state.currentStep) {
+        case "relevance":
+          await this.handleRelevanceResponse();
+          break;
+        case "negotiate_answers":
+          await this.handleNegotiateAnswersResponse();
+          break;
+        case "direct_writer":
+          await this.handleDirectWriterResponse();
+          break;
+        case "expectations":
+          await this.handleExpectationsResponse();
+          break;
+        case "suggest":
+          await this.handleSuggestResponse();
+          break;
+        case "negotiate_fixes":
+          await this.handleNegotiateFixesResponse();
+          break;
+        case "direct_validator":
+          await this.handleDirectValidatorResponse();
+          break;
+        case "review":
+          await this.handleReviewResponse();
+          break;
+        default:
+          this.callbacks.onError(`Unknown step: ${this.state.currentStep}`);
+      }
+    } catch (err) {
+      this.callbacks.onError((err as Error).message);
+    } finally {
+      if (
+        this.state.currentStep !== "relevance" &&
+        this.state.currentStep !== "generate_questions" &&
+        this.state.currentStep !== "negotiate_answers" &&
+        this.state.currentStep !== "direct_writer" &&
+        this.state.currentStep !== "expectations" &&
+        this.state.currentStep !== "suggest" &&
+        this.state.currentStep !== "negotiate_fixes" &&
+        this.state.currentStep !== "direct_validator" &&
+        this.state.currentStep !== "review"
+      ) {
+        this.callbacks.onDone(0);
+      }
+    }
+  }
+
+  private async persist(
+    status:
+      "active" | "paused" | "completed" | "terminated" | "error" = "paused",
+  ) {
+    try {
+      await updateWorkflowState(this.context.workflowId, this.state, status);
+    } catch (err) {
+      logger.error("failed to persist workflow state", {
+        workflowId: this.context.workflowId,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  private async pause(step: WorkflowStep, waitingFor: string) {
+    this.state.currentStep = step;
+    await this.persist("paused");
+    await this.callbacks.onPaused(step, waitingFor);
+  }
+
+  private async stepRelevance() {
+    this.state.currentStep = "relevance";
+    this.callbacks.onStatus(
+      "relevance",
+      "srd-orchestrator",
+      "Checking section relevance...",
+    );
+
+    const questions = [
+      `Section ${this.state.sectionId} is "${this.state.sectionName}". Is this section applicable to your SRS-BE? (YES/NO)`,
+    ];
+
+    this.callbacks.onQuestion(questions, "srd-orchestrator");
+    await this.pause("relevance", "user_answer");
+  }
+
+  private async handleRelevanceResponse() {
+    const response = (this.context.userResponse || "")
+      .toString()
+      .toUpperCase()
+      .trim();
+
+    if (response === "NO" || response === "N") {
+      this.state.answers.applicable = false;
+      await this.persist("terminated");
+      this.callbacks.onStatus(
+        "done",
+        "srd-orchestrator",
+        "Section marked as NOT APPLICABLE",
+      );
+      this.callbacks.onDone(0);
+      return;
+    }
+
+    this.state.answers.applicable = true;
+    this.callbacks.onStatus(
+      "generate_questions",
+      "srd-orchestrator",
+      "Starting discovery...",
+    );
+    await this.stepGenerateQuestions();
+  }
+
+  private async stepGenerateQuestions() {
+    this.state.currentStep = "generate_questions";
+    this.callbacks.onStatus(
+      "generate_questions",
+      "srd-writer",
+      "Generating questions...",
+    );
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildGenerateQuestionsPrompt();
+    const response = await this.callAgent("writer", prompt, false);
+    const questions = this.parseQuestions(response);
+
+    this.state.pendingQuestions = questions;
+    this.callbacks.onStatus(
+      "negotiate_answers",
+      "srd-negotiator",
+      "Negotiating answers...",
+    );
+    await this.stepNegotiateAnswers();
+  }
+
+  private async stepNegotiateAnswers() {
+    this.state.currentStep = "negotiate_answers";
+    this.state.agentCalls.negotiator++;
+
+    const prompt = this.buildNegotiateAnswersPrompt();
+    const response = await this.callAgent("negotiator", prompt, false);
+    const suggestions = this.parseSuggestions(response);
+
+    this.callbacks.onSuggestions(suggestions, "srd-negotiator");
+    await this.pause("negotiate_answers", "user_review_suggestions");
+  }
+
+  private async handleNegotiateAnswersResponse() {
+    const userResponse = this.context.userResponse || {};
+
+    if (userResponse.action === "direct_writer_access") {
+      this.state.answers.discoverMode = "direct";
+      this.callbacks.onQuestion(this.state.pendingQuestions, "srd-writer");
+      await this.pause("direct_writer", "user_answers");
+      return;
+    }
+
+    const reviewedAnswers = Array.isArray(userResponse.suggestions)
+      ? userResponse.suggestions
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedAnswers = reviewedAnswers.map((a: any) => ({
+      questionId: a.questionId,
+      question: a.question,
+      suggested: a.status === "rejected" ? "" : a.answer,
+      accepted: a.status === "accepted",
+      modified: a.status === "modified" ? a.answer : "",
+      rejected: a.status === "rejected",
+      final: a.answer,
+    }));
+
+    this.callbacks.onStatus(
+      "expectations",
+      "srd-orchestrator",
+      "Asking about expectations...",
+    );
+    await this.stepExpectations();
+  }
+
+  private async handleDirectWriterResponse() {
+    const answers = this.context.userResponse || {};
+    this.state.answers.discover = answers;
+    this.state.answers.discoverMode = "direct";
+
+    this.state.negotiatedAnswers = Object.entries(answers).map(
+      ([questionId, final]) => ({
+        questionId,
+        question:
+          this.state.pendingQuestions.find(
+            (_, i) => `Q${i + 1}` === questionId,
+          ) || questionId,
+        suggested: final as string,
+        accepted: true,
+        modified: final as string,
+        final: final as string,
+      }),
+    );
+
+    this.callbacks.onStatus(
+      "expectations",
+      "srd-orchestrator",
+      "Asking about expectations...",
+    );
+    await this.stepExpectations();
+  }
+
+  private async stepExpectations() {
+    this.state.currentStep = "expectations";
+
+    const questions = [
+      "What are your specific expectations for this section?",
+      "Any must-have content?",
+      "Any specific constraints or preferences?",
+    ];
+
+    this.callbacks.onQuestion(questions, "srd-orchestrator");
+    await this.pause("expectations", "user_expectations");
+  }
+
+  private async handleExpectationsResponse() {
+    this.state.answers.expectations = (
+      this.context.userResponse || ""
+    ).toString();
+    this.callbacks.onStatus(
+      "suggest",
+      "srd-writer",
+      "Suggesting structure options...",
+    );
+    await this.stepSuggest();
+  }
+
+  private async stepSuggest() {
+    this.state.currentStep = "suggest";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildSuggestPrompt();
+    const response = await this.callAgent("writer", prompt, false);
+    const options = this.parseOptions(response);
+
+    this.callbacks.onOptions(options, "srd-writer");
+    await this.pause("suggest", "user_structure_choice");
+  }
+
+  private async handleSuggestResponse() {
+    this.state.answers.structureChoice = (
+      this.context.userResponse || "A"
+    ).toString();
+    this.callbacks.onStatus(
+      "generate",
+      "srd-writer",
+      "Generating section content...",
+    );
+    await this.stepGenerate();
+  }
+
+  private async stepGenerate() {
+    this.state.currentStep = "generate";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildGeneratePrompt();
+    const response = await this.callAgent("writer", prompt, true);
+    this.state.draft = response;
+
+    this.callbacks.onStatus(
+      "validate",
+      "srd-validator",
+      "Running quality checks...",
+    );
+    await this.stepValidate();
+  }
+
+  private async stepValidate() {
+    this.state.currentStep = "validate";
+    this.state.agentCalls.validator++;
+
+    const prompt = this.buildValidatePrompt();
+    const response = await this.callAgent("validator", prompt, false);
+    let findings = this.parseFindings(response);
+
+    if (findings.length === 0) {
+      findings = selfValidate(
+        this.state.sectionId.toString(),
+        this.state.sectionName,
+        this.state.draft,
+      );
+    }
+
+    this.state.findings = findings;
+    this.callbacks.onFindings(findings);
+
+    const hasBlocking = findings.some((f: any) => f.type === "BLOCKING");
+
+    if (hasBlocking) {
+      this.callbacks.onStatus(
+        "negotiate_fixes",
+        "srd-negotiator",
+        "Proposing fixes for findings...",
+      );
+      await this.stepNegotiateFixes();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "srd-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async stepNegotiateFixes() {
+    this.state.currentStep = "negotiate_fixes";
+    this.state.agentCalls.negotiator++;
+
+    const prompt = this.buildNegotiateFixesPrompt();
+    const response = await this.callAgent("negotiator", prompt, false);
+    const fixes = this.parseFixes(response);
+
+    this.state.negotiatedFixes = fixes;
+    this.callbacks.onFixes(fixes, "srd-negotiator");
+    await this.pause("negotiate_fixes", "user_review_fixes");
+  }
+
+  private async handleNegotiateFixesResponse() {
+    const userResponse = this.context.userResponse || {};
+
+    if (userResponse.action === "direct_validator_access") {
+      this.state.answers.validationMode = "direct";
+      this.callbacks.onFindingsRaw(this.state.findings, "srd-validator");
+      await this.pause("direct_validator", "user_review_findings");
+      return;
+    }
+
+    const reviewedFixes = Array.isArray(userResponse.fixes)
+      ? userResponse.fixes
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedFixes = reviewedFixes.map((f: any) => ({
+      findingId: f.findingId,
+      finding: f.finding,
+      proposedFix: f.proposedFix,
+      autoFixable: !!f.autoFixable,
+      accepted:
+        f.status !== "skipped" &&
+        (f.accepted || f.status === "accepted" || f.status === "modified"),
+    }));
+
+    const acceptedFixes = this.state.negotiatedFixes.filter((f) => f.accepted);
+
+    if (acceptedFixes.length > 0) {
+      this.callbacks.onStatus("fix", "srd-writer", "Applying fixes...");
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "srd-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async handleDirectValidatorResponse() {
+    const userResponse = this.context.userResponse || {};
+    const decisions = Array.isArray(userResponse)
+      ? userResponse
+      : userResponse.fixes || [];
+    const acceptedFindings = Array.isArray(decisions)
+      ? this.state.findings.filter(
+          (_f: any, i: number) => decisions[i]?.accepted,
+        )
+      : [];
+
+    this.state.answers.validationMode = "direct";
+    this.state.findings = acceptedFindings;
+
+    this.state.negotiatedFixes = acceptedFindings.map((f: any, i: number) => ({
+      findingId: f.id || `F${i + 1}`,
+      finding: f.message || "Finding",
+      proposedFix: f.message || "Please address this finding.",
+      autoFixable: false,
+      accepted: true,
+    }));
+
+    const hasAcceptedFixes = this.state.negotiatedFixes.length > 0;
+
+    if (hasAcceptedFixes) {
+      this.callbacks.onStatus(
+        "fix",
+        "srd-writer",
+        "Applying selected fixes...",
+      );
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "srd-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async stepFix() {
+    this.state.currentStep = "fix";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildFixPrompt();
+    const response = await this.callAgent("writer", prompt, true);
+    this.state.draft = response;
+
+    this.callbacks.onStatus(
+      "validate",
+      "srd-validator",
+      "Re-checking after fixes...",
+    );
+    await this.stepValidate();
+  }
+
+  private async stepReview() {
+    this.state.currentStep = "review";
+
+    const summary = {
+      sectionId: this.state.sectionId,
+      sectionName: this.state.sectionName,
+      draftLength: this.state.draft.length,
+      findingsCount: this.state.findings.length,
+      revisionCount: this.state.revisionCount,
+    };
+
+    this.callbacks.onReview(
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      summary,
+    );
+    await this.pause("review", "user_approval");
+  }
+
+  private async handleReviewResponse() {
+    const response = this.context.userResponse || {};
+    const action = (response.action || "").toString().toLowerCase();
+
+    if (action === "approve" || action === "yes") {
+      this.state.currentStep = "done";
+      await this.persist("completed");
+      const tokensUsed =
+        this.state.agentCalls.writer +
+        this.state.agentCalls.negotiator +
+        this.state.agentCalls.validator;
+      this.callbacks.onStatus(
+        "done",
+        "srd-orchestrator",
+        "Section approved and locked",
+      );
+      this.callbacks.onDone(tokensUsed);
+    } else if (action === "revise" || action === "no") {
+      this.state.revisionCount++;
+
+      this.callbacks.onStatus(
+        "generate",
+        "srd-writer",
+        `Revising (revision ${this.state.revisionCount})...`,
+      );
+      await this.stepGenerate();
+    } else {
+      this.callbacks.onError(`Unknown review action: ${action}`);
+    }
+  }
+
+  private async callAgent(
+    agentId: "orchestrator" | "writer" | "negotiator" | "validator",
+    prompt: string,
+    streamTokens: boolean,
+  ): Promise<string> {
+    const fullIdMap: Record<typeof agentId, string> = {
+      orchestrator: "srd-orchestrator",
+      writer: "srd-writer",
+      negotiator: "srd-negotiator",
+      validator: "srd-validator",
+    };
+    const fullId = fullIdMap[agentId];
+
+    return new Promise((resolve, reject) => {
+      let fullText = "";
+      runAgentStream(
+        {
+          agentId: fullId,
+          message: prompt,
+          history: [],
+        },
+        {
+          onToken: (delta) => {
+            fullText += delta;
+            if (streamTokens) {
+              this.callbacks.onToken(delta);
+            }
+          },
+          onDone: (tokensUsed) => {
+            logger.debug("agent call complete", {
+              agentId: fullId,
+              tokensUsed,
+            });
+            resolve(fullText);
+          },
+          onError: (error) => {
+            logger.error("agent call failed", { agentId: fullId, error });
+            reject(new Error(error));
+          },
+        },
+      );
+    });
+  }
+
+  private projectContextBlock(): string {
+    const p = this.context.project;
+    if (!p) return "";
+    const parts = [
+      `Project Name: ${p.name}`,
+      p.key ? `Project Key: ${p.key}` : "",
+      p.description ? `Project Description:\n${p.description}` : "",
+      p.targetDate ? `Target Date: ${p.targetDate}` : "",
+    ];
+    return parts.filter(Boolean).join("\n");
+  }
+
+  private upstreamContextBlock(): string {
+    const upstream = this.context.upstreamSections || [];
+    if (upstream.length === 0) return "";
+    return `Upstream BRS Sections:\n${upstream.join("\n---\n")}`;
+  }
+
+  private buildGenerateQuestionsPrompt(): string {
+    const projectBlock = this.projectContextBlock();
+    return [
+      `You are generating Section ${this.state.sectionId} of an SRS-BE document.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
+      this.context.dependencySections.length > 0
+        ? `Previously Approved SRS-BE Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : projectBlock
+          ? "No uploaded input documents are available. Use the Project Context above."
+          : "No uploaded input documents or project description are available. Ask only questions that can be answered from the section guide and upstream BRS sections, and phrase them so the human can answer directly.",
+      `Generate clarifying questions as a numbered list. Ask as many as needed based on the section guide — do not enforce a specific count.`,
+      `Rules:`,
+      `- Do NOT ask for documents that were not uploaded (e.g., charter, business case, PRD) unless they are explicitly listed in Input Documents.`,
+      `- Prefer questions the human can answer from general knowledge of the initiative and the upstream BRS sections.`,
+      `- Return the questions as a numbered list.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildNegotiateAnswersPrompt(): string {
+    const projectBlock = this.projectContextBlock();
+    return [
+      `You are the SRD Negotiator. The Writer asked these questions:`,
+      JSON.stringify(this.state.pendingQuestions, null, 2),
+      this.upstreamContextBlock(),
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : projectBlock
+          ? "No uploaded input documents are available. Infer answers from the Project Context above."
+          : "No uploaded input documents or project description are available. Each answer must be a concise, plausible example or an honest statement that the user needs to supply the detail.",
+      `Propose answers for each question.`,
+      `Rules:`,
+      `- If the answer is clearly supported by an input document or project description, set confidence to "high" and answer factually.`,
+      `- If the answer can be reasonably inferred from context, set confidence to "medium".`,
+      `- If the answer cannot be inferred, set confidence to "low" and provide a concise example answer or a one-sentence description of what the user should supply.`,
+      `- NEVER return bracketed template instructions such as "[PENDING: ...]" or "[Insert ...]".`,
+      `- NEVER repeat the question text as the answer.`,
+      `- Return JSON: {"suggestions": [{"questionId": "Q1", "question": "...", "suggestedAnswer": "...", "confidence": "high|medium|low"}]}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  private buildSuggestPrompt(): string {
+    return [
+      `You are generating Section ${this.state.sectionId} of an SRS-BE document.`,
+      `Suggest 2-3 structure options for this section.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      `Return options as: Option A: <title> - <description>. Option B: ...`,
+    ].join("\n\n---\n\n");
+  }
+
+  private buildGeneratePrompt(): string {
+    return [
+      `You are the SRD Writer. Generate Section ${this.state.sectionId}: ${this.state.sectionName} of an SRS-BE document.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      this.context.dependencySections.length > 0
+        ? `Previously Approved SRS-BE Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : "",
+      `User Answers:\n${JSON.stringify(this.state.negotiatedAnswers, null, 2)}`,
+      `User Expectations:\n${this.state.answers.expectations}`,
+      `Selected Structure: ${this.state.answers.structureChoice}`,
+      `Generate the complete section content as Markdown. Use technical requirements language ("shall" for mandatory, "should" for recommended, "may" for optional). Assign IDs where applicable (SR-BE-xxx, NFR-BE-xxx, DATA-BE-xxx, INT-BE-xxx, SEC-BE-xxx, RULE-BE-xxx, ASSUMP-BE-xxx, RISK-BE-xxx). Every traceable requirement MUST include a Traces-To column referencing the upstream BRS item. Output ONLY the Markdown content — no commentary.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildValidatePrompt(): string {
+    return [
+      `You are the SRD Validator. Validate the following SRS-BE section content:`,
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      `Content:\n${this.state.draft}`,
+      this.upstreamContextBlock(),
+      this.context.qualityChecks.length > 0
+        ? `Quality Checks:\n${this.context.qualityChecks.join("\n")}`
+        : "",
+      `Check for: SRS language (shall/should/may), missing subsections, traceability to BRS, ID consistency, technical specificity, placeholders.`,
+      `Return findings as JSON: {"findings": [{"type": "BLOCKING|WARNING|INFO", "message": "...", "rule": "..."}]}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildNegotiateFixesPrompt(): string {
+    return [
+      `You are the SRD Negotiator. The Validator found these issues:`,
+      JSON.stringify(this.state.findings, null, 2),
+      `Propose fixes for each finding. For language issues, suggest replacements. For missing items, suggest additions.`,
+      `Return fixes as JSON: {"fixes": [{"findingId": "1", "proposedFix": "...", "autoFixable": true}]}.`,
+    ].join("\n\n");
+  }
+
+  private buildFixPrompt(): string {
+    return [
+      `You are the SRD Writer. Apply these fixes to the section content:`,
+      `Accepted Fixes:\n${JSON.stringify(
+        this.state.negotiatedFixes.filter((f) => f.accepted),
+        null,
+        2,
+      )}`,
+      `Current Draft:\n${this.state.draft}`,
+      `Regenerate the section with the fixes applied. Use technical requirements language. Keep IDs consistent and preserve traceability to upstream BRS items.`,
+    ].join("\n\n---\n\n");
+  }
+
+  private parseQuestions(response: string): string[] {
+    const lines = response.split("\n");
+    const questions: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.match(/^\d+[\.)]\s/) || trimmed.endsWith("?")) {
+        questions.push(trimmed.replace(/^\d+[\.)]\s*/, ""));
+      }
+    }
+    if (questions.length > 0) return questions;
+    return response ? [response.trim()] : [];
+  }
+
+  private parseSuggestions(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.suggestions || [];
+    } catch {
+      return [
+        {
+          questionId: "Q1",
+          question: "General suggestion",
+          suggestedAnswer: response.trim(),
+          confidence: "medium",
+        },
+      ];
+    }
+  }
+
+  private parseOptions(response: string): any[] {
+    const options: any[] = [];
+    const optionRegex = /(?:Option|option)\s+([A-C])[:\.]?\s*([^\n]+)/g;
+    let match;
+    while ((match = optionRegex.exec(response)) !== null) {
+      options.push({
+        id: match[1],
+        name: match[2].trim(),
+        description: match[2].trim(),
+      });
+    }
+    return options.length > 0
+      ? options
+      : [
+          {
+            id: "A",
+            name: "Default Structure",
+            description: "Use the default structure from the section guide",
+          },
+        ];
+  }
+
+  private parseFindings(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.findings || [];
+    } catch {
+      const findings: any[] = [];
+      const lines = response.split("\n");
+      for (const line of lines) {
+        if (
+          line.includes("BLOCKING") ||
+          line.includes("WARNING") ||
+          line.includes("INFO")
+        ) {
+          const type = line.includes("BLOCKING")
+            ? "BLOCKING"
+            : line.includes("WARNING")
+              ? "WARNING"
+              : "INFO";
+          findings.push({ type, message: line.trim(), rule: "unknown" });
+        }
+      }
+      return findings;
+    }
+  }
+
+  private parseFixes(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.fixes || [];
+    } catch {
+      return [];
+    }
+  }
+
+  private extractJsonFromMarkdown(response: string): string {
+    const codeBlock = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlock && codeBlock[1]) {
+      return codeBlock[1].trim();
+    }
+    return response.trim();
+  }
+}
+
+export class TCWorkflow {
+  private agents: AgentMap;
+  private state: WorkflowState;
+  private context: WorkflowContext;
+  private callbacks: WorkflowCallbacks;
+
+  constructor(
+    agents: AgentMap,
+    context: WorkflowContext,
+    callbacks: WorkflowCallbacks,
+  ) {
+    this.agents = agents;
+    void this.agents;
+    this.context = context;
+    this.callbacks = callbacks;
+    this.state = {
+      currentStep: "relevance",
+      sectionId: context.stepId,
+      sectionName: context.sectionName || "",
+      answers: {
+        applicable: null,
+        discover: {},
+        discoverMode: "negotiated",
+        expectations: "",
+        structureChoice: "",
+        validationMode: "negotiated",
+      },
+      negotiatedAnswers: [],
+      pendingQuestions: [],
+      draft: "",
+      revisionCount: 0,
+      findings: [],
+      negotiatedFixes: [],
+      agentCalls: {
+        orchestrator: 0,
+        writer: 0,
+        negotiator: 0,
+        validator: 0,
+      },
+    };
+  }
+
+  setCallbacks(callbacks: WorkflowCallbacks) {
+    this.callbacks = callbacks;
+  }
+
+  getState(): WorkflowState {
+    return this.state;
+  }
+
+  setState(state: WorkflowState) {
+    this.state = state;
+  }
+
+  getContext(): WorkflowContext {
+    return this.context;
+  }
+
+  async run() {
+    logger.info("Starting TC workflow", {
+      workflowId: this.context.workflowId,
+      step: this.state.sectionId,
+    });
+
+    await createWorkflow(
+      this.context.workflowId,
+      this.context.projectId,
+      this.context.docId,
+      this.context.stepId,
+      "tc-orchestrator",
+      this.state,
+    );
+
+    try {
+      await this.stepRelevance();
+    } catch (err) {
+      this.callbacks.onError((err as Error).message);
+    }
+  }
+
+  async resume(userResponse: any) {
+    this.context.userResponse = userResponse;
+    logger.info("Resuming TC workflow", {
+      workflowId: this.context.workflowId,
+      step: this.state.currentStep,
+      response: userResponse,
+    });
+
+    try {
+      switch (this.state.currentStep) {
+        case "relevance":
+          await this.handleRelevanceResponse();
+          break;
+        case "negotiate_answers":
+          await this.handleNegotiateAnswersResponse();
+          break;
+        case "direct_writer":
+          await this.handleDirectWriterResponse();
+          break;
+        case "expectations":
+          await this.handleExpectationsResponse();
+          break;
+        case "suggest":
+          await this.handleSuggestResponse();
+          break;
+        case "negotiate_fixes":
+          await this.handleNegotiateFixesResponse();
+          break;
+        case "direct_validator":
+          await this.handleDirectValidatorResponse();
+          break;
+        case "review":
+          await this.handleReviewResponse();
+          break;
+        default:
+          this.callbacks.onError(`Unknown step: ${this.state.currentStep}`);
+      }
+    } catch (err) {
+      this.callbacks.onError((err as Error).message);
+    } finally {
+      if (
+        this.state.currentStep !== "relevance" &&
+        this.state.currentStep !== "generate_questions" &&
+        this.state.currentStep !== "negotiate_answers" &&
+        this.state.currentStep !== "direct_writer" &&
+        this.state.currentStep !== "expectations" &&
+        this.state.currentStep !== "suggest" &&
+        this.state.currentStep !== "negotiate_fixes" &&
+        this.state.currentStep !== "direct_validator" &&
+        this.state.currentStep !== "review"
+      ) {
+        this.callbacks.onDone(0);
+      }
+    }
+  }
+
+  private async persist(
+    status:
+      "active" | "paused" | "completed" | "terminated" | "error" = "paused",
+  ) {
+    try {
+      await updateWorkflowState(this.context.workflowId, this.state, status);
+    } catch (err) {
+      logger.error("failed to persist workflow state", {
+        workflowId: this.context.workflowId,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  private async pause(step: WorkflowStep, waitingFor: string) {
+    this.state.currentStep = step;
+    await this.persist("paused");
+    await this.callbacks.onPaused(step, waitingFor);
+  }
+
+  private async stepRelevance() {
+    this.state.currentStep = "relevance";
+    this.callbacks.onStatus(
+      "relevance",
+      "tc-orchestrator",
+      "Checking section relevance...",
+    );
+
+    const questions = [
+      `Section ${this.state.sectionId} is "${this.state.sectionName}". Is this section applicable to your TC document? (YES/NO)`,
+    ];
+
+    this.callbacks.onQuestion(questions, "tc-orchestrator");
+    await this.pause("relevance", "user_answer");
+  }
+
+  private async handleRelevanceResponse() {
+    const response = (this.context.userResponse || "")
+      .toString()
+      .toUpperCase()
+      .trim();
+
+    if (response === "NO" || response === "N") {
+      this.state.answers.applicable = false;
+      await this.persist("terminated");
+      this.callbacks.onStatus(
+        "done",
+        "tc-orchestrator",
+        "Section marked as NOT APPLICABLE",
+      );
+      this.callbacks.onDone(0);
+      return;
+    }
+
+    this.state.answers.applicable = true;
+    this.callbacks.onStatus(
+      "generate_questions",
+      "tc-orchestrator",
+      "Starting discovery...",
+    );
+    await this.stepGenerateQuestions();
+  }
+
+  private async stepGenerateQuestions() {
+    this.state.currentStep = "generate_questions";
+    this.callbacks.onStatus(
+      "generate_questions",
+      "tc-writer",
+      "Generating questions...",
+    );
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildGenerateQuestionsPrompt();
+    const response = await this.callAgent("writer", prompt, false);
+    const questions = this.parseQuestions(response);
+
+    this.state.pendingQuestions = questions;
+    this.callbacks.onStatus(
+      "negotiate_answers",
+      "tc-negotiator",
+      "Negotiating answers...",
+    );
+    await this.stepNegotiateAnswers();
+  }
+
+  private async stepNegotiateAnswers() {
+    this.state.currentStep = "negotiate_answers";
+    this.state.agentCalls.negotiator++;
+
+    const prompt = this.buildNegotiateAnswersPrompt();
+    const response = await this.callAgent("negotiator", prompt, false);
+    const suggestions = this.parseSuggestions(response);
+
+    this.callbacks.onSuggestions(suggestions, "tc-negotiator");
+    await this.pause("negotiate_answers", "user_review_suggestions");
+  }
+
+  private async handleNegotiateAnswersResponse() {
+    const userResponse = this.context.userResponse || {};
+
+    if (userResponse.action === "direct_writer_access") {
+      this.state.answers.discoverMode = "direct";
+      this.callbacks.onQuestion(this.state.pendingQuestions, "tc-writer");
+      await this.pause("direct_writer", "user_answers");
+      return;
+    }
+
+    const reviewedAnswers = Array.isArray(userResponse.suggestions)
+      ? userResponse.suggestions
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedAnswers = reviewedAnswers.map((a: any) => ({
+      questionId: a.questionId,
+      question: a.question,
+      suggested: a.status === "rejected" ? "" : a.answer,
+      accepted: a.status === "accepted",
+      modified: a.status === "modified" ? a.answer : "",
+      rejected: a.status === "rejected",
+      final: a.answer,
+    }));
+
+    this.callbacks.onStatus(
+      "expectations",
+      "tc-orchestrator",
+      "Asking about expectations...",
+    );
+    await this.stepExpectations();
+  }
+
+  private async handleDirectWriterResponse() {
+    const answers = this.context.userResponse || {};
+    this.state.answers.discover = answers;
+    this.state.answers.discoverMode = "direct";
+
+    this.state.negotiatedAnswers = Object.entries(answers).map(
+      ([questionId, final]) => ({
+        questionId,
+        question:
+          this.state.pendingQuestions.find(
+            (_, i) => `Q${i + 1}` === questionId,
+          ) || questionId,
+        suggested: final as string,
+        accepted: true,
+        modified: final as string,
+        final: final as string,
+      }),
+    );
+
+    this.callbacks.onStatus(
+      "expectations",
+      "tc-orchestrator",
+      "Asking about expectations...",
+    );
+    await this.stepExpectations();
+  }
+
+  private async stepExpectations() {
+    this.state.currentStep = "expectations";
+
+    const questions = [
+      "What are your specific expectations for this section?",
+      "Any must-have test coverage or Gherkin scenarios?",
+      "Any specific constraints or preferences?",
+    ];
+
+    this.callbacks.onQuestion(questions, "tc-orchestrator");
+    await this.pause("expectations", "user_expectations");
+  }
+
+  private async handleExpectationsResponse() {
+    this.state.answers.expectations = (
+      this.context.userResponse || ""
+    ).toString();
+    this.callbacks.onStatus(
+      "suggest",
+      "tc-writer",
+      "Suggesting structure options...",
+    );
+    await this.stepSuggest();
+  }
+
+  private async stepSuggest() {
+    this.state.currentStep = "suggest";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildSuggestPrompt();
+    const response = await this.callAgent("writer", prompt, false);
+    const options = this.parseOptions(response);
+
+    this.callbacks.onOptions(options, "tc-writer");
+    await this.pause("suggest", "user_structure_choice");
+  }
+
+  private async handleSuggestResponse() {
+    this.state.answers.structureChoice = (
+      this.context.userResponse || "A"
+    ).toString();
+    this.callbacks.onStatus(
+      "generate",
+      "tc-writer",
+      "Generating section content...",
+    );
+    await this.stepGenerate();
+  }
+
+  private async stepGenerate() {
+    this.state.currentStep = "generate";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildGeneratePrompt();
+    const response = await this.callAgent("writer", prompt, true);
+    this.state.draft = response;
+
+    this.callbacks.onStatus(
+      "validate",
+      "tc-validator",
+      "Running quality checks...",
+    );
+    await this.stepValidate();
+  }
+
+  private async stepValidate() {
+    this.state.currentStep = "validate";
+    this.state.agentCalls.validator++;
+
+    const prompt = this.buildValidatePrompt();
+    const response = await this.callAgent("validator", prompt, false);
+    let findings = this.parseFindings(response);
+
+    if (findings.length === 0) {
+      findings = selfValidate(
+        this.state.sectionId.toString(),
+        this.state.sectionName,
+        this.state.draft,
+      );
+    }
+
+    this.state.findings = findings;
+    this.callbacks.onFindings(findings);
+
+    const hasBlocking = findings.some((f: any) => f.type === "BLOCKING");
+
+    if (hasBlocking) {
+      this.callbacks.onStatus(
+        "negotiate_fixes",
+        "tc-negotiator",
+        "Proposing fixes for findings...",
+      );
+      await this.stepNegotiateFixes();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "tc-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async stepNegotiateFixes() {
+    this.state.currentStep = "negotiate_fixes";
+    this.state.agentCalls.negotiator++;
+
+    const prompt = this.buildNegotiateFixesPrompt();
+    const response = await this.callAgent("negotiator", prompt, false);
+    const fixes = this.parseFixes(response);
+
+    this.state.negotiatedFixes = fixes;
+    this.callbacks.onFixes(fixes, "tc-negotiator");
+    await this.pause("negotiate_fixes", "user_review_fixes");
+  }
+
+  private async handleNegotiateFixesResponse() {
+    const userResponse = this.context.userResponse || {};
+
+    if (userResponse.action === "direct_validator_access") {
+      this.state.answers.validationMode = "direct";
+      this.callbacks.onFindingsRaw(this.state.findings, "tc-validator");
+      await this.pause("direct_validator", "user_review_findings");
+      return;
+    }
+
+    const reviewedFixes = Array.isArray(userResponse.fixes)
+      ? userResponse.fixes
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedFixes = reviewedFixes.map((f: any) => ({
+      findingId: f.findingId,
+      finding: f.finding,
+      proposedFix: f.proposedFix,
+      autoFixable: !!f.autoFixable,
+      accepted:
+        f.status !== "skipped" &&
+        (f.accepted || f.status === "accepted" || f.status === "modified"),
+    }));
+
+    const acceptedFixes = this.state.negotiatedFixes.filter((f) => f.accepted);
+
+    if (acceptedFixes.length > 0) {
+      this.callbacks.onStatus("fix", "tc-writer", "Applying fixes...");
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "tc-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async handleDirectValidatorResponse() {
+    const userResponse = this.context.userResponse || {};
+    const decisions = Array.isArray(userResponse)
+      ? userResponse
+      : userResponse.fixes || [];
+    const acceptedFindings = Array.isArray(decisions)
+      ? this.state.findings.filter(
+          (_f: any, i: number) => decisions[i]?.accepted,
+        )
+      : [];
+
+    this.state.answers.validationMode = "direct";
+    this.state.findings = acceptedFindings;
+
+    this.state.negotiatedFixes = acceptedFindings.map((f: any, i: number) => ({
+      findingId: f.id || `F${i + 1}`,
+      finding: f.message || "Finding",
+      proposedFix: f.message || "Please address this finding.",
+      autoFixable: false,
+      accepted: true,
+    }));
+
+    const hasAcceptedFixes = this.state.negotiatedFixes.length > 0;
+
+    if (hasAcceptedFixes) {
+      this.callbacks.onStatus("fix", "tc-writer", "Applying selected fixes...");
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "tc-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async stepFix() {
+    this.state.currentStep = "fix";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildFixPrompt();
+    const response = await this.callAgent("writer", prompt, true);
+    this.state.draft = response;
+
+    this.callbacks.onStatus(
+      "validate",
+      "tc-validator",
+      "Re-checking after fixes...",
+    );
+    await this.stepValidate();
+  }
+
+  private async stepReview() {
+    this.state.currentStep = "review";
+
+    const summary = {
+      sectionId: this.state.sectionId,
+      sectionName: this.state.sectionName,
+      draftLength: this.state.draft.length,
+      findingsCount: this.state.findings.length,
+      revisionCount: this.state.revisionCount,
+    };
+
+    this.callbacks.onReview(
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      summary,
+    );
+    await this.pause("review", "user_approval");
+  }
+
+  private async handleReviewResponse() {
+    const response = this.context.userResponse || {};
+    const action = (response.action || "").toString().toLowerCase();
+
+    if (action === "approve" || action === "yes") {
+      this.state.currentStep = "done";
+      await this.persist("completed");
+      const tokensUsed =
+        this.state.agentCalls.writer +
+        this.state.agentCalls.negotiator +
+        this.state.agentCalls.validator;
+      this.callbacks.onStatus(
+        "done",
+        "tc-orchestrator",
+        "Section approved and locked",
+      );
+      this.callbacks.onDone(tokensUsed);
+    } else if (action === "revise" || action === "no") {
+      this.state.revisionCount++;
+
+      this.callbacks.onStatus(
+        "generate",
+        "tc-writer",
+        `Revising (revision ${this.state.revisionCount})...`,
+      );
+      await this.stepGenerate();
+    } else {
+      this.callbacks.onError(`Unknown review action: ${action}`);
+    }
+  }
+
+  private async callAgent(
+    agentId: "orchestrator" | "writer" | "negotiator" | "validator",
+    prompt: string,
+    streamTokens: boolean,
+  ): Promise<string> {
+    const fullIdMap: Record<typeof agentId, string> = {
+      orchestrator: "tc-orchestrator",
+      writer: "tc-writer",
+      negotiator: "tc-negotiator",
+      validator: "tc-validator",
+    };
+    const fullId = fullIdMap[agentId];
+
+    return new Promise((resolve, reject) => {
+      let fullText = "";
+      runAgentStream(
+        {
+          agentId: fullId,
+          message: prompt,
+          history: [],
+        },
+        {
+          onToken: (delta) => {
+            fullText += delta;
+            if (streamTokens) {
+              this.callbacks.onToken(delta);
+            }
+          },
+          onDone: (tokensUsed) => {
+            logger.debug("agent call complete", {
+              agentId: fullId,
+              tokensUsed,
+            });
+            resolve(fullText);
+          },
+          onError: (error) => {
+            logger.error("agent call failed", { agentId: fullId, error });
+            reject(new Error(error));
+          },
+        },
+      );
+    });
+  }
+
+  private projectContextBlock(): string {
+    const p = this.context.project;
+    if (!p) return "";
+    const parts = [
+      `Project Name: ${p.name}`,
+      p.key ? `Project Key: ${p.key}` : "",
+      p.description ? `Project Description:\n${p.description}` : "",
+      p.targetDate ? `Target Date: ${p.targetDate}` : "",
+    ];
+    return parts.filter(Boolean).join("\n");
+  }
+
+  private upstreamContextBlock(): string {
+    const upstream = this.context.upstreamSections || [];
+    if (upstream.length === 0) return "";
+    return `Upstream BRS and SRS-BE Sections:\n${upstream.join("\n---\n")}`;
+  }
+
+  private buildGenerateQuestionsPrompt(): string {
+    const projectBlock = this.projectContextBlock();
+    return [
+      `You are generating Section ${this.state.sectionId} of a Test Case document.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
+      this.context.dependencySections.length > 0
+        ? `Previously Approved TC Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : projectBlock
+          ? "No uploaded input documents are available. Use the Project Context above."
+          : "No uploaded input documents or project description are available. Ask only questions that can be answered from the section guide and upstream sections, and phrase them so the human can answer directly.",
+      `Generate clarifying questions as a numbered list. Ask as many as needed based on the section guide — do not enforce a specific count.`,
+      `Rules:`,
+      `- Do NOT ask for documents that were not uploaded (e.g., test plans, defect lists) unless they are explicitly listed in Input Documents.`,
+      `- Prefer questions the human can answer from general knowledge of the initiative and the upstream BRS/SRS-BE sections.`,
+      `- Return the questions as a numbered list.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildNegotiateAnswersPrompt(): string {
+    const projectBlock = this.projectContextBlock();
+    return [
+      `You are the TC Negotiator. The Writer asked these questions:`,
+      JSON.stringify(this.state.pendingQuestions, null, 2),
+      this.upstreamContextBlock(),
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : projectBlock
+          ? "No uploaded input documents are available. Infer answers from the Project Context above."
+          : "No uploaded input documents or project description are available. Each answer must be a concise, plausible example or an honest statement that the user needs to supply the detail.",
+      `Propose answers for each question.`,
+      `Rules:`,
+      `- If the answer is clearly supported by an input document or project description, set confidence to "high" and answer factually.`,
+      `- If the answer can be reasonably inferred from context, set confidence to "medium".`,
+      `- If the answer cannot be inferred, set confidence to "low" and provide a concise example answer or a one-sentence description of what the user should supply.`,
+      `- NEVER return bracketed template instructions such as "[PENDING: ...]" or "[Insert ...]".`,
+      `- NEVER repeat the question text as the answer.`,
+      `- Return JSON: {"suggestions": [{"questionId": "Q1", "question": "...", "suggestedAnswer": "...", "confidence": "high|medium|low"}]}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  private buildSuggestPrompt(): string {
+    return [
+      `You are generating Section ${this.state.sectionId} of a Test Case document.`,
+      `Suggest 2-3 structure options for this section.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      `Return options as: Option A: <title> - <description>. Option B: ...`,
+    ].join("\n\n---\n\n");
+  }
+
+  private buildGeneratePrompt(): string {
+    return [
+      `You are the TC Writer. Generate Section ${this.state.sectionId}: ${this.state.sectionName} of a Test Case document.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      this.context.dependencySections.length > 0
+        ? `Previously Approved TC Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : "",
+      `User Answers:\n${JSON.stringify(this.state.negotiatedAnswers, null, 2)}`,
+      `User Expectations:\n${this.state.answers.expectations}`,
+      `Selected Structure: ${this.state.answers.structureChoice}`,
+      `Generate the complete section content as Markdown. Every test case MUST use Given/When/Then Gherkin format and include a Traces-To field (SR-BE-xxx → BR-xxx). Assign IDs as TC-001, TC-002, etc. Use MoSCoW priorities (Must Have, Should Have, Could Have, Won't Have) and test types (Functional, Negative, Edge Case). Output ONLY the Markdown content — no commentary.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildValidatePrompt(): string {
+    return [
+      `You are the TC Validator. Validate the following Test Case section content:`,
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      `Content:\n${this.state.draft}`,
+      this.upstreamContextBlock(),
+      this.context.qualityChecks.length > 0
+        ? `Quality Checks:\n${this.context.qualityChecks.join("\n")}`
+        : "",
+      `Check for: Gherkin format (Given/When/Then), missing subsections, traceability (SR-BE-xxx → BR-xxx), ID consistency (TC-xxx), positive/negative/edge coverage, MoSCoW priorities, placeholders.`,
+      `Return findings as JSON: {"findings": [{"type": "BLOCKING|WARNING|INFO", "message": "...", "rule": "..."}]}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildNegotiateFixesPrompt(): string {
+    return [
+      `You are the TC Negotiator. The Validator found these issues:`,
+      JSON.stringify(this.state.findings, null, 2),
+      `Propose fixes for each finding. For Gherkin or traceability issues, suggest replacements. For missing items, suggest additions.`,
+      `Return fixes as JSON: {"fixes": [{"findingId": "1", "proposedFix": "...", "autoFixable": true}]}.`,
+    ].join("\n\n");
+  }
+
+  private buildFixPrompt(): string {
+    return [
+      `You are the TC Writer. Apply these fixes to the section content:`,
+      `Accepted Fixes:\n${JSON.stringify(
+        this.state.negotiatedFixes.filter((f) => f.accepted),
+        null,
+        2,
+      )}`,
+      `Current Draft:\n${this.state.draft}`,
+      `Regenerate the section with the fixes applied. Use Gherkin format, preserve traceability (SR-BE-xxx → BR-xxx), keep IDs consistent, and maintain MoSCoW priorities and test types.`,
+    ].join("\n\n---\n\n");
+  }
+
+  private parseQuestions(response: string): string[] {
+    const lines = response.split("\n");
+    const questions: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.match(/^\d+[\.)]\s/) || trimmed.endsWith("?")) {
+        questions.push(trimmed.replace(/^\d+[\.)]\s*/, ""));
+      }
+    }
+    if (questions.length > 0) return questions;
+    return response ? [response.trim()] : [];
+  }
+
+  private parseSuggestions(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.suggestions || [];
+    } catch {
+      return [
+        {
+          questionId: "Q1",
+          question: "General suggestion",
+          suggestedAnswer: response.trim(),
+          confidence: "medium",
+        },
+      ];
+    }
+  }
+
+  private parseOptions(response: string): any[] {
+    const options: any[] = [];
+    const optionRegex = /(?:Option|option)\s+([A-C])[:\.]?\s*([^\n]+)/g;
+    let match;
+    while ((match = optionRegex.exec(response)) !== null) {
+      options.push({
+        id: match[1],
+        name: match[2].trim(),
+        description: match[2].trim(),
+      });
+    }
+    return options.length > 0
+      ? options
+      : [
+          {
+            id: "A",
+            name: "Default Structure",
+            description: "Use the default structure from the section guide",
+          },
+        ];
+  }
+
+  private parseFindings(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.findings || [];
+    } catch {
+      const findings: any[] = [];
+      const lines = response.split("\n");
+      for (const line of lines) {
+        if (
+          line.includes("BLOCKING") ||
+          line.includes("WARNING") ||
+          line.includes("INFO")
+        ) {
+          const type = line.includes("BLOCKING")
+            ? "BLOCKING"
+            : line.includes("WARNING")
+              ? "WARNING"
+              : "INFO";
+          findings.push({ type, message: line.trim(), rule: "unknown" });
+        }
+      }
+      return findings;
+    }
+  }
+
+  private parseFixes(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.fixes || [];
+    } catch {
+      return [];
+    }
+  }
+
+  private extractJsonFromMarkdown(response: string): string {
+    const codeBlock = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlock && codeBlock[1]) {
+      return codeBlock[1].trim();
+    }
+    return response.trim();
+  }
+}
+
+export class SRSFEWorkflow {
+  private agents: AgentMap;
+  private state: WorkflowState;
+  private context: WorkflowContext;
+  private callbacks: WorkflowCallbacks;
+
+  constructor(
+    agents: AgentMap,
+    context: WorkflowContext,
+    callbacks: WorkflowCallbacks,
+  ) {
+    this.agents = agents;
+    void this.agents;
+    this.context = context;
+    this.callbacks = callbacks;
+    this.state = {
+      currentStep: "relevance",
+      sectionId: context.stepId,
+      sectionName: context.sectionName || "",
+      answers: {
+        applicable: null,
+        discover: {},
+        discoverMode: "negotiated",
+        expectations: "",
+        structureChoice: "",
+        validationMode: "negotiated",
+      },
+      negotiatedAnswers: [],
+      pendingQuestions: [],
+      draft: "",
+      revisionCount: 0,
+      findings: [],
+      negotiatedFixes: [],
+      agentCalls: {
+        orchestrator: 0,
+        writer: 0,
+        negotiator: 0,
+        validator: 0,
+      },
+    };
+  }
+
+  setCallbacks(callbacks: WorkflowCallbacks) {
+    this.callbacks = callbacks;
+  }
+
+  getState(): WorkflowState {
+    return this.state;
+  }
+
+  setState(state: WorkflowState) {
+    this.state = state;
+  }
+
+  getContext(): WorkflowContext {
+    return this.context;
+  }
+
+  async run() {
+    logger.info("Starting SRS-FE workflow", {
+      workflowId: this.context.workflowId,
+      step: this.state.sectionId,
+    });
+
+    await createWorkflow(
+      this.context.workflowId,
+      this.context.projectId,
+      this.context.docId,
+      this.context.stepId,
+      "srs-fe-orchestrator",
+      this.state,
+    );
+
+    try {
+      await this.stepRelevance();
+    } catch (err) {
+      this.callbacks.onError((err as Error).message);
+    }
+  }
+
+  async resume(userResponse: any) {
+    this.context.userResponse = userResponse;
+    logger.info("Resuming SRS-FE workflow", {
+      workflowId: this.context.workflowId,
+      step: this.state.currentStep,
+      response: userResponse,
+    });
+
+    try {
+      switch (this.state.currentStep) {
+        case "relevance":
+          await this.handleRelevanceResponse();
+          break;
+        case "negotiate_answers":
+          await this.handleNegotiateAnswersResponse();
+          break;
+        case "direct_writer":
+          await this.handleDirectWriterResponse();
+          break;
+        case "expectations":
+          await this.handleExpectationsResponse();
+          break;
+        case "suggest":
+          await this.handleSuggestResponse();
+          break;
+        case "negotiate_fixes":
+          await this.handleNegotiateFixesResponse();
+          break;
+        case "direct_validator":
+          await this.handleDirectValidatorResponse();
+          break;
+        case "review":
+          await this.handleReviewResponse();
+          break;
+        default:
+          this.callbacks.onError(`Unknown step: ${this.state.currentStep}`);
+      }
+    } catch (err) {
+      this.callbacks.onError((err as Error).message);
+    } finally {
+      if (
+        this.state.currentStep !== "relevance" &&
+        this.state.currentStep !== "generate_questions" &&
+        this.state.currentStep !== "negotiate_answers" &&
+        this.state.currentStep !== "direct_writer" &&
+        this.state.currentStep !== "expectations" &&
+        this.state.currentStep !== "suggest" &&
+        this.state.currentStep !== "negotiate_fixes" &&
+        this.state.currentStep !== "direct_validator" &&
+        this.state.currentStep !== "review"
+      ) {
+        this.callbacks.onDone(0);
+      }
+    }
+  }
+
+  private async persist(
+    status:
+      "active" | "paused" | "completed" | "terminated" | "error" = "paused",
+  ) {
+    try {
+      await updateWorkflowState(this.context.workflowId, this.state, status);
+    } catch (err) {
+      logger.error("failed to persist workflow state", {
+        workflowId: this.context.workflowId,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  private async pause(step: WorkflowStep, waitingFor: string) {
+    this.state.currentStep = step;
+    await this.persist("paused");
+    await this.callbacks.onPaused(step, waitingFor);
+  }
+
+  private async stepRelevance() {
+    this.state.currentStep = "relevance";
+    this.callbacks.onStatus(
+      "relevance",
+      "srs-fe-orchestrator",
+      "Checking section relevance...",
+    );
+
+    const questions = [
+      `Section ${this.state.sectionId} is "${this.state.sectionName}". Is this section applicable to your SRS-FE? (YES/NO)`,
+    ];
+
+    this.callbacks.onQuestion(questions, "srs-fe-orchestrator");
+    await this.pause("relevance", "user_answer");
+  }
+
+  private async handleRelevanceResponse() {
+    const response = (this.context.userResponse || "")
+      .toString()
+      .toUpperCase()
+      .trim();
+
+    if (response === "NO" || response === "N") {
+      this.state.answers.applicable = false;
+      await this.persist("terminated");
+      this.callbacks.onStatus(
+        "done",
+        "srs-fe-orchestrator",
+        "Section marked as NOT APPLICABLE",
+      );
+      this.callbacks.onDone(0);
+      return;
+    }
+
+    this.state.answers.applicable = true;
+    this.callbacks.onStatus(
+      "generate_questions",
+      "srs-fe-orchestrator",
+      "Starting discovery...",
+    );
+    await this.stepGenerateQuestions();
+  }
+
+  private async stepGenerateQuestions() {
+    this.state.currentStep = "generate_questions";
+    this.callbacks.onStatus(
+      "generate_questions",
+      "srs-fe-writer",
+      "Generating questions...",
+    );
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildGenerateQuestionsPrompt();
+    const response = await this.callAgent("writer", prompt, false);
+    const questions = this.parseQuestions(response);
+
+    this.state.pendingQuestions = questions;
+    this.callbacks.onStatus(
+      "negotiate_answers",
+      "srs-fe-negotiator",
+      "Negotiating answers...",
+    );
+    await this.stepNegotiateAnswers();
+  }
+
+  private async stepNegotiateAnswers() {
+    this.state.currentStep = "negotiate_answers";
+    this.state.agentCalls.negotiator++;
+
+    const prompt = this.buildNegotiateAnswersPrompt();
+    const response = await this.callAgent("negotiator", prompt, false);
+    const suggestions = this.parseSuggestions(response);
+
+    this.callbacks.onSuggestions(suggestions, "srd-negotiator");
+    await this.pause("negotiate_answers", "user_review_suggestions");
+  }
+
+  private async handleNegotiateAnswersResponse() {
+    const userResponse = this.context.userResponse || {};
+
+    if (userResponse.action === "direct_writer_access") {
+      this.state.answers.discoverMode = "direct";
+      this.callbacks.onQuestion(this.state.pendingQuestions, "srd-writer");
+      await this.pause("direct_writer", "user_answers");
+      return;
+    }
+
+    const reviewedAnswers = Array.isArray(userResponse.suggestions)
+      ? userResponse.suggestions
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedAnswers = reviewedAnswers.map((a: any) => ({
+      questionId: a.questionId,
+      question: a.question,
+      suggested: a.status === "rejected" ? "" : a.answer,
+      accepted: a.status === "accepted",
+      modified: a.status === "modified" ? a.answer : "",
+      rejected: a.status === "rejected",
+      final: a.answer,
+    }));
+
+    this.callbacks.onStatus(
+      "expectations",
+      "srs-fe-orchestrator",
+      "Asking about expectations...",
+    );
+    await this.stepExpectations();
+  }
+
+  private async handleDirectWriterResponse() {
+    const answers = this.context.userResponse || {};
+    this.state.answers.discover = answers;
+    this.state.answers.discoverMode = "direct";
+
+    this.state.negotiatedAnswers = Object.entries(answers).map(
+      ([questionId, final]) => ({
+        questionId,
+        question:
+          this.state.pendingQuestions.find(
+            (_, i) => `Q${i + 1}` === questionId,
+          ) || questionId,
+        suggested: final as string,
+        accepted: true,
+        modified: final as string,
+        final: final as string,
+      }),
+    );
+
+    this.callbacks.onStatus(
+      "expectations",
+      "srs-fe-orchestrator",
+      "Asking about expectations...",
+    );
+    await this.stepExpectations();
+  }
+
+  private async stepExpectations() {
+    this.state.currentStep = "expectations";
+
+    const questions = [
+      "What are your specific expectations for this section?",
+      "Any must-have content?",
+      "Any specific constraints or preferences?",
+    ];
+
+    this.callbacks.onQuestion(questions, "srs-fe-orchestrator");
+    await this.pause("expectations", "user_expectations");
+  }
+
+  private async handleExpectationsResponse() {
+    this.state.answers.expectations = (
+      this.context.userResponse || ""
+    ).toString();
+    this.callbacks.onStatus(
+      "suggest",
+      "srs-fe-writer",
+      "Suggesting structure options...",
+    );
+    await this.stepSuggest();
+  }
+
+  private async stepSuggest() {
+    this.state.currentStep = "suggest";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildSuggestPrompt();
+    const response = await this.callAgent("writer", prompt, false);
+    const options = this.parseOptions(response);
+
+    this.callbacks.onOptions(options, "srd-writer");
+    await this.pause("suggest", "user_structure_choice");
+  }
+
+  private async handleSuggestResponse() {
+    this.state.answers.structureChoice = (
+      this.context.userResponse || "A"
+    ).toString();
+    this.callbacks.onStatus(
+      "generate",
+      "srs-fe-writer",
+      "Generating section content...",
+    );
+    await this.stepGenerate();
+  }
+
+  private async stepGenerate() {
+    this.state.currentStep = "generate";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildGeneratePrompt();
+    const response = await this.callAgent("writer", prompt, true);
+    this.state.draft = response;
+
+    this.callbacks.onStatus(
+      "validate",
+      "srs-fe-validator",
+      "Running quality checks...",
+    );
+    await this.stepValidate();
+  }
+
+  private async stepValidate() {
+    this.state.currentStep = "validate";
+    this.state.agentCalls.validator++;
+
+    const prompt = this.buildValidatePrompt();
+    const response = await this.callAgent("validator", prompt, false);
+    let findings = this.parseFindings(response);
+
+    if (findings.length === 0) {
+      findings = selfValidate(
+        this.state.sectionId.toString(),
+        this.state.sectionName,
+        this.state.draft,
+      );
+    }
+
+    this.state.findings = findings;
+    this.callbacks.onFindings(findings);
+
+    const hasBlocking = findings.some((f: any) => f.type === "BLOCKING");
+
+    if (hasBlocking) {
+      this.callbacks.onStatus(
+        "negotiate_fixes",
+        "srs-fe-negotiator",
+        "Proposing fixes for findings...",
+      );
+      await this.stepNegotiateFixes();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "srs-fe-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async stepNegotiateFixes() {
+    this.state.currentStep = "negotiate_fixes";
+    this.state.agentCalls.negotiator++;
+
+    const prompt = this.buildNegotiateFixesPrompt();
+    const response = await this.callAgent("negotiator", prompt, false);
+    const fixes = this.parseFixes(response);
+
+    this.state.negotiatedFixes = fixes;
+    this.callbacks.onFixes(fixes, "srd-negotiator");
+    await this.pause("negotiate_fixes", "user_review_fixes");
+  }
+
+  private async handleNegotiateFixesResponse() {
+    const userResponse = this.context.userResponse || {};
+
+    if (userResponse.action === "direct_validator_access") {
+      this.state.answers.validationMode = "direct";
+      this.callbacks.onFindingsRaw(this.state.findings, "srd-validator");
+      await this.pause("direct_validator", "user_review_findings");
+      return;
+    }
+
+    const reviewedFixes = Array.isArray(userResponse.fixes)
+      ? userResponse.fixes
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedFixes = reviewedFixes.map((f: any) => ({
+      findingId: f.findingId,
+      finding: f.finding,
+      proposedFix: f.proposedFix,
+      autoFixable: !!f.autoFixable,
+      accepted:
+        f.status !== "skipped" &&
+        (f.accepted || f.status === "accepted" || f.status === "modified"),
+    }));
+
+    const acceptedFixes = this.state.negotiatedFixes.filter((f) => f.accepted);
+
+    if (acceptedFixes.length > 0) {
+      this.callbacks.onStatus("fix", "srs-fe-writer", "Applying fixes...");
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "srs-fe-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async handleDirectValidatorResponse() {
+    const userResponse = this.context.userResponse || {};
+    const decisions = Array.isArray(userResponse)
+      ? userResponse
+      : userResponse.fixes || [];
+    const acceptedFindings = Array.isArray(decisions)
+      ? this.state.findings.filter(
+          (_f: any, i: number) => decisions[i]?.accepted,
+        )
+      : [];
+
+    this.state.answers.validationMode = "direct";
+    this.state.findings = acceptedFindings;
+
+    this.state.negotiatedFixes = acceptedFindings.map((f: any, i: number) => ({
+      findingId: f.id || `F${i + 1}`,
+      finding: f.message || "Finding",
+      proposedFix: f.message || "Please address this finding.",
+      autoFixable: false,
+      accepted: true,
+    }));
+
+    const hasAcceptedFixes = this.state.negotiatedFixes.length > 0;
+
+    if (hasAcceptedFixes) {
+      this.callbacks.onStatus(
+        "fix",
+        "srs-fe-writer",
+        "Applying selected fixes...",
+      );
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "srs-fe-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async stepFix() {
+    this.state.currentStep = "fix";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildFixPrompt();
+    const response = await this.callAgent("writer", prompt, true);
+    this.state.draft = response;
+
+    this.callbacks.onStatus(
+      "validate",
+      "srs-fe-validator",
+      "Re-checking after fixes...",
+    );
+    await this.stepValidate();
+  }
+
+  private async stepReview() {
+    this.state.currentStep = "review";
+
+    const summary = {
+      sectionId: this.state.sectionId,
+      sectionName: this.state.sectionName,
+      draftLength: this.state.draft.length,
+      findingsCount: this.state.findings.length,
+      revisionCount: this.state.revisionCount,
+    };
+
+    this.callbacks.onReview(
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      summary,
+    );
+    await this.pause("review", "user_approval");
+  }
+
+  private async handleReviewResponse() {
+    const response = this.context.userResponse || {};
+    const action = (response.action || "").toString().toLowerCase();
+
+    if (action === "approve" || action === "yes") {
+      this.state.currentStep = "done";
+      await this.persist("completed");
+      const tokensUsed =
+        this.state.agentCalls.writer +
+        this.state.agentCalls.negotiator +
+        this.state.agentCalls.validator;
+      this.callbacks.onStatus(
+        "done",
+        "srs-fe-orchestrator",
+        "Section approved and locked",
+      );
+      this.callbacks.onDone(tokensUsed);
+    } else if (action === "revise" || action === "no") {
+      this.state.revisionCount++;
+
+      this.callbacks.onStatus(
+        "generate",
+        "srs-fe-writer",
+        `Revising (revision ${this.state.revisionCount})...`,
+      );
+      await this.stepGenerate();
+    } else {
+      this.callbacks.onError(`Unknown review action: ${action}`);
+    }
+  }
+
+  private async callAgent(
+    agentId: "orchestrator" | "writer" | "negotiator" | "validator",
+    prompt: string,
+    streamTokens: boolean,
+  ): Promise<string> {
+    const fullIdMap: Record<typeof agentId, string> = {
+      orchestrator: "srs-fe-orchestrator",
+      writer: "srs-fe-writer",
+      negotiator: "srs-fe-negotiator",
+      validator: "srs-fe-validator",
+    };
+    const fullId = fullIdMap[agentId];
+
+    return new Promise((resolve, reject) => {
+      let fullText = "";
+      runAgentStream(
+        {
+          agentId: fullId,
+          message: prompt,
+          history: [],
+        },
+        {
+          onToken: (delta) => {
+            fullText += delta;
+            if (streamTokens) {
+              this.callbacks.onToken(delta);
+            }
+          },
+          onDone: (tokensUsed) => {
+            logger.debug("agent call complete", {
+              agentId: fullId,
+              tokensUsed,
+            });
+            resolve(fullText);
+          },
+          onError: (error) => {
+            logger.error("agent call failed", { agentId: fullId, error });
+            reject(new Error(error));
+          },
+        },
+      );
+    });
+  }
+
+  private projectContextBlock(): string {
+    const p = this.context.project;
+    if (!p) return "";
+    const parts = [
+      `Project Name: ${p.name}`,
+      p.key ? `Project Key: ${p.key}` : "",
+      p.description ? `Project Description:\n${p.description}` : "",
+      p.targetDate ? `Target Date: ${p.targetDate}` : "",
+    ];
+    return parts.filter(Boolean).join("\n");
+  }
+
+  private upstreamContextBlock(): string {
+    const upstream = this.context.upstreamSections || [];
+    if (upstream.length === 0) return "";
+    return `Upstream BRS + SRS-BE Sections:\n${upstream.join("\n---\n")}`;
+  }
+
+  private buildGenerateQuestionsPrompt(): string {
+    const projectBlock = this.projectContextBlock();
+    return [
+      `You are generating Section ${this.state.sectionId} of an SRS-FE document.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
+      this.context.dependencySections.length > 0
+        ? `Previously Approved SRS-FE Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : projectBlock
+          ? "No uploaded input documents are available. Use the Project Context above."
+          : "No uploaded input documents or project description are available. Ask only questions that can be answered from the section guide and upstream BRS sections, and phrase them so the human can answer directly.",
+      `Generate clarifying questions as a numbered list. Ask as many as needed based on the section guide — do not enforce a specific count.`,
+      `Rules:`,
+      `- Do NOT ask for documents that were not uploaded (e.g., charter, business case, PRD) unless they are explicitly listed in Input Documents.`,
+      `- Prefer questions the human can answer from general knowledge of the initiative and the upstream BRS sections.`,
+      `- Return the questions as a numbered list.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildNegotiateAnswersPrompt(): string {
+    const projectBlock = this.projectContextBlock();
+    return [
+      `You are the SRS-FE Negotiator. The Writer asked these questions:`,
+      JSON.stringify(this.state.pendingQuestions, null, 2),
+      this.upstreamContextBlock(),
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : projectBlock
+          ? "No uploaded input documents are available. Infer answers from the Project Context above."
+          : "No uploaded input documents or project description are available. Each answer must be a concise, plausible example or an honest statement that the user needs to supply the detail.",
+      `Propose answers for each question.`,
+      `Rules:`,
+      `- If the answer is clearly supported by an input document or project description, set confidence to "high" and answer factually.`,
+      `- If the answer can be reasonably inferred from context, set confidence to "medium".`,
+      `- If the answer cannot be inferred, set confidence to "low" and provide a concise example answer or a one-sentence description of what the user should supply.`,
+      `- NEVER return bracketed template instructions such as "[PENDING: ...]" or "[Insert ...]".`,
+      `- NEVER repeat the question text as the answer.`,
+      `- Return JSON: {"suggestions": [{"questionId": "Q1", "question": "...", "suggestedAnswer": "...", "confidence": "high|medium|low"}]}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  private buildSuggestPrompt(): string {
+    return [
+      `You are generating Section ${this.state.sectionId} of an SRS-FE document.`,
+      `Suggest 2-3 structure options for this section.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      `Return options as: Option A: <title> - <description>. Option B: ...`,
+    ].join("\n\n---\n\n");
+  }
+
+  private buildGeneratePrompt(): string {
+    return [
+      `You are the SRS-FE Writer. Generate Section ${this.state.sectionId}: ${this.state.sectionName} of an SRS-FE document.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      this.context.dependencySections.length > 0
+        ? `Previously Approved SRS-FE Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : "",
+      `User Answers:\n${JSON.stringify(this.state.negotiatedAnswers, null, 2)}`,
+      `User Expectations:\n${this.state.answers.expectations}`,
+      `Selected Structure: ${this.state.answers.structureChoice}`,
+      `Generate the complete section content as Markdown. Use SRS language ("SHALL" for mandatory, "SHOULD" for recommended, "MAY" for optional). Assign IDs where applicable (SR-FE-xxx, NFR-FE-xxx, UI-FE-xxx, INT-FE-xxx, CONSTR-FE-xxx, RULE-FE-xxx, ASSUMP-FE-xxx, RISK-FE-xxx). Every SR-FE-xxx MUST include a Traces-To column referencing the upstream BR-xxx. For Section 5, every INT-FE-xxx MUST reference the SRS-BE API contract (INT-BE-xxx) it consumes. Output ONLY the Markdown content — no commentary.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildValidatePrompt(): string {
+    return [
+      `You are the SRS-FE Validator. Validate the following SRS-BE section content:`,
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      `Content:\n${this.state.draft}`,
+      this.upstreamContextBlock(),
+      this.context.qualityChecks.length > 0
+        ? `Quality Checks:\n${this.context.qualityChecks.join("\n")}`
+        : "",
+      `Check for: SRS language (SHALL/SHOULD/MAY), traceability (SR-FE-xxx → BR-xxx), API contract consumption (INT-FE-xxx → INT-BE-xxx), WCAG accessibility, browser matrix completeness, missing subsections, placeholders.`,
+      `Return findings as JSON: {"findings": [{"type": "BLOCKING|WARNING|INFO", "message": "...", "rule": "..."}]}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildNegotiateFixesPrompt(): string {
+    return [
+      `You are the SRS-FE Negotiator. The Validator found these issues:`,
+      JSON.stringify(this.state.findings, null, 2),
+      `Propose fixes for each finding. For language issues, suggest replacements. For missing items, suggest additions.`,
+      `Return fixes as JSON: {"fixes": [{"findingId": "1", "proposedFix": "...", "autoFixable": true}]}.`,
+    ].join("\n\n");
+  }
+
+  private buildFixPrompt(): string {
+    return [
+      `You are the SRD Writer. Apply these fixes to the section content:`,
+      `Accepted Fixes:\n${JSON.stringify(
+        this.state.negotiatedFixes.filter((f) => f.accepted),
+        null,
+        2,
+      )}`,
+      `Current Draft:\n${this.state.draft}`,
+      `Regenerate the section with the fixes applied. Use technical requirements language. Keep IDs consistent and preserve traceability to upstream BRS items.`,
+    ].join("\n\n---\n\n");
+  }
+
+  private parseQuestions(response: string): string[] {
+    const lines = response.split("\n");
+    const questions: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.match(/^\d+[\.)]\s/) || trimmed.endsWith("?")) {
+        questions.push(trimmed.replace(/^\d+[\.)]\s*/, ""));
+      }
+    }
+    if (questions.length > 0) return questions;
+    return response ? [response.trim()] : [];
+  }
+
+  private parseSuggestions(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.suggestions || [];
+    } catch {
+      return [
+        {
+          questionId: "Q1",
+          question: "General suggestion",
+          suggestedAnswer: response.trim(),
+          confidence: "medium",
+        },
+      ];
+    }
+  }
+
+  private parseOptions(response: string): any[] {
+    const options: any[] = [];
+    const optionRegex = /(?:Option|option)\s+([A-C])[:\.]?\s*([^\n]+)/g;
+    let match;
+    while ((match = optionRegex.exec(response)) !== null) {
+      options.push({
+        id: match[1],
+        name: match[2].trim(),
+        description: match[2].trim(),
+      });
+    }
+    return options.length > 0
+      ? options
+      : [
+          {
+            id: "A",
+            name: "Default Structure",
+            description: "Use the default structure from the section guide",
+          },
+        ];
+  }
+
+  private parseFindings(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.findings || [];
+    } catch {
+      const findings: any[] = [];
+      const lines = response.split("\n");
+      for (const line of lines) {
+        if (
+          line.includes("BLOCKING") ||
+          line.includes("WARNING") ||
+          line.includes("INFO")
+        ) {
+          const type = line.includes("BLOCKING")
+            ? "BLOCKING"
+            : line.includes("WARNING")
+              ? "WARNING"
+              : "INFO";
+          findings.push({ type, message: line.trim(), rule: "unknown" });
+        }
+      }
+      return findings;
+    }
+  }
+
+  private parseFixes(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.fixes || [];
+    } catch {
+      return [];
+    }
+  }
+
+  private extractJsonFromMarkdown(response: string): string {
+    const codeBlock = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlock && codeBlock[1]) {
+      return codeBlock[1].trim();
+    }
+    return response.trim();
+  }
+}
+
+export class TCFEWorkflow {
+  private agents: AgentMap;
+  private state: WorkflowState;
+  private context: WorkflowContext;
+  private callbacks: WorkflowCallbacks;
+
+  constructor(
+    agents: AgentMap,
+    context: WorkflowContext,
+    callbacks: WorkflowCallbacks,
+  ) {
+    this.agents = agents;
+    void this.agents;
+    this.context = context;
+    this.callbacks = callbacks;
+    this.state = {
+      currentStep: "relevance",
+      sectionId: context.stepId,
+      sectionName: context.sectionName || "",
+      answers: {
+        applicable: null,
+        discover: {},
+        discoverMode: "negotiated",
+        expectations: "",
+        structureChoice: "",
+        validationMode: "negotiated",
+      },
+      negotiatedAnswers: [],
+      pendingQuestions: [],
+      draft: "",
+      revisionCount: 0,
+      findings: [],
+      negotiatedFixes: [],
+      agentCalls: {
+        orchestrator: 0,
+        writer: 0,
+        negotiator: 0,
+        validator: 0,
+      },
+    };
+  }
+
+  setCallbacks(callbacks: WorkflowCallbacks) {
+    this.callbacks = callbacks;
+  }
+
+  getState(): WorkflowState {
+    return this.state;
+  }
+
+  setState(state: WorkflowState) {
+    this.state = state;
+  }
+
+  getContext(): WorkflowContext {
+    return this.context;
+  }
+
+  async run() {
+    logger.info("Starting TC-FE workflow", {
+      workflowId: this.context.workflowId,
+      step: this.state.sectionId,
+    });
+
+    await createWorkflow(
+      this.context.workflowId,
+      this.context.projectId,
+      this.context.docId,
+      this.context.stepId,
+      "tc-fe-orchestrator",
+      this.state,
+    );
+
+    try {
+      await this.stepRelevance();
+    } catch (err) {
+      this.callbacks.onError((err as Error).message);
+    }
+  }
+
+  async resume(userResponse: any) {
+    this.context.userResponse = userResponse;
+    logger.info("Resuming TC-FE workflow", {
+      workflowId: this.context.workflowId,
+      step: this.state.currentStep,
+      response: userResponse,
+    });
+
+    try {
+      switch (this.state.currentStep) {
+        case "relevance":
+          await this.handleRelevanceResponse();
+          break;
+        case "negotiate_answers":
+          await this.handleNegotiateAnswersResponse();
+          break;
+        case "direct_writer":
+          await this.handleDirectWriterResponse();
+          break;
+        case "expectations":
+          await this.handleExpectationsResponse();
+          break;
+        case "suggest":
+          await this.handleSuggestResponse();
+          break;
+        case "negotiate_fixes":
+          await this.handleNegotiateFixesResponse();
+          break;
+        case "direct_validator":
+          await this.handleDirectValidatorResponse();
+          break;
+        case "review":
+          await this.handleReviewResponse();
+          break;
+        default:
+          this.callbacks.onError(`Unknown step: ${this.state.currentStep}`);
+      }
+    } catch (err) {
+      this.callbacks.onError((err as Error).message);
+    } finally {
+      if (
+        this.state.currentStep !== "relevance" &&
+        this.state.currentStep !== "generate_questions" &&
+        this.state.currentStep !== "negotiate_answers" &&
+        this.state.currentStep !== "direct_writer" &&
+        this.state.currentStep !== "expectations" &&
+        this.state.currentStep !== "suggest" &&
+        this.state.currentStep !== "negotiate_fixes" &&
+        this.state.currentStep !== "direct_validator" &&
+        this.state.currentStep !== "review"
+      ) {
+        this.callbacks.onDone(0);
+      }
+    }
+  }
+
+  private async persist(
+    status:
+      "active" | "paused" | "completed" | "terminated" | "error" = "paused",
+  ) {
+    try {
+      await updateWorkflowState(this.context.workflowId, this.state, status);
+    } catch (err) {
+      logger.error("failed to persist workflow state", {
+        workflowId: this.context.workflowId,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  private async pause(step: WorkflowStep, waitingFor: string) {
+    this.state.currentStep = step;
+    await this.persist("paused");
+    await this.callbacks.onPaused(step, waitingFor);
+  }
+
+  private async stepRelevance() {
+    this.state.currentStep = "relevance";
+    this.callbacks.onStatus(
+      "relevance",
+      "tc-fe-orchestrator",
+      "Checking section relevance...",
+    );
+
+    const questions = [
+      `Section ${this.state.sectionId} is "${this.state.sectionName}". Is this section applicable to your TC-FE? (YES/NO)`,
+    ];
+
+    this.callbacks.onQuestion(questions, "tc-fe-orchestrator");
+    await this.pause("relevance", "user_answer");
+  }
+
+  private async handleRelevanceResponse() {
+    const response = (this.context.userResponse || "")
+      .toString()
+      .toUpperCase()
+      .trim();
+
+    if (response === "NO" || response === "N") {
+      this.state.answers.applicable = false;
+      await this.persist("terminated");
+      this.callbacks.onStatus(
+        "done",
+        "tc-fe-orchestrator",
+        "Section marked as NOT APPLICABLE",
+      );
+      this.callbacks.onDone(0);
+      return;
+    }
+
+    this.state.answers.applicable = true;
+    this.callbacks.onStatus(
+      "generate_questions",
+      "tc-fe-orchestrator",
+      "Starting discovery...",
+    );
+    await this.stepGenerateQuestions();
+  }
+
+  private async stepGenerateQuestions() {
+    this.state.currentStep = "generate_questions";
+    this.callbacks.onStatus(
+      "generate_questions",
+      "tc-fe-writer",
+      "Generating questions...",
+    );
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildGenerateQuestionsPrompt();
+    const response = await this.callAgent("writer", prompt, false);
+    const questions = this.parseQuestions(response);
+
+    this.state.pendingQuestions = questions;
+    this.callbacks.onStatus(
+      "negotiate_answers",
+      "tc-fe-negotiator",
+      "Negotiating answers...",
+    );
+    await this.stepNegotiateAnswers();
+  }
+
+  private async stepNegotiateAnswers() {
+    this.state.currentStep = "negotiate_answers";
+    this.state.agentCalls.negotiator++;
+
+    const prompt = this.buildNegotiateAnswersPrompt();
+    const response = await this.callAgent("negotiator", prompt, false);
+    const suggestions = this.parseSuggestions(response);
+
+    this.callbacks.onSuggestions(suggestions, "tc-fe-negotiator");
+    await this.pause("negotiate_answers", "user_review_suggestions");
+  }
+
+  private async handleNegotiateAnswersResponse() {
+    const userResponse = this.context.userResponse || {};
+
+    if (userResponse.action === "direct_writer_access") {
+      this.state.answers.discoverMode = "direct";
+      this.callbacks.onQuestion(this.state.pendingQuestions, "tc-fe-writer");
+      await this.pause("direct_writer", "user_answers");
+      return;
+    }
+
+    const reviewedAnswers = Array.isArray(userResponse.suggestions)
+      ? userResponse.suggestions
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedAnswers = reviewedAnswers.map((a: any) => ({
+      questionId: a.questionId,
+      question: a.question,
+      suggested: a.status === "rejected" ? "" : a.answer,
+      accepted: a.status === "accepted",
+      modified: a.status === "modified" ? a.answer : "",
+      rejected: a.status === "rejected",
+      final: a.answer,
+    }));
+
+    this.callbacks.onStatus(
+      "expectations",
+      "tc-fe-orchestrator",
+      "Asking about expectations...",
+    );
+    await this.stepExpectations();
+  }
+
+  private async handleDirectWriterResponse() {
+    const answers = this.context.userResponse || {};
+    this.state.answers.discover = answers;
+    this.state.answers.discoverMode = "direct";
+
+    this.state.negotiatedAnswers = Object.entries(answers).map(
+      ([questionId, final]) => ({
+        questionId,
+        question:
+          this.state.pendingQuestions.find(
+            (_, i) => `Q${i + 1}` === questionId,
+          ) || questionId,
+        suggested: final as string,
+        accepted: true,
+        modified: final as string,
+        final: final as string,
+      }),
+    );
+
+    this.callbacks.onStatus(
+      "expectations",
+      "tc-fe-orchestrator",
+      "Asking about expectations...",
+    );
+    await this.stepExpectations();
+  }
+
+  private async stepExpectations() {
+    this.state.currentStep = "expectations";
+
+    const questions = [
+      "What are your specific expectations for this section?",
+      "Any must-have content?",
+      "Any specific constraints or preferences?",
+    ];
+
+    this.callbacks.onQuestion(questions, "tc-fe-orchestrator");
+    await this.pause("expectations", "user_expectations");
+  }
+
+  private async handleExpectationsResponse() {
+    this.state.answers.expectations = (
+      this.context.userResponse || ""
+    ).toString();
+    this.callbacks.onStatus(
+      "suggest",
+      "tc-fe-writer",
+      "Suggesting structure options...",
+    );
+    await this.stepSuggest();
+  }
+
+  private async stepSuggest() {
+    this.state.currentStep = "suggest";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildSuggestPrompt();
+    const response = await this.callAgent("writer", prompt, false);
+    const options = this.parseOptions(response);
+
+    this.callbacks.onOptions(options, "tc-fe-writer");
+    await this.pause("suggest", "user_structure_choice");
+  }
+
+  private async handleSuggestResponse() {
+    this.state.answers.structureChoice = (
+      this.context.userResponse || "A"
+    ).toString();
+    this.callbacks.onStatus(
+      "generate",
+      "tc-fe-writer",
+      "Generating section content...",
+    );
+    await this.stepGenerate();
+  }
+
+  private async stepGenerate() {
+    this.state.currentStep = "generate";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildGeneratePrompt();
+    const response = await this.callAgent("writer", prompt, true);
+    this.state.draft = response;
+
+    this.callbacks.onStatus(
+      "validate",
+      "tc-fe-validator",
+      "Running quality checks...",
+    );
+    await this.stepValidate();
+  }
+
+  private async stepValidate() {
+    this.state.currentStep = "validate";
+    this.state.agentCalls.validator++;
+
+    const prompt = this.buildValidatePrompt();
+    const response = await this.callAgent("validator", prompt, false);
+    let findings = this.parseFindings(response);
+
+    if (findings.length === 0) {
+      findings = selfValidate(
+        this.state.sectionId.toString(),
+        this.state.sectionName,
+        this.state.draft,
+      );
+    }
+
+    this.state.findings = findings;
+    this.callbacks.onFindings(findings);
+
+    const hasBlocking = findings.some((f: any) => f.type === "BLOCKING");
+
+    if (hasBlocking) {
+      this.callbacks.onStatus(
+        "negotiate_fixes",
+        "tc-fe-negotiator",
+        "Proposing fixes for findings...",
+      );
+      await this.stepNegotiateFixes();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "tc-fe-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async stepNegotiateFixes() {
+    this.state.currentStep = "negotiate_fixes";
+    this.state.agentCalls.negotiator++;
+
+    const prompt = this.buildNegotiateFixesPrompt();
+    const response = await this.callAgent("negotiator", prompt, false);
+    const fixes = this.parseFixes(response);
+
+    this.state.negotiatedFixes = fixes;
+    this.callbacks.onFixes(fixes, "tc-fe-negotiator");
+    await this.pause("negotiate_fixes", "user_review_fixes");
+  }
+
+  private async handleNegotiateFixesResponse() {
+    const userResponse = this.context.userResponse || {};
+
+    if (userResponse.action === "direct_validator_access") {
+      this.state.answers.validationMode = "direct";
+      this.callbacks.onFindingsRaw(this.state.findings, "tc-fe-validator");
+      await this.pause("direct_validator", "user_review_findings");
+      return;
+    }
+
+    const reviewedFixes = Array.isArray(userResponse.fixes)
+      ? userResponse.fixes
+      : Array.isArray(userResponse)
+        ? userResponse
+        : [];
+
+    this.state.negotiatedFixes = reviewedFixes.map((f: any) => ({
+      findingId: f.findingId,
+      finding: f.finding,
+      proposedFix: f.proposedFix,
+      autoFixable: !!f.autoFixable,
+      accepted:
+        f.status !== "skipped" &&
+        (f.accepted || f.status === "accepted" || f.status === "modified"),
+    }));
+
+    const acceptedFixes = this.state.negotiatedFixes.filter((f) => f.accepted);
+
+    if (acceptedFixes.length > 0) {
+      this.callbacks.onStatus("fix", "tc-fe-writer", "Applying fixes...");
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "tc-fe-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async handleDirectValidatorResponse() {
+    const userResponse = this.context.userResponse || {};
+    const decisions = Array.isArray(userResponse)
+      ? userResponse
+      : userResponse.fixes || [];
+    const acceptedFindings = Array.isArray(decisions)
+      ? this.state.findings.filter(
+          (_f: any, i: number) => decisions[i]?.accepted,
+        )
+      : [];
+
+    this.state.answers.validationMode = "direct";
+    this.state.findings = acceptedFindings;
+
+    this.state.negotiatedFixes = acceptedFindings.map((f: any, i: number) => ({
+      findingId: f.id || `F${i + 1}`,
+      finding: f.message || "Finding",
+      proposedFix: f.message || "Please address this finding.",
+      autoFixable: false,
+      accepted: true,
+    }));
+
+    const hasAcceptedFixes = this.state.negotiatedFixes.length > 0;
+
+    if (hasAcceptedFixes) {
+      this.callbacks.onStatus(
+        "fix",
+        "tc-fe-writer",
+        "Applying selected fixes...",
+      );
+      await this.stepFix();
+    } else {
+      this.callbacks.onStatus(
+        "review",
+        "tc-fe-orchestrator",
+        "Presenting draft for review...",
+      );
+      await this.stepReview();
+    }
+  }
+
+  private async stepFix() {
+    this.state.currentStep = "fix";
+    this.state.agentCalls.writer++;
+
+    const prompt = this.buildFixPrompt();
+    const response = await this.callAgent("writer", prompt, true);
+    this.state.draft = response;
+
+    this.callbacks.onStatus(
+      "validate",
+      "tc-fe-validator",
+      "Re-checking after fixes...",
+    );
+    await this.stepValidate();
+  }
+
+  private async stepReview() {
+    this.state.currentStep = "review";
+
+    const summary = {
+      sectionId: this.state.sectionId,
+      sectionName: this.state.sectionName,
+      draftLength: this.state.draft.length,
+      findingsCount: this.state.findings.length,
+      revisionCount: this.state.revisionCount,
+    };
+
+    this.callbacks.onReview(
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      summary,
+    );
+    await this.pause("review", "user_approval");
+  }
+
+  private async handleReviewResponse() {
+    const response = this.context.userResponse || {};
+    const action = (response.action || "").toString().toLowerCase();
+
+    if (action === "approve" || action === "yes") {
+      this.state.currentStep = "done";
+      await this.persist("completed");
+      const tokensUsed =
+        this.state.agentCalls.writer +
+        this.state.agentCalls.negotiator +
+        this.state.agentCalls.validator;
+      this.callbacks.onStatus(
+        "done",
+        "tc-fe-orchestrator",
+        "Section approved and locked",
+      );
+      this.callbacks.onDone(tokensUsed);
+    } else if (action === "revise" || action === "no") {
+      this.state.revisionCount++;
+
+      this.callbacks.onStatus(
+        "generate",
+        "tc-fe-writer",
+        `Revising (revision ${this.state.revisionCount})...`,
+      );
+      await this.stepGenerate();
+    } else {
+      this.callbacks.onError(`Unknown review action: ${action}`);
+    }
+  }
+
+  private async callAgent(
+    agentId: "orchestrator" | "writer" | "negotiator" | "validator",
+    prompt: string,
+    streamTokens: boolean,
+  ): Promise<string> {
+    const fullIdMap: Record<typeof agentId, string> = {
+      orchestrator: "tc-fe-orchestrator",
+      writer: "tc-fe-writer",
+      negotiator: "tc-fe-negotiator",
+      validator: "tc-fe-validator",
+    };
+    const fullId = fullIdMap[agentId];
+
+    return new Promise((resolve, reject) => {
+      let fullText = "";
+      runAgentStream(
+        {
+          agentId: fullId,
+          message: prompt,
+          history: [],
+        },
+        {
+          onToken: (delta) => {
+            fullText += delta;
+            if (streamTokens) {
+              this.callbacks.onToken(delta);
+            }
+          },
+          onDone: (tokensUsed) => {
+            logger.debug("agent call complete", {
+              agentId: fullId,
+              tokensUsed,
+            });
+            resolve(fullText);
+          },
+          onError: (error) => {
+            logger.error("agent call failed", { agentId: fullId, error });
+            reject(new Error(error));
+          },
+        },
+      );
+    });
+  }
+
+  private projectContextBlock(): string {
+    const p = this.context.project;
+    if (!p) return "";
+    const parts = [
+      `Project Name: ${p.name}`,
+      p.key ? `Project Key: ${p.key}` : "",
+      p.description ? `Project Description:\n${p.description}` : "",
+      p.targetDate ? `Target Date: ${p.targetDate}` : "",
+    ];
+    return parts.filter(Boolean).join("\n");
+  }
+
+  private upstreamContextBlock(): string {
+    const upstream = this.context.upstreamSections || [];
+    if (upstream.length === 0) return "";
+    return `Upstream BRS + SRS-FE Sections:\n${upstream.join("\n---\n")}`;
+  }
+
+  private buildGenerateQuestionsPrompt(): string {
+    const projectBlock = this.projectContextBlock();
+    return [
+      `You are generating Section ${this.state.sectionId} of a TC-FE document.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
+      this.context.dependencySections.length > 0
+        ? `Previously Approved TC-FE Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : projectBlock
+          ? "No uploaded input documents are available. Use the Project Context and upstream BRS + SRS-FE sections above."
+          : "No uploaded input documents or project description are available. Ask only questions that can be answered from the section guide and upstream BRS + SRS-FE sections, and phrase them so the human can answer directly.",
+      `Generate clarifying questions as a numbered list. Ask as many as needed based on the section guide — do not enforce a specific count.`,
+      `Rules:`,
+      `- Do NOT ask for documents that were not uploaded (e.g., charter, business case, PRD) unless they are explicitly listed in Input Documents.`,
+      `- Prefer questions the human can answer from general knowledge of the initiative and the upstream BRS + SRS-FE sections.`,
+      `- Return the questions as a numbered list.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildNegotiateAnswersPrompt(): string {
+    const projectBlock = this.projectContextBlock();
+    return [
+      `You are the TC-FE Negotiator. The Writer asked these questions:`,
+      JSON.stringify(this.state.pendingQuestions, null, 2),
+      this.upstreamContextBlock(),
+      projectBlock ? `Project Context:\n${projectBlock}` : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : projectBlock
+          ? "No uploaded input documents are available. Infer answers from the Project Context and upstream BRS + SRS-FE sections above."
+          : "No uploaded input documents or project description are available. Each answer must be a concise, plausible example inferred from the upstream BRS + SRS-FE sections, or an honest statement that the user needs to supply the detail.",
+      `Propose answers for each question.`,
+      `Rules:`,
+      `- If the answer is clearly supported by an input document or project description, set confidence to "high" and answer factually.`,
+      `- If the answer can be reasonably inferred from context, set confidence to "medium".`,
+      `- If the answer cannot be inferred, set confidence to "low" and provide a concise example answer or a one-sentence description of what the user should supply.`,
+      `- NEVER return bracketed template instructions such as "[PENDING: ...]" or "[Insert ...]".`,
+      `- NEVER repeat the question text as the answer.`,
+      `- Return JSON: {"suggestions": [{"questionId": "Q1", "question": "...", "suggestedAnswer": "...", "confidence": "high|medium|low"}]}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  private buildSuggestPrompt(): string {
+    return [
+      `You are generating Section ${this.state.sectionId} of a TC-FE document.`,
+      `Suggest 2-3 structure options for this section.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      `Return options as: Option A: <title> - <description>. Option B: ...`,
+    ].join("\n\n---\n\n");
+  }
+
+  private buildGeneratePrompt(): string {
+    return [
+      `You are the TC-FE Writer. Generate Section ${this.state.sectionId}: ${this.state.sectionName} of a TC-FE document.`,
+      `Section Guide:\n${this.context.sectionGuide}`,
+      this.upstreamContextBlock(),
+      this.context.dependencySections.length > 0
+        ? `Previously Approved TC-FE Sections:\n${this.context.dependencySections.join("\n---\n")}`
+        : "",
+      this.context.inputDocuments.length > 0
+        ? `Input Documents:\n${this.context.inputDocuments.join("\n---\n")}`
+        : "",
+      `User Answers:\n${JSON.stringify(this.state.negotiatedAnswers, null, 2)}`,
+      `User Expectations:\n${this.state.answers.expectations}`,
+      `Selected Structure: ${this.state.answers.structureChoice}`,
+      `Generate the complete section content as Markdown. Use SRS language ("SHALL" for mandatory, "SHOULD" for recommended). Assign IDs: TC-FE-01, TC-FE-02, etc. Every TC-FE-xxx MUST use Gherkin format (Given/When/Then) and MUST have "Traces To" referencing SR-FE-xxx AND BR-xxx. Include positive, negative, and edge cases. For accessibility, include WCAG 2.1 AA test scenarios. For browser compat, include Chrome, Firefox, Safari, Edge test scenarios. Output ONLY the Markdown content — no commentary.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildValidatePrompt(): string {
+    return [
+      `You are the TC-FE Validator. Validate the following TC-FE section content:`,
+      `Section ${this.state.sectionId}: ${this.state.sectionName}`,
+      `Content:\n${this.state.draft}`,
+      this.upstreamContextBlock(),
+      this.context.qualityChecks.length > 0
+        ? `Quality Checks:\n${this.context.qualityChecks.join("\n")}`
+        : "",
+      `Check for: Gherkin format (Given/When/Then), traceability (TC-FE-xxx → SR-FE-xxx → BR-xxx), coverage, positive/negative/edge cases, WCAG accessibility testing, browser compatibility testing, SRS language, missing subsections, placeholders.`,
+      `Return findings as JSON: {"findings": [{"type": "BLOCKING|WARNING|INFO", "message": "...", "rule": "..."}]}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  }
+
+  private buildNegotiateFixesPrompt(): string {
+    return [
+      `You are the TC-FE Negotiator. The Validator found these issues:`,
+      JSON.stringify(this.state.findings, null, 2),
+      `Propose fixes for each finding. For language issues, suggest replacements. For missing items, suggest additions.`,
+      `Return fixes as JSON: {"fixes": [{"findingId": "1", "proposedFix": "...", "autoFixable": true}]}.`,
+    ].join("\n\n");
+  }
+
+  private buildFixPrompt(): string {
+    return [
+      `You are the TC-FE Writer. Apply these fixes to the section content:`,
+      `Accepted Fixes:\n${JSON.stringify(
+        this.state.negotiatedFixes.filter((f) => f.accepted),
+        null,
+        2,
+      )}`,
+      `Current Draft:\n${this.state.draft}`,
+      `Regenerate the section with the fixes applied. Use Gherkin format and SRS language. Keep TC-FE IDs consistent and preserve triple traceability to SR-FE and BR items.`,
+    ].join("\n\n---\n\n");
+  }
+
+  private parseQuestions(response: string): string[] {
+    const lines = response.split("\n");
+    const questions: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.match(/^\d+[\.)]\s/) || trimmed.endsWith("?")) {
+        questions.push(trimmed.replace(/^\d+[\.)]\s*/, ""));
+      }
+    }
+    if (questions.length > 0) return questions;
+    return response ? [response.trim()] : [];
+  }
+
+  private parseSuggestions(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.suggestions || [];
+    } catch {
+      return [
+        {
+          questionId: "Q1",
+          question: "General suggestion",
+          suggestedAnswer: response.trim(),
+          confidence: "medium",
+        },
+      ];
+    }
+  }
+
+  private parseOptions(response: string): any[] {
+    const options: any[] = [];
+    const optionRegex = /(?:Option|option)\s+([A-C])[:\.]?\s*([^\n]+)/g;
+    let match;
+    while ((match = optionRegex.exec(response)) !== null) {
+      options.push({
+        id: match[1],
+        name: match[2].trim(),
+        description: match[2].trim(),
+      });
+    }
+    return options.length > 0
+      ? options
+      : [
+          {
+            id: "A",
+            name: "Default Structure",
+            description: "Use the default structure from the section guide",
+          },
+        ];
+  }
+
+  private parseFindings(response: string): any[] {
+    const clean = this.extractJsonFromMarkdown(response);
+    try {
+      const parsed = JSON.parse(clean);
+      return parsed.findings || [];
+    } catch {
+      const findings: any[] = [];
+      const lines = response.split("\n");
+      for (const line of lines) {
+        if (
+          line.includes("BLOCKING") ||
+          line.includes("WARNING") ||
+          line.includes("INFO")
+        ) {
+          const type = line.includes("BLOCKING")
+            ? "BLOCKING"
+            : line.includes("WARNING")
+              ? "WARNING"
+              : "INFO";
+          findings.push({ type, message: line.trim(), rule: "unknown" });
         }
       }
       return findings;

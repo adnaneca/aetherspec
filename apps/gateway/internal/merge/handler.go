@@ -27,7 +27,7 @@ func NewHandler(pool *pgxpool.Pool, minioClient *minio.Client, cfg *config.Confi
 
 func (h *Handler) Register(r fiber.Router) {
 	api := r.Group("/document")
-	api.Post("/:docId/merge", middleware.RequireAnyRole("ROLE_BA_LEAD", "ROLE_REALM_ADMIN"), h.mergeBRS)
+	api.Post("/:docId/merge", middleware.RequireAnyRole("ROLE_BA_LEAD", "ROLE_REALM_ADMIN", "ROLE_QA_LEAD", "ROLE_SOLUTION_ARCHITECT", "ROLE_DEV_LEAD"), h.mergeDocument)
 }
 
 type stepInfo struct {
@@ -37,14 +37,14 @@ type stepInfo struct {
 	minioPath string
 }
 
-// mergeBRS delegates to the Python merge script for deterministic assembly.
-func (h *Handler) mergeBRS(c *fiber.Ctx) error {
+// mergeDocument delegates to the Python merge script for deterministic assembly.
+func (h *Handler) mergeDocument(c *fiber.Ctx) error {
 	docID := c.Params("docId")
 	mergedBy := middleware.GetUsername(c)
 
-	// 1. Load steps and resolve project/bucket
+	// 1. Load steps, project, and doc type
 	rows, err := h.pool.Query(c.Context(),
-		`SELECT ds.step_number, ds.step_name, ds.status, ds.minio_path, d.project_id
+		`SELECT ds.step_number, ds.step_name, ds.status, ds.minio_path, d.project_id, d.doc_type
 		 FROM document_steps ds JOIN documents d ON ds.document_id = d.id
 		 WHERE ds.document_id = $1 ORDER BY ds.step_number`, docID)
 	if err != nil {
@@ -53,9 +53,10 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 
 	var steps []stepInfo
 	var projectID string
+	var docType string
 	for rows.Next() {
 		var s stepInfo
-		if err := rows.Scan(&s.number, &s.name, &s.status, &s.minioPath, &projectID); err != nil {
+		if err := rows.Scan(&s.number, &s.name, &s.status, &s.minioPath, &projectID, &docType); err != nil {
 			rows.Close()
 			return c.Status(500).JSON(fiber.Map{"error": "scan failed"})
 		}
@@ -90,7 +91,7 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 		}
 	}
 
-	// 2. Run the Python merge script
+	// 2. Resolve merge script and output name based on docType
 	dbURL := fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		h.cfg.Postgres.User, h.cfg.Postgres.Password,
@@ -98,7 +99,72 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 		h.cfg.Postgres.DB, h.cfg.Postgres.SSLMode,
 	)
 
-	args := strings.Fields(h.cfg.Merge.ScriptPath)
+	scriptPath := h.cfg.Merge.ScriptPath
+	outputName := "BRS-001.md"
+	mainPath := "output/BRS-001.md"
+	appendixKeys := []string{
+		"brs/appendices/A-rtm.md",
+		"brs/appendices/B-approval.md",
+		"brs/appendices/C-history.md",
+		"brs/appendices/D-revisions.md",
+	}
+
+	switch docType {
+	case "srs", "srs-be":
+		scriptPath = strings.Replace(scriptPath, "merge_brs.py", "merge_srs.py", 1)
+		if scriptPath == h.cfg.Merge.ScriptPath {
+			scriptPath = "/opt/aetherspec-v2/scripts/merge_srs.py"
+		}
+		outputName = "SRS-BE-001.md"
+		mainPath = "output/SRS-BE-001.md"
+		appendixKeys = []string{
+			"srs-be/appendices/A-rtm.md",
+			"srs-be/appendices/B-approval.md",
+			"srs-be/appendices/C-history.md",
+			"srs-be/appendices/D-revisions.md",
+		}
+	case "srs-fe":
+		scriptPath = strings.Replace(scriptPath, "merge_brs.py", "merge_srs_fe.py", 1)
+		if scriptPath == h.cfg.Merge.ScriptPath {
+			scriptPath = "/opt/aetherspec-v2/scripts/merge_srs_fe.py"
+		}
+		outputName = "SRS-FE-001.md"
+		mainPath = "output/SRS-FE-001.md"
+		appendixKeys = []string{
+			"srs-fe/appendices/A-rtm.md",
+			"srs-fe/appendices/B-approval.md",
+			"srs-fe/appendices/C-history.md",
+			"srs-fe/appendices/D-revisions.md",
+		}
+	case "testcase":
+		scriptPath = strings.Replace(scriptPath, "merge_brs.py", "merge_testcases.py", 1)
+		if scriptPath == h.cfg.Merge.ScriptPath {
+			scriptPath = "/opt/aetherspec-v2/scripts/merge_testcases.py"
+		}
+		outputName = "TC-001.md"
+		mainPath = "output/TC-001.md"
+		appendixKeys = []string{
+			"testcase/appendices/A-rtm.md",
+			"testcase/appendices/B-approval.md",
+			"testcase/appendices/C-history.md",
+			"testcase/appendices/D-revisions.md",
+		}
+	case "tc-fe":
+		scriptPath = strings.Replace(scriptPath, "merge_brs.py", "merge_tc_fe.py", 1)
+		if scriptPath == h.cfg.Merge.ScriptPath {
+			scriptPath = "/opt/aetherspec-v2/scripts/merge_tc_fe.py"
+		}
+		outputName = "TC-FE-001.md"
+		mainPath = "output/TC-FE-001.md"
+		appendixKeys = []string{
+			"tc-fe/appendices/A-rtm.md",
+			"tc-fe/appendices/B-approval.md",
+			"tc-fe/appendices/C-history.md",
+			"tc-fe/appendices/D-revisions.md",
+		}
+	}
+
+	args := strings.Fields(scriptPath)
 	if len(args) == 0 {
 		return c.Status(500).JSON(fiber.Map{"error": "merge script path not configured"})
 	}
@@ -107,7 +173,7 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 		"--doc-id", docID,
 		"--db-url", dbURL,
 		"--merged-by", mergedBy,
-		"--output-name", "BRS-001.md",
+		"--output-name", outputName,
 	)
 	cmd := exec.CommandContext(c.Context(), args[0], args[1:]...)
 	cmd.Env = append(cmd.Env,
@@ -138,23 +204,16 @@ func (h *Handler) mergeBRS(c *fiber.Ctx) error {
 		h.log.Warn("failed to update document status", zap.String("doc", docID), zap.Error(err))
 	}
 
-	mainPath := "output/BRS-001.md"
-	appendixKeys := []string{
-		"brs/appendices/A-rtm.md",
-		"brs/appendices/B-approval.md",
-		"brs/appendices/C-history.md",
-		"brs/appendices/D-revisions.md",
-	}
-
-	h.log.Info("BRS merged via Python script",
+	h.log.Info("Document merged via Python script",
 		zap.String("doc", docID),
 		zap.String("project", projectID),
+		zap.String("docType", docType),
 	)
 
 	return c.JSON(fiber.Map{
-		"status":   "merged",
-		"docId":    docID,
-		"main":     mainPath,
+		"status":    "merged",
+		"docId":     docID,
+		"main":      mainPath,
 		"appendixA": appendixKeys[0],
 		"appendixB": appendixKeys[1],
 		"appendixC": appendixKeys[2],

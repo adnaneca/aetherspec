@@ -1,5 +1,5 @@
-import { Navigate } from '@tanstack/react-router';
-import { useKeycloak } from '../lib/keycloak';
+import { Navigate } from "@tanstack/react-router";
+import { useKeycloak } from "../lib/keycloak";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useKeycloak();

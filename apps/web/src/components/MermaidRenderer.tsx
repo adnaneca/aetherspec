@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import mermaid from 'mermaid';
+import { useEffect, useRef, useState } from "react";
+import mermaid from "mermaid";
 
 interface MermaidRendererProps {
   chart: string;
@@ -7,19 +7,19 @@ interface MermaidRendererProps {
 
 mermaid.initialize({
   startOnLoad: false,
-  theme: 'dark',
+  theme: "dark",
   themeVariables: {
     darkMode: true,
-    background: 'hsl(210 100% 13%)',
-    primaryColor: 'hsl(38 100% 66%)',
-    primaryTextColor: 'hsl(0 0% 100%)',
-    primaryBorderColor: 'hsl(38 100% 50%)',
-    lineColor: 'hsl(215 20% 54%)',
-    secondaryColor: 'hsl(195 100% 73%)',
-    tertiaryColor: 'hsl(120 100% 78%)',
-    fontSize: '12px',
+    background: "hsl(210 100% 13%)",
+    primaryColor: "hsl(38 100% 66%)",
+    primaryTextColor: "hsl(0 0% 100%)",
+    primaryBorderColor: "hsl(38 100% 50%)",
+    lineColor: "hsl(215 20% 54%)",
+    secondaryColor: "hsl(195 100% 73%)",
+    tertiaryColor: "hsl(120 100% 78%)",
+    fontSize: "12px",
   },
-  securityLevel: 'loose',
+  securityLevel: "loose",
 });
 
 export function MermaidRenderer({ chart }: MermaidRendererProps) {
@@ -30,7 +30,7 @@ export function MermaidRenderer({ chart }: MermaidRendererProps) {
     if (!containerRef.current || !chart) return;
 
     const id = `mermaid-${Math.random().toString(36).substring(2, 11)}`;
-    containerRef.current.innerHTML = '';
+    containerRef.current.innerHTML = "";
     setError(null);
 
     mermaid
@@ -41,7 +41,7 @@ export function MermaidRenderer({ chart }: MermaidRendererProps) {
         }
       })
       .catch((err: Error) => {
-        console.error('Mermaid render error:', err);
+        console.error("Mermaid render error:", err);
         setError(err.message);
       });
   }, [chart]);

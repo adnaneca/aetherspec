@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/adnaneca/aetherspec/apps/gateway/internal/config"
 	"github.com/gofiber/fiber/v2"
@@ -24,24 +25,45 @@ func NewHandler(minioClient *minio.Client, cfg *config.Config, log *zap.Logger) 
 	return &Handler{minioClient: minioClient, cfg: cfg, log: log}
 }
 
+// docTypePrefix maps a public docType to the MinIO prefix used to store
+// that document type's Cognia configuration. The empty prefix is used for
+// the legacy BRS configuration.
+func docTypePrefix(docType string) string {
+	switch docType {
+	case "srs":
+		return "srs-be/"
+	case "srs-fe":
+		return "srs-fe/"
+	case "testcase":
+		return "testcase/"
+	case "tc-fe":
+		return "tc-fe/"
+	case "brs":
+		return ""
+	default:
+		return ""
+	}
+}
+
 // Register adds template routes to the given router.
-// When called with a public /api group, routes are /api/template/*.
+// When called with a public /api group, routes are /api/template/:docType/*.
 // Templates remain intentionally public (read-only reference content).
 func (h *Handler) Register(r fiber.Router) {
-	api := r.Group("/template")
+	api := r.Group("/template/:docType")
 
 	api.Get("/sections", h.getSections)
 	api.Get("/section-guide/:sectionId", h.getSectionGuide)
 	api.Get("/quality-check/:checkId", h.getQualityCheck)
-	api.Get("/brs", h.getBrsTemplate)
+	api.Get("/template", h.getTemplate)
 }
 
 // getSections returns sections.yaml parsed as JSON.
 func (h *Handler) getSections(c *fiber.Ctx) error {
 	ctx := context.Background()
 	bucket := h.cfg.MinIO.TemplateBucket
+	prefix := docTypePrefix(c.Params("docType"))
 
-	obj, err := h.minioClient.GetObject(ctx, bucket, "sections.yaml", minio.GetObjectOptions{})
+	obj, err := h.minioClient.GetObject(ctx, bucket, prefix+"sections.yaml", minio.GetObjectOptions{})
 	if err != nil {
 		h.log.Error("failed to get sections.yaml", zap.Error(err))
 		return c.Status(500).JSON(fiber.Map{"error": "template fetch failed"})
@@ -63,9 +85,9 @@ func (h *Handler) getSections(c *fiber.Ctx) error {
 
 // sectionGuideKey returns the exact MinIO object key for a section guide.
 // It reads sections.yaml and uses the `guide` field when present.
-// If guide is null/empty, it falls back to prefix search: section-guides/{sectionId}-*
-func (h *Handler) sectionGuideKey(ctx context.Context, bucket, sectionID string) (string, error) {
-	obj, err := h.minioClient.GetObject(ctx, bucket, "sections.yaml", minio.GetObjectOptions{})
+// If guide is null/empty, it falls back to prefix search: {prefix}section-guides/{sectionId}-*
+func (h *Handler) sectionGuideKey(ctx context.Context, bucket, prefix, sectionID string) (string, error) {
+	obj, err := h.minioClient.GetObject(ctx, bucket, prefix+"sections.yaml", minio.GetObjectOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -89,6 +111,10 @@ func (h *Handler) sectionGuideKey(ctx context.Context, bucket, sectionID string)
 	for _, s := range sections.Sections {
 		if fmt.Sprintf("%02d", s.ID) == sectionID || fmt.Sprintf("%d", s.ID) == sectionID {
 			if s.Guide != "" {
+				// Relative guide paths are resolved against the docType prefix.
+				if !strings.HasPrefix(s.Guide, prefix) {
+					return prefix + s.Guide, nil
+				}
 				return s.Guide, nil
 			}
 			break
@@ -96,9 +122,9 @@ func (h *Handler) sectionGuideKey(ctx context.Context, bucket, sectionID string)
 	}
 
 	// Fallback: list by prefix
-	prefix := "section-guides/" + sectionID + "-"
+	fallbackPrefix := prefix + "section-guides/" + sectionID + "-"
 	objCh := h.minioClient.ListObjects(ctx, bucket, minio.ListObjectsOptions{
-		Prefix:    prefix,
+		Prefix:    fallbackPrefix,
 		Recursive: false,
 	})
 	for obj := range objCh {
@@ -117,8 +143,9 @@ func (h *Handler) getSectionGuide(c *fiber.Ctx) error {
 	sectionID := c.Params("sectionId")
 	ctx := context.Background()
 	bucket := h.cfg.MinIO.TemplateBucket
+	prefix := docTypePrefix(c.Params("docType"))
 
-	objectKey, err := h.sectionGuideKey(ctx, bucket, sectionID)
+	objectKey, err := h.sectionGuideKey(ctx, bucket, prefix, sectionID)
 	if err != nil {
 		h.log.Warn("section guide not found", zap.String("section", sectionID), zap.Error(err))
 		return c.Status(404).JSON(fiber.Map{"error": "section guide not found for section " + sectionID})
@@ -144,8 +171,9 @@ func (h *Handler) getQualityCheck(c *fiber.Ctx) error {
 	checkID := c.Params("checkId")
 	ctx := context.Background()
 	bucket := h.cfg.MinIO.TemplateBucket
+	prefix := docTypePrefix(c.Params("docType"))
 
-	objectKey := "quality-checks/" + checkID + ".md"
+	objectKey := prefix + "quality-checks/" + checkID + ".md"
 
 	obj, err := h.minioClient.GetObject(ctx, bucket, objectKey, minio.GetObjectOptions{})
 	if err != nil {
@@ -162,12 +190,25 @@ func (h *Handler) getQualityCheck(c *fiber.Ctx) error {
 	return c.Send(content)
 }
 
-// getBrsTemplate returns the BRS template markdown.
-func (h *Handler) getBrsTemplate(c *fiber.Ctx) error {
+// getTemplate returns the document template markdown for the requested docType.
+func (h *Handler) getTemplate(c *fiber.Ctx) error {
 	ctx := context.Background()
 	bucket := h.cfg.MinIO.TemplateBucket
+	prefix := docTypePrefix(c.Params("docType"))
 
-	obj, err := h.minioClient.GetObject(ctx, bucket, "brs.md", minio.GetObjectOptions{})
+	templateName := "brs.md"
+	switch prefix {
+	case "srs-be/":
+		templateName = "srs-be.md"
+	case "srs-fe/":
+		templateName = "srs-fe.md"
+	case "testcase/":
+		templateName = "testcase.md"
+	case "tc-fe/":
+		templateName = "tc-fe.md"
+	}
+
+	obj, err := h.minioClient.GetObject(ctx, bucket, prefix+templateName, minio.GetObjectOptions{})
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "fetch failed"})
 	}
@@ -175,7 +216,7 @@ func (h *Handler) getBrsTemplate(c *fiber.Ctx) error {
 
 	content, err := io.ReadAll(obj)
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "BRS template not found"})
+		return c.Status(404).JSON(fiber.Map{"error": "template not found"})
 	}
 
 	c.Set("Content-Type", "text/markdown")

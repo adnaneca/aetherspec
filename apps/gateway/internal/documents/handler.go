@@ -132,9 +132,9 @@ func (h *Handler) createDocument(c *fiber.Ctx) error {
 	}
 	if body.TotalSteps <= 0 {
 		switch body.DocType {
-		case "brs", "srs":
+		case "brs", "srs", "srs-fe":
 			body.TotalSteps = 11
-		case "testcase":
+		case "testcase", "tc-fe":
 			body.TotalSteps = 3
 		default:
 			body.TotalSteps = 11
@@ -407,8 +407,10 @@ func (h *Handler) approveStep(c *fiber.Ctx) error {
 
 	approverRoles := map[string][]string{
 		"brs":      {"BRS_APPROVER", "ROLE_BA_LEAD", "ROLE_REALM_ADMIN"},
-		"srs":      {"SRS_APPROVER", "ROLE_SOLUTION_ARCHITECT", "ROLE_REALM_ADMIN"},
+		"srs":      {"SRS_APPROVER", "ROLE_SOLUTION_ARCHITECT", "ROLE_DEV_LEAD", "SRS_TECHNICAL_APPROVER", "ROLE_REALM_ADMIN"},
+		"srs-fe":   {"SRS_APPROVER", "ROLE_SOLUTION_ARCHITECT", "ROLE_DEV_LEAD", "SRS_TECHNICAL_APPROVER", "ROLE_REALM_ADMIN"},
 		"testcase": {"TESTCASE_APPROVER", "ROLE_QA_LEAD", "ROLE_REALM_ADMIN"},
+		"tc-fe":    {"TESTCASE_APPROVER", "ROLE_QA_LEAD", "ROLE_REALM_ADMIN"},
 	}
 	if roles, ok := approverRoles[docType]; ok {
 		if !middleware.HasAnyRole(c, roles...) {
@@ -536,7 +538,15 @@ func (h *Handler) seedSteps(ctx context.Context, docID, projectID, docType strin
 		"Security & Compliance", "Appendices",
 	}
 	testcaseSections := []string{
-		"Test Strategy", "Test Scenarios", "Test Cases",
+		"Executive Summary & Coverage", "Module Test Cases with Gherkin", "Requirements Traceability Matrix",
+	}
+	tcfeSections := []string{
+		"Executive Summary & Coverage", "Module Test Cases with Gherkin", "Requirements Traceability Matrix",
+	}
+	srsfeSections := []string{
+		"Introduction", "Frontend Functional Requirements", "Non-Functional Requirements", "UI/UX Requirements",
+		"Interaction Requirements", "Frontend Constraints", "Frontend Business Rules & Client Validation",
+		"Assumptions & Dependencies", "Acceptance Criteria", "Risks", "Appendices",
 	}
 
 	var sections []string
@@ -545,8 +555,12 @@ func (h *Handler) seedSteps(ctx context.Context, docID, projectID, docType strin
 		sections = brsSections
 	case "srs":
 		sections = srsSections
+	case "srs-fe":
+		sections = srsfeSections
 	case "testcase":
 		sections = testcaseSections
+	case "tc-fe":
+		sections = tcfeSections
 	}
 
 	for i, name := range sections {

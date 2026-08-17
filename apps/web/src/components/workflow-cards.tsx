@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState } from "react";
 import {
   HelpCircle,
   Lightbulb,
@@ -11,8 +11,8 @@ import {
   AlertTriangle,
   Bot,
   ShieldCheck,
-} from 'lucide-react';
-import { authFetch } from '../lib/auth-fetch';
+} from "lucide-react";
+import { authFetch } from "../lib/auth-fetch";
 
 export interface WorkflowQuestion {
   questionId: string;
@@ -26,7 +26,7 @@ export interface WorkflowSuggestion {
   confidence?: string;
 }
 
-export type SuggestionStatus = 'pending' | 'accepted' | 'modified' | 'rejected';
+export type SuggestionStatus = "pending" | "accepted" | "modified" | "rejected";
 
 export interface WorkflowOption {
   id: string;
@@ -45,7 +45,7 @@ export interface WorkflowFix {
   autoFixable?: boolean;
 }
 
-export type FixStatus = 'pending' | 'accepted' | 'modified' | 'skipped';
+export type FixStatus = "pending" | "accepted" | "modified" | "skipped";
 
 export interface WorkflowReviewSummary {
   sectionId: number;
@@ -61,11 +61,15 @@ interface QuestionCardProps {
   onSubmit: (answers: Record<string, string>) => Promise<void> | void;
 }
 
-export function QuestionCard({ agent, questions, onSubmit }: QuestionCardProps) {
+export function QuestionCard({
+  agent,
+  questions,
+  onSubmit,
+}: QuestionCardProps) {
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     questions.forEach((_, i) => {
-      initial[`Q${i + 1}`] = '';
+      initial[`Q${i + 1}`] = "";
     });
     return initial;
   });
@@ -74,7 +78,7 @@ export function QuestionCard({ agent, questions, onSubmit }: QuestionCardProps) 
   const handleSubmit = async () => {
     const normalized: Record<string, string> = {};
     Object.entries(answers).forEach(([k, v]) => {
-      normalized[k] = v.trim() || '(no answer)';
+      normalized[k] = v.trim() || "(no answer)";
     });
     setSubmitted(true);
     try {
@@ -86,7 +90,10 @@ export function QuestionCard({ agent, questions, onSubmit }: QuestionCardProps) 
   };
 
   return (
-    <div data-testid="workflow-card" className="mt-3 p-3 rounded-lg bg-card border border-border space-y-3">
+    <div
+      data-testid="workflow-card"
+      className="mt-3 p-3 rounded-lg bg-card border border-border space-y-3"
+    >
       <div className="flex items-center gap-2 text-xs font-semibold">
         <HelpCircle className="size-3.5 text-primary" />
         <span>{agent} asks:</span>
@@ -99,8 +106,10 @@ export function QuestionCard({ agent, questions, onSubmit }: QuestionCardProps) 
               {key}: {q}
             </label>
             <textarea
-              value={answers[key] || ''}
-              onChange={(e) => setAnswers((prev) => ({ ...prev, [key]: e.target.value }))}
+              value={answers[key] || ""}
+              onChange={(e) =>
+                setAnswers((prev) => ({ ...prev, [key]: e.target.value }))
+              }
               disabled={submitted}
               rows={2}
               className="w-full bg-background border border-border rounded p-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring disabled:opacity-50"
@@ -130,7 +139,7 @@ export function QuestionCard({ agent, questions, onSubmit }: QuestionCardProps) 
 }
 
 export interface NegotiatorChatMessage {
-  role: 'human' | 'negotiator';
+  role: "human" | "negotiator";
   content: string;
   timestamp: string;
 }
@@ -149,20 +158,27 @@ interface SuggestionItem {
 interface SuggestionCardProps {
   suggestions: WorkflowSuggestion[];
   workflowId?: string;
-  onAccept: (finalAnswers: Array<{
-    questionId: string;
-    question: string;
-    answer: string;
-    status: SuggestionStatus;
-  }>) => Promise<void> | void;
+  onAccept: (
+    finalAnswers: Array<{
+      questionId: string;
+      question: string;
+      answer: string;
+      status: SuggestionStatus;
+    }>,
+  ) => Promise<void> | void;
   onTalkToWriter?: () => Promise<void> | void;
 }
 
-export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWriter }: SuggestionCardProps) {
+export function SuggestionCard({
+  suggestions,
+  workflowId,
+  onAccept,
+  onTalkToWriter,
+}: SuggestionCardProps) {
   const [items, setItems] = useState<SuggestionItem[]>(() =>
     suggestions.map((s) => ({
       ...s,
-      status: 'pending',
+      status: "pending",
       finalAnswer: s.suggestedAnswer,
       chatHistory: [],
       proposedUpdate: null,
@@ -173,17 +189,17 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
   const [expandedChat, setExpandedChat] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState<Record<string, boolean>>({});
 
-  const setStatus = (questionId: string, status: SuggestionItem['status']) => {
+  const setStatus = (questionId: string, status: SuggestionItem["status"]) => {
     if (submitted) return;
     setWarning(null);
     setItems((prev) =>
       prev.map((i) => {
         if (i.questionId !== questionId) return i;
-        if (status === 'accepted') {
+        if (status === "accepted") {
           return { ...i, status, finalAnswer: i.suggestedAnswer };
         }
-        if (status === 'rejected') {
-          return { ...i, status, finalAnswer: '' };
+        if (status === "rejected") {
+          return { ...i, status, finalAnswer: "" };
         }
         return { ...i, status };
       }),
@@ -198,7 +214,7 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
           ...i,
           suggestedAnswer: i.proposedUpdate,
           finalAnswer: i.proposedUpdate,
-          status: i.status === 'accepted' ? 'modified' : i.status,
+          status: i.status === "accepted" ? "modified" : i.status,
           proposedUpdate: null,
         };
       }),
@@ -210,36 +226,42 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
     if (!item || !workflowId) return;
 
     const humanMsg: NegotiatorChatMessage = {
-      role: 'human',
+      role: "human",
       content: message,
       timestamp: new Date().toISOString(),
     };
     setItems((prev) =>
       prev.map((i) =>
-        i.questionId === questionId ? { ...i, chatHistory: [...i.chatHistory, humanMsg] } : i,
+        i.questionId === questionId
+          ? { ...i, chatHistory: [...i.chatHistory, humanMsg] }
+          : i,
       ),
     );
     setChatLoading((prev) => ({ ...prev, [questionId]: true }));
 
     try {
-      const GATEWAY_URL = import.meta.env.VITE_GATEWAY_API_URL || 'http://localhost:3000';
-      const resp = await authFetch(`${GATEWAY_URL}/api/agent/workflow/${workflowId}/negotiator-chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          questionId,
-          question: item.question,
-          currentSuggestion: item.suggestedAnswer,
-          humanMessage: message,
-          chatHistory: [...item.chatHistory, humanMsg],
-        }),
-      });
-      if (!resp.ok || !resp.body) throw new Error('Negotiator chat failed');
+      const GATEWAY_URL =
+        import.meta.env.VITE_GATEWAY_API_URL || "http://localhost:3000";
+      const resp = await authFetch(
+        `${GATEWAY_URL}/api/agent/workflow/${workflowId}/negotiator-chat`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            questionId,
+            question: item.question,
+            currentSuggestion: item.suggestedAnswer,
+            humanMessage: message,
+            chatHistory: [...item.chatHistory, humanMsg],
+          }),
+        },
+      );
+      if (!resp.ok || !resp.body) throw new Error("Negotiator chat failed");
 
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = '';
-      let negotiatorResponse = '';
+      let buffer = "";
+      let negotiatorResponse = "";
       let updatedSuggestion: string | null = null;
       let shouldUpdate = false;
 
@@ -247,31 +269,32 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed.startsWith('data: ')) continue;
+          if (!trimmed.startsWith("data: ")) continue;
           try {
             const event = JSON.parse(trimmed.slice(6));
-            if (event.type === 'negotiator_chat_response') {
-              negotiatorResponse = event.response || '';
+            if (event.type === "negotiator_chat_response") {
+              negotiatorResponse = event.response || "";
               if (event.shouldUpdateSuggestion && event.updatedSuggestion) {
                 updatedSuggestion = event.updatedSuggestion;
                 shouldUpdate = true;
               }
-            } else if (event.type === 'error') {
-              throw new Error(event.error || 'Negotiator chat error');
+            } else if (event.type === "error") {
+              throw new Error(event.error || "Negotiator chat error");
             }
           } catch (e) {
-            if (import.meta.env.DEV) console.warn('Malformed chat SSE line', line, e);
+            if (import.meta.env.DEV)
+              console.warn("Malformed chat SSE line", line, e);
           }
         }
       }
 
       const negotiatorMsg: NegotiatorChatMessage = {
-        role: 'negotiator',
-        content: negotiatorResponse || '(no response)',
+        role: "negotiator",
+        content: negotiatorResponse || "(no response)",
         timestamp: new Date().toISOString(),
       };
       setItems((prev) =>
@@ -280,14 +303,16 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
             ? {
                 ...i,
                 chatHistory: [...i.chatHistory, negotiatorMsg],
-                proposedUpdate: shouldUpdate ? updatedSuggestion : i.proposedUpdate,
+                proposedUpdate: shouldUpdate
+                  ? updatedSuggestion
+                  : i.proposedUpdate,
               }
             : i,
         ),
       );
     } catch (err) {
       const errorMsg: NegotiatorChatMessage = {
-        role: 'negotiator',
+        role: "negotiator",
         content: `Chat failed: ${(err as Error).message}`,
         timestamp: new Date().toISOString(),
       };
@@ -305,21 +330,27 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
 
   const handleTextChange = (questionId: string, newText: string) => {
     setItems((prev) =>
-      prev.map((i) => (i.questionId === questionId ? { ...i, finalAnswer: newText } : i)),
+      prev.map((i) =>
+        i.questionId === questionId ? { ...i, finalAnswer: newText } : i,
+      ),
     );
   };
 
   const handleSubmit = async () => {
-    const pending = items.filter((i) => i.status === 'pending');
+    const pending = items.filter((i) => i.status === "pending");
     if (pending.length > 0) {
-      setWarning(`Please accept, modify, or reject: ${pending.map((i) => i.questionId).join(', ')}`);
+      setWarning(
+        `Please accept, modify, or reject: ${pending.map((i) => i.questionId).join(", ")}`,
+      );
       return;
     }
 
-    const rejectedEmpty = items.filter((i) => i.status === 'rejected' && !i.finalAnswer.trim());
+    const rejectedEmpty = items.filter(
+      (i) => i.status === "rejected" && !i.finalAnswer.trim(),
+    );
     if (rejectedEmpty.length > 0) {
       setWarning(
-        `${rejectedEmpty.map((i) => i.questionId).join(', ')} ${rejectedEmpty.length === 1 ? 'is' : 'are'} rejected but ha${rejectedEmpty.length === 1 ? 's' : 've'} no answer. Please provide an answer or accept the suggestion.`,
+        `${rejectedEmpty.map((i) => i.questionId).join(", ")} ${rejectedEmpty.length === 1 ? "is" : "are"} rejected but ha${rejectedEmpty.length === 1 ? "s" : "ve"} no answer. Please provide an answer or accept the suggestion.`,
       );
       return;
     }
@@ -341,7 +372,10 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
   };
 
   return (
-    <div data-testid="workflow-card" className="mt-3 p-3 rounded-lg bg-card border border-border space-y-3">
+    <div
+      data-testid="workflow-card"
+      className="mt-3 p-3 rounded-lg bg-card border border-border space-y-3"
+    >
       <div className="flex items-center gap-2 text-xs font-semibold">
         <Lightbulb className="size-3.5 text-status-review" />
         <span>Negotiator suggests:</span>
@@ -355,19 +389,21 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
 
           <div
             className={`rounded border p-1.5 ${
-              item.status === 'accepted'
-                ? 'border-status-approved/40 bg-status-approved/5'
-                : item.status === 'rejected'
-                  ? 'border-destructive/40 bg-destructive/5'
-                  : item.status === 'modified'
-                    ? 'border-status-review/40 bg-status-review/5'
-                    : 'border-border bg-background'
+              item.status === "accepted"
+                ? "border-status-approved/40 bg-status-approved/5"
+                : item.status === "rejected"
+                  ? "border-destructive/40 bg-destructive/5"
+                  : item.status === "modified"
+                    ? "border-status-review/40 bg-status-review/5"
+                    : "border-border bg-background"
             }`}
           >
-            {item.status === 'rejected' ? (
+            {item.status === "rejected" ? (
               <textarea
                 value={item.finalAnswer}
-                onChange={(e) => handleTextChange(item.questionId, e.target.value)}
+                onChange={(e) =>
+                  handleTextChange(item.questionId, e.target.value)
+                }
                 disabled={submitted}
                 rows={2}
                 placeholder="Type your own answer..."
@@ -376,8 +412,12 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
             ) : (
               <textarea
                 value={item.finalAnswer}
-                onChange={(e) => handleTextChange(item.questionId, e.target.value)}
-                readOnly={item.status === 'accepted' || item.status === 'pending'}
+                onChange={(e) =>
+                  handleTextChange(item.questionId, e.target.value)
+                }
+                readOnly={
+                  item.status === "accepted" || item.status === "pending"
+                }
                 rows={2}
                 className="w-full bg-transparent border-none text-xs text-foreground outline-none resize-none"
               />
@@ -386,44 +426,48 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
             {!submitted && (
               <div className="flex gap-1.5 mt-1.5 flex-wrap">
                 <button
-                  onClick={() => setStatus(item.questionId, 'accepted')}
-                  disabled={item.status === 'accepted'}
+                  onClick={() => setStatus(item.questionId, "accepted")}
+                  disabled={item.status === "accepted"}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
-                    item.status === 'accepted'
-                      ? 'bg-status-approved/20 text-status-approved border border-status-approved/30'
-                      : 'bg-muted text-muted-foreground border border-border hover:bg-accent'
+                    item.status === "accepted"
+                      ? "bg-status-approved/20 text-status-approved border border-status-approved/30"
+                      : "bg-muted text-muted-foreground border border-border hover:bg-accent"
                   }`}
                 >
                   ✓ Accept
                 </button>
                 <button
-                  onClick={() => setStatus(item.questionId, 'modified')}
-                  disabled={item.status === 'modified'}
+                  onClick={() => setStatus(item.questionId, "modified")}
+                  disabled={item.status === "modified"}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
-                    item.status === 'modified'
-                      ? 'bg-status-review/20 text-status-review border border-status-review/30'
-                      : 'bg-muted text-muted-foreground border border-border hover:bg-accent'
+                    item.status === "modified"
+                      ? "bg-status-review/20 text-status-review border border-status-review/30"
+                      : "bg-muted text-muted-foreground border border-border hover:bg-accent"
                   }`}
                 >
                   ✏️ Modify
                 </button>
                 <button
-                  onClick={() => setStatus(item.questionId, 'rejected')}
-                  disabled={item.status === 'rejected'}
+                  onClick={() => setStatus(item.questionId, "rejected")}
+                  disabled={item.status === "rejected"}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
-                    item.status === 'rejected'
-                      ? 'bg-destructive/20 text-destructive border border-destructive/30'
-                      : 'bg-muted text-muted-foreground border border-border hover:bg-accent'
+                    item.status === "rejected"
+                      ? "bg-destructive/20 text-destructive border border-destructive/30"
+                      : "bg-muted text-muted-foreground border border-border hover:bg-accent"
                   }`}
                 >
                   ✗ Reject
                 </button>
                 <button
-                  onClick={() => setExpandedChat(expandedChat === item.questionId ? null : item.questionId)}
+                  onClick={() =>
+                    setExpandedChat(
+                      expandedChat === item.questionId ? null : item.questionId,
+                    )
+                  }
                   className={`px-2 py-0.5 rounded text-[10px] font-medium border border-border hover:bg-accent ${
                     expandedChat === item.questionId
-                      ? 'bg-primary/20 text-primary border-primary/30'
-                      : 'bg-muted text-muted-foreground'
+                      ? "bg-primary/20 text-primary border-primary/30"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   💬 Ask Why
@@ -431,11 +475,19 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
               </div>
             )}
 
-            {item.status !== 'pending' && (
+            {item.status !== "pending" && (
               <div className="text-[10px] mt-1 font-mono">
-                {item.status === 'accepted' && <span className="text-status-approved">✓ Accepted</span>}
-                {item.status === 'modified' && <span className="text-status-review">✏️ Modified</span>}
-                {item.status === 'rejected' && <span className="text-destructive">✗ Rejected — provide your own answer</span>}
+                {item.status === "accepted" && (
+                  <span className="text-status-approved">✓ Accepted</span>
+                )}
+                {item.status === "modified" && (
+                  <span className="text-status-review">✏️ Modified</span>
+                )}
+                {item.status === "rejected" && (
+                  <span className="text-destructive">
+                    ✗ Rejected — provide your own answer
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -446,7 +498,9 @@ export function SuggestionCard({ suggestions, workflowId, onAccept, onTalkToWrit
               chatHistory={item.chatHistory}
               proposedUpdate={item.proposedUpdate}
               loading={chatLoading[item.questionId] || false}
-              onSendMessage={(msg) => void handleNegotiatorChat(item.questionId, msg)}
+              onSendMessage={(msg) =>
+                void handleNegotiatorChat(item.questionId, msg)
+              }
               onApplyUpdate={() => applyProposedUpdate(item.questionId)}
             />
           )}
@@ -509,7 +563,10 @@ export function OptionCard({ options, onSelect }: OptionCardProps) {
   };
 
   return (
-    <div data-testid="workflow-card" className="mt-3 p-3 rounded-lg bg-card border border-border space-y-2">
+    <div
+      data-testid="workflow-card"
+      className="mt-3 p-3 rounded-lg bg-card border border-border space-y-2"
+    >
       <div className="flex items-center gap-2 text-xs font-semibold">
         <Layout className="size-3.5 text-primary" />
         <span>Structure Options:</span>
@@ -521,29 +578,33 @@ export function OptionCard({ options, onSelect }: OptionCardProps) {
           disabled={!!selected}
           className={`w-full p-3 rounded-lg border text-left transition-all ${
             selected === opt.id
-              ? 'border-primary/40 bg-primary/10'
-              : 'border-border bg-background hover:border-primary/20'
+              ? "border-primary/40 bg-primary/10"
+              : "border-border bg-background hover:border-primary/20"
           } disabled:opacity-70`}
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-foreground">
               Option {opt.id}: {opt.name}
             </span>
-            {selected === opt.id && <CheckCircle2 className="size-3.5 text-status-approved" />}
+            {selected === opt.id && (
+              <CheckCircle2 className="size-3.5 text-status-approved" />
+            )}
           </div>
           {opt.description && (
-            <p className="text-[11px] text-muted-foreground mt-1">{opt.description}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {opt.description}
+            </p>
           )}
           {opt.pros && opt.pros.length > 0 && (
             <div className="mt-2 text-[10px]">
               <span className="text-status-approved">✓ </span>
-              {opt.pros.join(', ')}
+              {opt.pros.join(", ")}
             </div>
           )}
           {opt.cons && opt.cons.length > 0 && (
             <div className="text-[10px]">
               <span className="text-status-review">✗ </span>
-              {opt.cons.join(', ')}
+              {opt.cons.join(", ")}
             </div>
           )}
         </button>
@@ -568,12 +629,12 @@ function NegotiatorChatPanel({
   onSendMessage,
   onApplyUpdate,
 }: NegotiatorChatPanelProps) {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
 
   const handleSend = () => {
     if (!input.trim()) return;
     const msg = input.trim();
-    setInput('');
+    setInput("");
     onSendMessage(msg);
   };
 
@@ -585,17 +646,28 @@ function NegotiatorChatPanel({
 
       <div className="space-y-1.5 max-h-48 overflow-y-auto">
         {chatHistory.map((msg, i) => (
-          <div key={i} className={`text-xs ${msg.role === 'human' ? 'text-foreground' : 'text-muted-foreground'}`}>
-            <span className="font-semibold">{msg.role === 'human' ? 'You' : 'Negotiator'}:</span>{' '}
+          <div
+            key={i}
+            className={`text-xs ${msg.role === "human" ? "text-foreground" : "text-muted-foreground"}`}
+          >
+            <span className="font-semibold">
+              {msg.role === "human" ? "You" : "Negotiator"}:
+            </span>{" "}
             {msg.content}
           </div>
         ))}
-        {loading && <div className="text-xs text-muted-foreground">Negotiator is typing...</div>}
+        {loading && (
+          <div className="text-xs text-muted-foreground">
+            Negotiator is typing...
+          </div>
+        )}
       </div>
 
       {proposedUpdate && (
         <div className="p-2 rounded border border-status-review/30 bg-status-review/5 space-y-1.5">
-          <div className="text-[10px] font-mono text-status-review uppercase tracking-wider">Proposed update</div>
+          <div className="text-[10px] font-mono text-status-review uppercase tracking-wider">
+            Proposed update
+          </div>
           <div className="text-xs text-foreground">{proposedUpdate}</div>
           <button
             onClick={onApplyUpdate}
@@ -611,7 +683,7 @@ function NegotiatorChatPanel({
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
           disabled={loading}
           placeholder="Ask the negotiator about this suggestion..."
           className="flex-1 bg-card border border-border rounded px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring disabled:opacity-50"
@@ -641,42 +713,48 @@ interface FixItem {
 
 interface FixesCardProps {
   fixes: WorkflowFix[];
-  onApply: (finalFixes: Array<{
-    findingId: string;
-    finding: string;
-    fix: string;
-    status: FixStatus;
-  }>) => Promise<void> | void;
+  onApply: (
+    finalFixes: Array<{
+      findingId: string;
+      finding: string;
+      fix: string;
+      status: FixStatus;
+    }>,
+  ) => Promise<void> | void;
   onTalkToValidator?: () => Promise<void> | void;
 }
 
-export function FixesCard({ fixes, onApply, onTalkToValidator }: FixesCardProps) {
+export function FixesCard({
+  fixes,
+  onApply,
+  onTalkToValidator,
+}: FixesCardProps) {
   const [items, setItems] = useState<FixItem[]>(() =>
     fixes.map((f) => ({
       findingId: f.findingId,
-      finding: f.finding || '',
+      finding: f.finding || "",
       findingType: f.findingType,
       rule: f.rule,
       proposedFix: f.proposedFix,
       autoFixable: f.autoFixable,
-      status: 'pending',
+      status: "pending",
       finalFix: f.proposedFix,
     })),
   );
   const [applied, setApplied] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
 
-  const setStatus = (findingId: string, status: FixItem['status']) => {
+  const setStatus = (findingId: string, status: FixItem["status"]) => {
     if (applied) return;
     setWarning(null);
     setItems((prev) =>
       prev.map((i) => {
         if (i.findingId !== findingId) return i;
-        if (status === 'accepted') {
+        if (status === "accepted") {
           return { ...i, status, finalFix: i.proposedFix };
         }
-        if (status === 'skipped') {
-          return { ...i, status, finalFix: '' };
+        if (status === "skipped") {
+          return { ...i, status, finalFix: "" };
         }
         return { ...i, status };
       }),
@@ -685,20 +763,28 @@ export function FixesCard({ fixes, onApply, onTalkToValidator }: FixesCardProps)
 
   const handleFixTextChange = (findingId: string, newText: string) => {
     setItems((prev) =>
-      prev.map((i) => (i.findingId === findingId ? { ...i, finalFix: newText } : i)),
+      prev.map((i) =>
+        i.findingId === findingId ? { ...i, finalFix: newText } : i,
+      ),
     );
   };
 
   const handleApplyAll = () => {
     setItems((prev) =>
-      prev.map((i) => ({ ...i, status: 'accepted' as const, finalFix: i.proposedFix })),
+      prev.map((i) => ({
+        ...i,
+        status: "accepted" as const,
+        finalFix: i.proposedFix,
+      })),
     );
   };
 
   const handleSubmit = async () => {
-    const pending = items.filter((i) => i.status === 'pending');
+    const pending = items.filter((i) => i.status === "pending");
     if (pending.length > 0) {
-      setWarning(`Please apply, modify, or skip: ${pending.map((i) => i.findingId).join(', ')}`);
+      setWarning(
+        `Please apply, modify, or skip: ${pending.map((i) => i.findingId).join(", ")}`,
+      );
       return;
     }
 
@@ -719,14 +805,20 @@ export function FixesCard({ fixes, onApply, onTalkToValidator }: FixesCardProps)
   };
 
   return (
-    <div data-testid="workflow-card" className="mt-3 p-3 rounded-lg bg-card border border-border space-y-3">
+    <div
+      data-testid="workflow-card"
+      className="mt-3 p-3 rounded-lg bg-card border border-border space-y-3"
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs font-semibold">
           <Wrench className="size-3.5 text-status-review" />
           <span>Negotiator proposes fixes:</span>
         </div>
         {!applied && (
-          <button onClick={handleApplyAll} className="text-[10px] text-primary hover:underline">
+          <button
+            onClick={handleApplyAll}
+            className="text-[10px] text-primary hover:underline"
+          >
             Apply All
           </button>
         )}
@@ -736,37 +828,44 @@ export function FixesCard({ fixes, onApply, onTalkToValidator }: FixesCardProps)
         <div key={item.findingId} className="space-y-1.5">
           <div
             className={`p-2 rounded border ${
-              item.status === 'accepted'
-                ? 'border-status-approved/40 bg-status-approved/5'
-                : item.status === 'skipped'
-                  ? 'border-border bg-muted/20 opacity-70'
-                  : item.status === 'modified'
-                    ? 'border-status-review/40 bg-status-review/5'
-                    : 'border-border bg-background'
+              item.status === "accepted"
+                ? "border-status-approved/40 bg-status-approved/5"
+                : item.status === "skipped"
+                  ? "border-border bg-muted/20 opacity-70"
+                  : item.status === "modified"
+                    ? "border-status-review/40 bg-status-review/5"
+                    : "border-border bg-background"
             }`}
           >
             <div
               className={`text-[10px] font-mono mb-1 ${
-                item.findingType === 'BLOCKING'
-                  ? 'text-destructive'
-                  : item.findingType === 'WARNING'
-                    ? 'text-status-review'
-                    : 'text-muted-foreground'
+                item.findingType === "BLOCKING"
+                  ? "text-destructive"
+                  : item.findingType === "WARNING"
+                    ? "text-status-review"
+                    : "text-muted-foreground"
               }`}
             >
-              {item.findingType === 'BLOCKING' ? '⛔' : item.findingType === 'WARNING' ? '⚠' : 'ℹ'} {item.finding}
+              {item.findingType === "BLOCKING"
+                ? "⛔"
+                : item.findingType === "WARNING"
+                  ? "⚠"
+                  : "ℹ"}{" "}
+              {item.finding}
             </div>
 
-            {item.status !== 'modified' && (
+            {item.status !== "modified" && (
               <div className="text-[10px] font-mono text-status-approved mb-1">
                 Fix: {item.proposedFix}
               </div>
             )}
 
-            {item.status === 'modified' && !applied && (
+            {item.status === "modified" && !applied && (
               <textarea
                 value={item.finalFix}
-                onChange={(e) => handleFixTextChange(item.findingId, e.target.value)}
+                onChange={(e) =>
+                  handleFixTextChange(item.findingId, e.target.value)
+                }
                 rows={2}
                 placeholder="Type your custom fix..."
                 className="w-full bg-card border border-border rounded p-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring mb-1"
@@ -776,34 +875,34 @@ export function FixesCard({ fixes, onApply, onTalkToValidator }: FixesCardProps)
             {!applied && (
               <div className="flex gap-1.5 flex-wrap">
                 <button
-                  onClick={() => setStatus(item.findingId, 'accepted')}
-                  disabled={item.status === 'accepted'}
+                  onClick={() => setStatus(item.findingId, "accepted")}
+                  disabled={item.status === "accepted"}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                    item.status === 'accepted'
-                      ? 'bg-status-approved/20 text-status-approved border border-status-approved/30'
-                      : 'bg-muted text-muted-foreground border border-border'
+                    item.status === "accepted"
+                      ? "bg-status-approved/20 text-status-approved border border-status-approved/30"
+                      : "bg-muted text-muted-foreground border border-border"
                   }`}
                 >
                   ✓ Apply
                 </button>
                 <button
-                  onClick={() => setStatus(item.findingId, 'modified')}
-                  disabled={item.status === 'modified'}
+                  onClick={() => setStatus(item.findingId, "modified")}
+                  disabled={item.status === "modified"}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                    item.status === 'modified'
-                      ? 'bg-status-review/20 text-status-review border border-status-review/30'
-                      : 'bg-muted text-muted-foreground border border-border'
+                    item.status === "modified"
+                      ? "bg-status-review/20 text-status-review border border-status-review/30"
+                      : "bg-muted text-muted-foreground border border-border"
                   }`}
                 >
                   ✏️ Modify
                 </button>
                 <button
-                  onClick={() => setStatus(item.findingId, 'skipped')}
-                  disabled={item.status === 'skipped'}
+                  onClick={() => setStatus(item.findingId, "skipped")}
+                  disabled={item.status === "skipped"}
                   className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                    item.status === 'skipped'
-                      ? 'bg-muted text-muted-foreground border border-border'
-                      : 'bg-muted text-muted-foreground border border-border'
+                    item.status === "skipped"
+                      ? "bg-muted text-muted-foreground border border-border"
+                      : "bg-muted text-muted-foreground border border-border"
                   }`}
                 >
                   ✗ Skip
@@ -811,11 +910,17 @@ export function FixesCard({ fixes, onApply, onTalkToValidator }: FixesCardProps)
               </div>
             )}
 
-            {item.status !== 'pending' && (
+            {item.status !== "pending" && (
               <div className="text-[10px] mt-1 font-mono">
-                {item.status === 'accepted' && <span className="text-status-approved">✓ Will apply</span>}
-                {item.status === 'modified' && <span className="text-status-review">✏️ Custom fix</span>}
-                {item.status === 'skipped' && <span className="text-muted-foreground">✗ Skipped</span>}
+                {item.status === "accepted" && (
+                  <span className="text-status-approved">✓ Will apply</span>
+                )}
+                {item.status === "modified" && (
+                  <span className="text-status-review">✏️ Custom fix</span>
+                )}
+                {item.status === "skipped" && (
+                  <span className="text-muted-foreground">✗ Skipped</span>
+                )}
               </div>
             )}
           </div>
@@ -873,7 +978,9 @@ interface FindingsCardProps {
 }
 
 export function FindingsCard({ findings, onSubmit }: FindingsCardProps) {
-  const [selected, setSelected] = useState<WorkflowFinding[]>(() => findings.map((f) => ({ ...f })));
+  const [selected, setSelected] = useState<WorkflowFinding[]>(() =>
+    findings.map((f) => ({ ...f })),
+  );
   const [submitted, setSubmitted] = useState(false);
 
   const toggleFinding = (i: number) => {
@@ -895,28 +1002,40 @@ export function FindingsCard({ findings, onSubmit }: FindingsCardProps) {
   };
 
   return (
-    <div data-testid="workflow-card" className="mt-3 p-3 rounded-lg bg-card border border-border space-y-2">
+    <div
+      data-testid="workflow-card"
+      className="mt-3 p-3 rounded-lg bg-card border border-border space-y-2"
+    >
       <div className="flex items-center gap-2 text-xs font-semibold">
         <AlertTriangle className="size-3.5 text-status-review" />
         <span>Validator Findings:</span>
       </div>
       {selected.map((f, i) => (
-        <div key={f.findingId || i} className="p-2 bg-background rounded border border-border space-y-1">
+        <div
+          key={f.findingId || i}
+          className="p-2 bg-background rounded border border-border space-y-1"
+        >
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
-              <div className="text-[10px] text-destructive font-mono">{f.type || 'FINDING'}: {f.finding}</div>
-              {f.rule && <div className="text-[10px] text-muted-foreground font-mono">Rule: {f.rule}</div>}
+              <div className="text-[10px] text-destructive font-mono">
+                {f.type || "FINDING"}: {f.finding}
+              </div>
+              {f.rule && (
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  Rule: {f.rule}
+                </div>
+              )}
             </div>
             <button
               onClick={() => toggleFinding(i)}
               disabled={submitted}
               className={`px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 transition-colors ${
                 f.accepted
-                  ? 'bg-status-approved/20 text-status-approved border border-status-approved/30'
-                  : 'bg-muted text-muted-foreground border border-border'
+                  ? "bg-status-approved/20 text-status-approved border border-status-approved/30"
+                  : "bg-muted text-muted-foreground border border-border"
               }`}
             >
-              {f.accepted ? '✓ Fix' : 'Fix'}
+              {f.accepted ? "✓ Fix" : "Fix"}
             </button>
           </div>
         </div>
@@ -947,12 +1066,20 @@ interface ReviewCardProps {
   onRevise: (feedback: string) => Promise<void> | void;
 }
 
-export function ReviewCard({ sectionTitle, summary, onApprove, onRevise }: ReviewCardProps) {
-  const [action, setAction] = useState<'idle' | 'approve' | 'revise'>('idle');
-  const [revisionText, setRevisionText] = useState('');
+export function ReviewCard({
+  sectionTitle,
+  summary,
+  onApprove,
+  onRevise,
+}: ReviewCardProps) {
+  const [action, setAction] = useState<"idle" | "approve" | "revise">("idle");
+  const [revisionText, setRevisionText] = useState("");
 
   return (
-    <div data-testid="workflow-card" className="mt-3 p-3 rounded-lg bg-card border border-border space-y-3">
+    <div
+      data-testid="workflow-card"
+      className="mt-3 p-3 rounded-lg bg-card border border-border space-y-3"
+    >
       <div className="flex items-center gap-2 text-xs font-semibold">
         <FileText className="size-3.5 text-primary" />
         <span>Review: {sectionTitle}</span>
@@ -961,25 +1088,29 @@ export function ReviewCard({ sectionTitle, summary, onApprove, onRevise }: Revie
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="p-2 bg-background rounded border border-border">
           <div className="text-muted-foreground text-[10px]">Draft Length</div>
-          <div className="font-bold text-foreground">{summary.draftLength} chars</div>
+          <div className="font-bold text-foreground">
+            {summary.draftLength} chars
+          </div>
         </div>
         <div className="p-2 bg-background rounded border border-border">
           <div className="text-muted-foreground text-[10px]">Findings</div>
-          <div className="font-bold text-foreground">{summary.findingsCount}</div>
+          <div className="font-bold text-foreground">
+            {summary.findingsCount}
+          </div>
         </div>
       </div>
 
-      {action === 'idle' && (
+      {action === "idle" && (
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => setAction('approve')}
+            onClick={() => setAction("approve")}
             className="flex items-center justify-center gap-1.5 bg-status-approved/20 text-status-approved border border-status-approved/30 px-3 py-2 rounded text-xs font-semibold hover:bg-status-approved/30"
           >
             <CheckCircle2 className="size-3.5" />
             Approve
           </button>
           <button
-            onClick={() => setAction('revise')}
+            onClick={() => setAction("revise")}
             className="flex items-center justify-center gap-1.5 bg-status-review/20 text-status-review border border-status-review/30 px-3 py-2 rounded text-xs font-semibold hover:bg-status-review/30"
           >
             <RefreshCw className="size-3.5" />
@@ -988,25 +1119,24 @@ export function ReviewCard({ sectionTitle, summary, onApprove, onRevise }: Revie
         </div>
       )}
 
-      {action === 'approve' && (
-          <button
-            onClick={async () => {
-              try {
-                await onApprove();
-              } catch {
-                // Reset to idle so the user can retry approval if resume failed.
-                setAction('idle');
-              }
-            }}
-            className="w-full flex items-center justify-center gap-1.5 bg-status-approved text-white px-3 py-2 rounded text-xs font-semibold"
-          >
-            <CheckCircle2 className="size-3.5" />
-            Confirm: Approve & Lock Section
-          </button>
-
+      {action === "approve" && (
+        <button
+          onClick={async () => {
+            try {
+              await onApprove();
+            } catch {
+              // Reset to idle so the user can retry approval if resume failed.
+              setAction("idle");
+            }
+          }}
+          className="w-full flex items-center justify-center gap-1.5 bg-status-approved text-white px-3 py-2 rounded text-xs font-semibold"
+        >
+          <CheckCircle2 className="size-3.5" />
+          Confirm: Approve & Lock Section
+        </button>
       )}
 
-      {action === 'revise' && (
+      {action === "revise" && (
         <div className="space-y-2">
           <textarea
             value={revisionText}
